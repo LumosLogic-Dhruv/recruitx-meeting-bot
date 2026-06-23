@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumos AI Interviewer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f13;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #1a1a24;
+      border: 1px solid #2d2d3d;
+      border-radius: 16px;
+      padding: 36px;
+      width: 100%;
+      max-width: 620px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .logo-dot {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 8px;
+    }
+
+    .logo h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .logo span {
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 400;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      margin-top: 18px;
+    }
+
+    label:first-of-type { margin-top: 0; }
+
+    input, textarea {
+      width: 100%;
+      background: #0f0f13;
+      border: 1px solid #2d2d3d;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 14px;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+
+    input:focus, textarea:focus {
+      border-color: #6366f1;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.5;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: #334155;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #475569;
+      margin-top: 4px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    #btn-start {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+    }
+
+    #btn-end {
+      background: #1e293b;
+      border: 1px solid #ef4444;
+      color: #ef4444;
+    }
+
+    .status-box {
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .status-box.show { display: block; }
+    .status-box.success { background: #0d2218; border: 1px solid #22c55e; color: #86efac; }
+    .status-box.error   { background: #200d0d; border: 1px solid #ef4444; color: #fca5a5; }
+    .status-box.info    { background: #0d1527; border: 1px solid #6366f1; color: #a5b4fc; }
+
+    .session-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0d2218;
+      border: 1px solid #22c55e;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: #86efac;
+      margin-top: 16px;
+    }
+
+    .dot-live {
+      width: 7px;
+      height: 7px;
+      background: #22c55e;
+      border-radius: 50%;
+      animation: pulse 1.4s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .divider {
+      height: 1px;
+      background: #2d2d3d;
+      margin: 24px 0;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #475569;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <div>
+        <h1>Lumos AI Interviewer</h1>
+        <span>Powered by Vexa + OpenAI + ElevenLabs</span>
+      </div>
+    </div>
+
+    <div class="section-title">Meeting</div>
+
+    <label>Google Meet Link or Meeting ID</label>
+    <input id="meeting-input" type="text"
+      placeholder="https://meet.google.com/abc-defg-hij  or  abc-defg-hij" />
+    <div class="hint">Paste the full Meet URL or just the meeting code.</div>
+
+    <div class="divider"></div>
+    <div class="section-title">Bot Configuration</div>
+
+    <label>System Prompt</label>
+    <textarea id="prompt" placeholder="You are an expert technical interviewer for a senior software engineer role. Ask one question at a time, listen carefully, and probe deeper with follow-up questions..."></textarea>
+
+    <div class="row">
+      <div>
+        <label>Bot Name</label>
+        <input id="bot-name" type="text" value="Lumos AI Interviewer" />
+      </div>
+      <div>
+        <label>Avatar URL <span style="color:#334155">(optional)</span></label>
+        <input id="avatar-url" type="text" placeholder="https://..." />
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btn-start" onclick="startInterview()">Start Interview</button>
+      <button id="btn-end" onclick="endInterview()" disabled>End Interview</button>
+    </div>
+
+    <div id="status" class="status-box"></div>
+    <div id="session-badge" style="display:none">
+      <div class="session-badge"><div class="dot-live"></div><span id="badge-text">Session active</span></div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:8000';
+    let activeMeetingId = null;
+
+    function extractMeetingId(input) {
+      input = input.trim();
+      const match = input.match(/meet\.google\.com\/([a-z0-9\-]+)/i);
+      if (match) return match[1];
+      if (/^[a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3}$/i.test(input)) return input;
+      return input; // pass through whatever they typed
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status-box show ' + type;
+    }
+
+    function setLoading(loading) {
+      document.getElementById('btn-start').disabled = loading || !!activeMeetingId;
+      document.getElementById('btn-end').disabled = loading || !activeMeetingId;
+    }
+
+    async function startInterview() {
+      const raw = document.getElementById('meeting-input').value.trim();
+      const prompt = document.getElementById('prompt').value.trim();
+      const botName = document.getElementById('bot-name').value.trim() || 'AI Interviewer';
+
+      if (!raw) return showStatus('Please enter a Google Meet link.', 'error');
+      if (!prompt) return showStatus('Please enter a system prompt for the AI.', 'error');
+
+      // Ensure full URL format
+      const meetingUrl = raw.startsWith('http') ? raw : `https://meet.google.com/${raw}`;
+      setLoading(true);
+      showStatus('Sending bot into the meeting… (may take 1-2 min to join)', 'info');
+
+      try {
+        const res = await fetch(`${API}/start-interview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meeting_url: meetingUrl,
+            system_prompt: prompt,
+            bot_name: botName,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+
+        activeMeetingId = meetingUrl;
+        showStatus(`Bot is joining the meeting. It will speak a greeting once it\'s in. This takes 1-2 minutes.`, 'success');
+        document.getElementById('session-badge').style.display = 'block';
+        document.getElementById('badge-text').textContent = `Live: ${meetingUrl.split('/').pop()}`;
+        setLoading(false);
+      } catch (err) {
+        showStatus('Error: ' + err.message, 'error');
+        setLoading(false);
+      }
+    }
+
+    async function endInterview() {
+      if (!activeMeetingId) return;
+      setLoading(true);
+      showStatus('Ending interview and fetching transcript…', 'info');
+
+      try {
+        const res = await fetch(`${API}/end-interview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meeting_url: activeMeetingId }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+
+        document.getElementById('session-badge').style.display = 'none';
+        activeMeetingId = null;
+
+        const lines = data.conversation
+          ? data.conversation.split('\n').slice(0, 6).join('\n')
+          : '(no conversation recorded)';
+
+        showStatus(`Interview ended.\n\nConversation preview:\n${lines}`, 'success');
+        setLoading(false);
+      } catch (err) {
+        showStatus('Error: ' + err.message, 'error');
+        setLoading(false);
+      }
+    }
+  </script>
+</body>
+</html>
