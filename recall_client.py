@@ -22,7 +22,14 @@ class RecallClient:
         recording_config: dict = {
             "transcript": {
                 "provider": {
-                    "deepgram_streaming": {"model": "nova-3"},
+                    "deepgram_streaming": {
+                        "model": "nova-3",
+                        "smart_format": True,
+                        # 300ms matches CallerX's proven value — short enough to feel
+                        # responsive but long enough to capture natural speech segments.
+                        # The pipeline accumulates multiple segments before responding.
+                        "endpointing": 300,
+                    },
                 }
             }
         }

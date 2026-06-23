@@ -4,8 +4,8 @@ import time
 from typing import Callable, Awaitable
 from openai import AsyncOpenAI
 
-SILENCE_TIMEOUT = 1.8   # seconds of silence before AI responds
-ECHO_COOLDOWN = 3.5     # seconds to ignore input after bot finishes speaking
+SILENCE_TIMEOUT = 3.5   # seconds of silence before AI responds (Deepgram endpointing=800ms + natural gaps)
+ECHO_COOLDOWN = 4.0     # seconds to ignore input after bot finishes speaking
 
 
 class ConversationPipeline:
