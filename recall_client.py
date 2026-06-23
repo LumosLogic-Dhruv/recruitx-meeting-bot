@@ -49,22 +49,19 @@ class RecallClient:
             res.raise_for_status()
             return res.json()
 
-    async def speak(self, bot_id: str, audio_bytes: bytes, sample_rate: int = 24000):
+    async def speak(self, bot_id: str, audio_bytes: bytes):
         b64 = base64.b64encode(audio_bytes).decode()
         async with httpx.AsyncClient() as client:
             res = await client.post(
-                f"{self.base_url}/bot/{bot_id}/output_media/",
+                f"{self.base_url}/bot/{bot_id}/output_audio/",
                 headers=self.headers,
-                json={
-                    "kind": "audio",
-                    "data": {"b64_data": b64, "sample_rate": sample_rate},
-                },
+                json={"kind": "mp3", "b64_data": b64},
                 timeout=30.0,
             )
             if not res.is_success:
                 print(f"[Recall] Speak error {res.status_code}: {res.text}")
             else:
-                print(f"[Recall] Speak accepted: {res.status_code} | audio_bytes={len(audio_bytes)}")
+                print(f"[Recall] Speak accepted: {res.status_code} | bytes={len(audio_bytes)}")
             res.raise_for_status()
 
     async def stop_bot(self, bot_id: str):
