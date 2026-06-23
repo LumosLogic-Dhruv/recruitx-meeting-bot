@@ -17,11 +17,6 @@ class RecallClient:
             "meeting_url": meeting_url,
             "bot_name": bot_name,
         }
-        if webhook_url:
-            payload["real_time_transcription"] = {
-                "destination_url": webhook_url,
-                "partial_results": False,
-            }
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{self.base_url}/bot/",
