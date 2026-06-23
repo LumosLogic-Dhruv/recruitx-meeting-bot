@@ -12,11 +12,26 @@ class RecallClient:
             "Content-Type": "application/json",
         }
 
-    async def create_bot(self, meeting_url: str, bot_name: str = "AI Interviewer", webhook_url: str = "") -> dict:
+    async def create_bot(
+        self,
+        meeting_url: str,
+        bot_name: str = "AI Interviewer",
+        webhook_url: str = "",
+        deepgram_api_key: str = "",
+    ) -> dict:
+        deepgram_config: dict = {"model": "nova-2", "smart_format": True}
+        if deepgram_api_key:
+            deepgram_config["api_key"] = deepgram_api_key
+
         payload: dict = {
             "meeting_url": meeting_url,
             "bot_name": bot_name,
+            "transcription_options": {
+                "provider": "deepgram",
+                "deepgram": deepgram_config,
+            },
         }
+
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{self.base_url}/bot/",
@@ -66,38 +81,10 @@ class RecallClient:
 
     async def stop_bot(self, bot_id: str):
         async with httpx.AsyncClient() as client:
-            res = await client.delete(
-                f"{self.base_url}/bot/{bot_id}/",
+            res = await client.post(
+                f"{self.base_url}/bot/{bot_id}/leave_call/",
                 headers=self.headers,
                 timeout=15.0,
             )
             if res.status_code not in (200, 204, 404):
                 res.raise_for_status()
-
-    async def listen_transcript(
-        self,
-        bot_id: str,
-        on_update: Callable[[str, str], Awaitable[None]],
-        stop_event: asyncio.Event,
-    ):
-        """Poll transcript every 3s and fire on_update for new confirmed segments."""
-        seen_count = 0
-
-        while not stop_event.is_set():
-            try:
-                segments = await self.get_transcript(bot_id)
-                new_segments = segments[seen_count:]
-                for seg in new_segments:
-                    words = seg.get("words", [])
-                    if not words:
-                        continue
-                    text = " ".join(w.get("text", "") for w in words).strip()
-                    speaker = seg.get("speaker", {})
-                    name = speaker.get("name", "Candidate") if isinstance(speaker, dict) else str(speaker)
-                    if text:
-                        await on_update(text, name)
-                seen_count = len(segments)
-            except Exception as e:
-                print(f"[Transcript] Poll error: {e}")
-
-            await asyncio.sleep(3)

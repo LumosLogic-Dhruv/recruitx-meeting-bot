@@ -13,26 +13,45 @@
       color: #e2e8f0;
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       padding: 24px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 20px;
+      width: 100%;
+      max-width: 1100px;
+      align-items: flex-start;
     }
 
     .card {
       background: #1a1a24;
       border: 1px solid #2d2d3d;
       border-radius: 16px;
-      padding: 36px;
-      width: 100%;
-      max-width: 620px;
+      padding: 32px;
+      flex: 0 0 480px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.4);
     }
+
+    .live-panel {
+      flex: 1;
+      background: #1a1a24;
+      border: 1px solid #2d2d3d;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      display: none;
+    }
+
+    .live-panel.show { display: block; }
 
     .logo {
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
 
     .logo-dot {
@@ -40,104 +59,74 @@
       height: 32px;
       background: linear-gradient(135deg, #6366f1, #8b5cf6);
       border-radius: 8px;
+      flex-shrink: 0;
     }
 
-    .logo h1 {
-      font-size: 20px;
-      font-weight: 700;
-      color: #f8fafc;
-    }
-
-    .logo span {
-      font-size: 13px;
-      color: #64748b;
-      font-weight: 400;
-    }
+    .logo h1 { font-size: 20px; font-weight: 700; color: #f8fafc; }
+    .logo span { font-size: 12px; color: #64748b; }
 
     label {
       display: block;
-      font-size: 13px;
-      font-weight: 500;
-      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .06em;
       margin-bottom: 6px;
-      margin-top: 18px;
+      margin-top: 16px;
     }
 
     label:first-of-type { margin-top: 0; }
 
     input, textarea {
       width: 100%;
-      background: #0f0f13;
+      background: #0d0d11;
       border: 1px solid #2d2d3d;
       border-radius: 8px;
       color: #e2e8f0;
-      font-size: 14px;
-      padding: 10px 14px;
+      font-size: 13px;
+      padding: 10px 12px;
       outline: none;
       transition: border-color 0.2s;
       font-family: inherit;
     }
 
-    input:focus, textarea:focus {
-      border-color: #6366f1;
-    }
-
-    textarea {
-      resize: vertical;
-      min-height: 120px;
-      line-height: 1.5;
-    }
-
-    input::placeholder, textarea::placeholder {
-      color: #334155;
-    }
-
-    .hint {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 4px;
-    }
+    input:focus, textarea:focus { border-color: #6366f1; }
+    textarea { resize: vertical; min-height: 140px; line-height: 1.55; }
+    input::placeholder, textarea::placeholder { color: #2d3748; }
 
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 12px;
     }
 
     .actions {
       display: flex;
-      gap: 12px;
-      margin-top: 24px;
+      gap: 10px;
+      margin-top: 20px;
     }
 
     button {
       flex: 1;
-      padding: 12px;
+      padding: 11px;
       border: none;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       transition: opacity 0.15s, transform 0.1s;
     }
 
     button:active { transform: scale(0.98); }
-    button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    button:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
-    #btn-start {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: #fff;
-    }
-
-    #btn-end {
-      background: #1e293b;
-      border: 1px solid #ef4444;
-      color: #ef4444;
-    }
+    #btn-start { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
+    #btn-end   { background: #1e293b; border: 1px solid #ef4444; color: #ef4444; }
 
     .status-box {
-      margin-top: 20px;
-      padding: 14px;
+      margin-top: 16px;
+      padding: 12px 14px;
       border-radius: 8px;
       font-size: 13px;
       line-height: 1.5;
@@ -149,7 +138,7 @@
     .status-box.error   { background: #200d0d; border: 1px solid #ef4444; color: #fca5a5; }
     .status-box.info    { background: #0d1527; border: 1px solid #6366f1; color: #a5b4fc; }
 
-    .session-badge {
+    .badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -157,96 +146,216 @@
       border: 1px solid #22c55e;
       border-radius: 999px;
       padding: 4px 12px;
-      font-size: 12px;
+      font-size: 11px;
       color: #86efac;
-      margin-top: 16px;
+      margin-top: 12px;
     }
 
     .dot-live {
-      width: 7px;
-      height: 7px;
+      width: 7px; height: 7px;
       background: #22c55e;
       border-radius: 50%;
       animation: pulse 1.4s infinite;
     }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    .divider {
-      height: 1px;
-      background: #2d2d3d;
-      margin: 24px 0;
-    }
-
+    .divider { height: 1px; background: #2d2d3d; margin: 20px 0; }
     .section-title {
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 10px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: .08em;
       color: #475569;
+      margin-bottom: 12px;
+    }
+
+    /* Live panel */
+    .live-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: 16px;
     }
+
+    .live-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #a5b4fc;
+    }
+
+    .live-sub {
+      font-size: 11px;
+      color: #475569;
+      margin-top: 2px;
+    }
+
+    #chat-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    #chat-feed::-webkit-scrollbar { width: 4px; }
+    #chat-feed::-webkit-scrollbar-track { background: transparent; }
+    #chat-feed::-webkit-scrollbar-thumb { background: #2d2d3d; border-radius: 99px; }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .msg-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .msg.ai .msg-label { color: #818cf8; }
+    .msg.human .msg-label { color: #64748b; }
+
+    .msg-bubble {
+      font-size: 13px;
+      line-height: 1.55;
+      padding: 10px 13px;
+      border-radius: 10px;
+      max-width: 92%;
+    }
+
+    .msg.ai .msg-bubble {
+      background: #1e1e2e;
+      border: 1px solid #2d2d4d;
+      color: #c7d2fe;
+      align-self: flex-start;
+    }
+
+    .msg.human .msg-bubble {
+      background: #1e293b;
+      border: 1px solid #2d3d50;
+      color: #cbd5e1;
+      align-self: flex-end;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #334155;
+      font-size: 13px;
+      padding: 40px 0;
+    }
+
+    /* Scorecard styles */
+    .scorecard {
+      margin-top: 16px;
+      padding: 16px;
+      background: #0d1527;
+      border: 1px solid #6366f1;
+      border-radius: 10px;
+    }
+
+    .sc-header { font-size: 11px; font-weight: 700; color: #a5b4fc; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .sc-score-row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+    .sc-score { font-size: 30px; font-weight: 800; color: #f8fafc; }
+    .sc-score span { font-size: 14px; color: #475569; }
+    .sc-badge { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .sc-summary { font-size: 12px; color: #94a3b8; margin-bottom: 12px; line-height: 1.5; }
+    .sc-dim { margin-bottom: 8px; }
+    .sc-dim-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; }
+    .sc-dim-name { color: #cbd5e1; }
+    .sc-dim-score { color: #a5b4fc; }
+    .sc-bar-bg { background: #1e293b; border-radius: 999px; height: 5px; }
+    .sc-bar { background: #6366f1; height: 5px; border-radius: 999px; }
+    .sc-dim-comment { font-size: 10px; color: #475569; margin-top: 2px; }
+    .sc-tags { font-size: 11px; margin-bottom: 6px; line-height: 1.6; }
+    .sc-tags.good { color: #22c55e; }
+    .sc-tags.bad  { color: #ef4444; }
+    .sc-next { font-size: 11px; color: #94a3b8; border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 6px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">
-      <div class="logo-dot"></div>
-      <div>
-        <h1>Lumos AI Interviewer</h1>
-        <span>Powered by Vexa + OpenAI + ElevenLabs</span>
+  <div class="layout">
+    <!-- Config panel -->
+    <div class="card">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        <div>
+          <h1>Lumos AI Interviewer</h1>
+          <span>Powered by Recall.ai · Deepgram · OpenAI</span>
+        </div>
       </div>
+
+      <div class="section-title">Meeting</div>
+
+      <label>Google Meet Link</label>
+      <input id="meeting-input" type="text" placeholder="https://meet.google.com/abc-defg-hij" />
+
+      <div class="divider"></div>
+      <div class="section-title">Bot Configuration</div>
+
+      <label>System Prompt</label>
+      <textarea id="prompt">You are Alex, a professional AI interviewer. Conduct a structured, conversational interview.
+
+RULES:
+- Ask exactly ONE question per response
+- Keep every response under 40 words
+- Acknowledge the candidate's answer in one brief sentence before asking the next question
+- Flow: introduction → work experience → role-specific skills → behavioral question → wrap up
+- If an answer is vague, ask one focused follow-up
+- Be warm, concise, and professional at all times
+- Never repeat questions already asked</textarea>
+
+      <div class="row">
+        <div>
+          <label>Bot Name</label>
+          <input id="bot-name" type="text" value="Alex" />
+        </div>
+        <div>
+          <label>Candidate Name</label>
+          <input id="candidate-name" type="text" placeholder="Jane Doe" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-start" onclick="startInterview()">Start Interview</button>
+        <button id="btn-end" onclick="endInterview()" disabled>End Interview</button>
+      </div>
+
+      <div id="status" class="status-box"></div>
+      <div id="session-badge" style="display:none">
+        <div class="badge"><div class="dot-live"></div><span id="badge-text">Session active</span></div>
+      </div>
+
+      <!-- Scorecard appears here after end -->
+      <div id="scorecard-area"></div>
     </div>
 
-    <div class="section-title">Meeting</div>
-
-    <label>Google Meet Link or Meeting ID</label>
-    <input id="meeting-input" type="text"
-      placeholder="https://meet.google.com/abc-defg-hij  or  abc-defg-hij" />
-    <div class="hint">Paste the full Meet URL or just the meeting code.</div>
-
-    <div class="divider"></div>
-    <div class="section-title">Bot Configuration</div>
-
-    <label>System Prompt</label>
-    <textarea id="prompt" placeholder="You are an expert technical interviewer for a senior software engineer role. Ask one question at a time, listen carefully, and probe deeper with follow-up questions..."></textarea>
-
-    <div class="row">
-      <div>
-        <label>Bot Name</label>
-        <input id="bot-name" type="text" value="AI Interviewer" />
+    <!-- Live transcript panel (visible during session) -->
+    <div class="live-panel" id="live-panel">
+      <div class="live-header">
+        <div>
+          <div class="live-title">Live Conversation</div>
+          <div class="live-sub" id="live-sub">Waiting for bot to join…</div>
+        </div>
+        <div class="badge" id="live-badge" style="display:none">
+          <div class="dot-live"></div><span>LIVE</span>
+        </div>
       </div>
-      <div>
-        <label>Candidate Name</label>
-        <input id="candidate-name" type="text" placeholder="John Doe" />
+      <div id="chat-feed">
+        <div class="empty-state">Transcript will appear here once the interview starts.</div>
       </div>
-    </div>
-
-    <div class="actions">
-      <button id="btn-start" onclick="startInterview()">Start Interview</button>
-      <button id="btn-end" onclick="endInterview()" disabled>End Interview</button>
-    </div>
-
-    <div id="status" class="status-box"></div>
-    <div id="session-badge" style="display:none">
-      <div class="session-badge"><div class="dot-live"></div><span id="badge-text">Session active</span></div>
     </div>
   </div>
 
   <script>
     const API = window.location.origin;
-    let activeMeetingId = null;
-
-    function extractMeetingId(input) {
-      input = input.trim();
-      const match = input.match(/meet\.google\.com\/([a-z0-9\-]+)/i);
-      if (match) return match[1];
-      if (/^[a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3}$/i.test(input)) return input;
-      return input; // pass through whatever they typed
-    }
+    let activeMeetingUrl = null;
+    let activeBotId = null;
+    let pollInterval = null;
+    let lastTranscriptLen = 0;
 
     function showStatus(msg, type) {
       const el = document.getElementById('status');
@@ -254,87 +363,68 @@
       el.className = 'status-box show ' + type;
     }
 
-    function showResults(data) {
-      const sc = data.scorecard || {};
-      const transcript = data.transcript || [];
-
-      let html = '';
-
-      // Scorecard
-      if (sc.overall_score) {
-        const recColor = sc.recommendation?.includes('STRONG') ? '#22c55e' :
-                         sc.recommendation?.includes('NO') ? '#ef4444' : '#f59e0b';
-        html += `<div style="margin-top:20px;padding:16px;background:#0d1527;border:1px solid #6366f1;border-radius:8px;">
-          <div style="font-size:13px;font-weight:700;color:#a5b4fc;margin-bottom:12px;">SCORECARD — ${sc.candidate_name || 'Candidate'}</div>
-          <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
-            <div style="font-size:32px;font-weight:800;color:#f8fafc;">${sc.overall_score}<span style="font-size:16px;color:#64748b">/10</span></div>
-            <div style="padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${sc.recommendation}</div>
-          </div>
-          <div style="font-size:13px;color:#94a3b8;margin-bottom:12px;">${sc.summary || ''}</div>`;
-
-        if (sc.dimensions?.length) {
-          html += `<div style="margin-bottom:10px;">`;
-          for (const d of sc.dimensions) {
-            const pct = (d.score / 10) * 100;
-            html += `<div style="margin-bottom:8px;">
-              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-                <span style="color:#cbd5e1;">${d.name}</span>
-                <span style="color:#a5b4fc;">${d.score}/10</span>
-              </div>
-              <div style="background:#1e293b;border-radius:999px;height:6px;">
-                <div style="background:#6366f1;width:${pct}%;height:6px;border-radius:999px;"></div>
-              </div>
-              <div style="font-size:11px;color:#475569;margin-top:2px;">${d.comment}</div>
-            </div>`;
-          }
-          html += `</div>`;
-        }
-
-        if (sc.strengths?.length) {
-          html += `<div style="font-size:12px;color:#22c55e;margin-bottom:6px;">✓ ${sc.strengths.join(' &nbsp;·&nbsp; ')}</div>`;
-        }
-        if (sc.concerns?.length) {
-          html += `<div style="font-size:12px;color:#ef4444;margin-bottom:6px;">✗ ${sc.concerns.join(' &nbsp;·&nbsp; ')}</div>`;
-        }
-        if (sc.suggested_next_steps) {
-          html += `<div style="font-size:12px;color:#94a3b8;margin-top:8px;border-top:1px solid #1e293b;padding-top:8px;">Next: ${sc.suggested_next_steps}</div>`;
-        }
-        html += `</div>`;
-      }
-
-      // Transcript
-      if (transcript.length) {
-        html += `<div style="margin-top:16px;padding:14px;background:#0f0f13;border:1px solid #2d2d3d;border-radius:8px;max-height:300px;overflow-y:auto;">
-          <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Transcript</div>`;
-        for (const t of transcript) {
-          const isAI = t.speaker === 'AI';
-          html += `<div style="margin-bottom:8px;">
-            <span style="font-size:11px;font-weight:600;color:${isAI ? '#818cf8' : '#94a3b8'};">${t.speaker}</span>
-            <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${t.text}</div>
-          </div>`;
-        }
-        html += `</div>`;
-      }
-
-      const statusEl = document.getElementById('status');
-      statusEl.innerHTML = html;
-      statusEl.className = 'status-box show success';
+    function setLoading(loading) {
+      document.getElementById('btn-start').disabled = loading || !!activeMeetingUrl;
+      document.getElementById('btn-end').disabled = loading || !activeMeetingUrl;
     }
 
-    function setLoading(loading) {
-      document.getElementById('btn-start').disabled = loading || !!activeMeetingId;
-      document.getElementById('btn-end').disabled = loading || !activeMeetingId;
+    function renderChat(transcript) {
+      const feed = document.getElementById('chat-feed');
+      if (!transcript.length) return;
+
+      // Only re-render if new messages arrived
+      if (transcript.length === lastTranscriptLen) return;
+      lastTranscriptLen = transcript.length;
+
+      feed.innerHTML = '';
+      for (const t of transcript) {
+        const isAI = t.speaker === 'AI';
+        const div = document.createElement('div');
+        div.className = 'msg ' + (isAI ? 'ai' : 'human');
+        div.innerHTML = `
+          <div class="msg-label">${escapeHtml(t.speaker)}</div>
+          <div class="msg-bubble">${escapeHtml(t.text)}</div>
+        `;
+        feed.appendChild(div);
+      }
+      feed.scrollTop = feed.scrollHeight;
+
+      document.getElementById('live-sub').textContent = `${transcript.length} messages`;
+      document.getElementById('live-badge').style.display = 'inline-flex';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function pollTranscript() {
+      if (!activeBotId) return;
+      try {
+        const res = await fetch(`${API}/transcript/${activeBotId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderChat(data.transcript || []);
+      } catch (_) {}
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(pollTranscript, 4000);
+      pollTranscript(); // immediate first call
+    }
+
+    function stopPolling() {
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
     }
 
     async function startInterview() {
       const raw = document.getElementById('meeting-input').value.trim();
       const prompt = document.getElementById('prompt').value.trim();
-      const botName = document.getElementById('bot-name').value.trim() || 'AI Interviewer';
+      const botName = document.getElementById('bot-name').value.trim() || 'Alex';
 
       if (!raw) return showStatus('Please enter a Google Meet link.', 'error');
-      if (!prompt) return showStatus('Please enter a system prompt for the AI.', 'error');
+      if (!prompt) return showStatus('Please enter a system prompt.', 'error');
 
-      // Ensure full URL format
       const meetingUrl = raw.startsWith('http') ? raw : `https://meet.google.com/${raw}`;
       setLoading(true);
       showStatus('Sending bot into the meeting… (may take 1-2 min to join)', 'info');
@@ -343,21 +433,22 @@
         const res = await fetch(`${API}/start-interview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            meeting_url: meetingUrl,
-            system_prompt: prompt,
-            bot_name: botName,
-          }),
+          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName }),
         });
-
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
 
-        activeMeetingId = meetingUrl;
-        showStatus(`Bot is joining the meeting. It will speak a greeting once it\'s in. This takes 1-2 minutes.`, 'success');
+        activeMeetingUrl = meetingUrl;
+        activeBotId = data.bot_id;
+        lastTranscriptLen = 0;
+
+        showStatus('Bot is joining the meeting. It will greet the candidate once it\'s in (1-2 min).', 'success');
         document.getElementById('session-badge').style.display = 'block';
         document.getElementById('badge-text').textContent = `Live: ${meetingUrl.split('/').pop()}`;
+        document.getElementById('live-panel').classList.add('show');
+        document.getElementById('scorecard-area').innerHTML = '';
         setLoading(false);
+        startPolling();
       } catch (err) {
         showStatus('Error: ' + err.message, 'error');
         setLoading(false);
@@ -365,33 +456,75 @@
     }
 
     async function endInterview() {
-      if (!activeMeetingId) return;
+      if (!activeMeetingUrl) return;
       setLoading(true);
-      showStatus('Ending interview and fetching transcript…', 'info');
+      showStatus('Ending interview and generating scorecard…', 'info');
+      stopPolling();
 
       try {
         const candidateName = document.getElementById('candidate-name').value.trim() || 'Candidate';
         const res = await fetch(`${API}/end-interview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ meeting_url: activeMeetingId, candidate_name: candidateName }),
+          body: JSON.stringify({ meeting_url: activeMeetingUrl, candidate_name: candidateName }),
         });
-
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
 
-        document.getElementById('session-badge').style.display = 'none';
-        activeMeetingId = null;
+        // Show final transcript
+        if (data.transcript?.length) renderChat(data.transcript);
 
-        showStatus('Interview ended. Generating scorecard...', 'info');
+        document.getElementById('session-badge').style.display = 'none';
+        document.getElementById('live-badge').style.display = 'none';
+        document.getElementById('live-sub').textContent = 'Interview ended';
+        activeMeetingUrl = null;
+        activeBotId = null;
         setLoading(false);
 
-        // Show results
-        showResults(data);
+        showStatus('Interview complete.', 'success');
+        renderScorecard(data.scorecard || {});
       } catch (err) {
         showStatus('Error: ' + err.message, 'error');
         setLoading(false);
       }
+    }
+
+    function renderScorecard(sc) {
+      const area = document.getElementById('scorecard-area');
+      if (!sc.overall_score) { area.innerHTML = ''; return; }
+
+      const recColor =
+        sc.recommendation?.includes('STRONG') ? '#22c55e' :
+        sc.recommendation?.includes('NO')     ? '#ef4444' : '#f59e0b';
+
+      let html = `<div class="scorecard">
+        <div class="sc-header">Scorecard — ${escapeHtml(sc.candidate_name || 'Candidate')}</div>
+        <div class="sc-score-row">
+          <div class="sc-score">${sc.overall_score}<span>/10</span></div>
+          <div class="sc-badge" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${escapeHtml(sc.recommendation || '')}</div>
+        </div>
+        <div class="sc-summary">${escapeHtml(sc.summary || '')}</div>`;
+
+      if (sc.dimensions?.length) {
+        for (const d of sc.dimensions) {
+          const pct = (d.score / 10) * 100;
+          html += `<div class="sc-dim">
+            <div class="sc-dim-row"><span class="sc-dim-name">${escapeHtml(d.name)}</span><span class="sc-dim-score">${d.score}/10</span></div>
+            <div class="sc-bar-bg"><div class="sc-bar" style="width:${pct}%"></div></div>
+            <div class="sc-dim-comment">${escapeHtml(d.comment || '')}</div>
+          </div>`;
+        }
+      }
+
+      if (sc.strengths?.length)
+        html += `<div class="sc-tags good">✓ ${sc.strengths.map(escapeHtml).join(' · ')}</div>`;
+      if (sc.concerns?.length)
+        html += `<div class="sc-tags bad">✗ ${sc.concerns.map(escapeHtml).join(' · ')}</div>`;
+      if (sc.suggested_next_steps)
+        html += `<div class="sc-next">Next: ${escapeHtml(sc.suggested_next_steps)}</div>`;
+
+      html += '</div>';
+      area.innerHTML = html;
     }
   </script>
 </body>
