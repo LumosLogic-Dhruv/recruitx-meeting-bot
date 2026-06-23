@@ -133,6 +133,25 @@ async def _poll_transcript(bot_id: str):
         await asyncio.sleep(3)
 
 
+async def _send_greeting_now(bot_id: str):
+    """Send greeting immediately — triggered by webhook event."""
+    session = _sessions.get(bot_id)
+    if not session:
+        return
+    await asyncio.sleep(3)
+    pipeline: ConversationPipeline = session["pipeline"]
+    bot_name: str = session["bot_name"]
+    greeting = f"Hello! I'm {bot_name}, your AI interviewer today. Let's get started — could you please introduce yourself?"
+    print(f"[Greeting] Sending via webhook trigger...")
+    try:
+        recall: RecallClient = session["recall"]
+        audio = await pipeline._tts(greeting)
+        await recall.speak(bot_id, audio)
+        print("[Greeting] Sent successfully.")
+    except Exception as e:
+        print(f"[Greeting] Failed: {e}")
+
+
 async def _send_greeting(bot_id: str):
     """Wait for bot to be in the call then send an opening greeting."""
     session = _sessions.get(bot_id)
@@ -174,6 +193,14 @@ async def recall_webhook(request: Request):
     body = await request.json()
     event = body.get("event", "")
     data = body.get("data", {})
+    print(f"[Webhook] Event: {event} | Data keys: {list(data.keys())}")
+
+    if event in ("bot.in_call_recording", "bot.in_call_not_recording"):
+        bot_id = data.get("bot_id", "")
+        session = _sessions.get(bot_id)
+        if session and not session.get("greeted"):
+            session["greeted"] = True
+            asyncio.create_task(_send_greeting_now(bot_id))
 
     if event == "transcript.data":
         bot_id = data.get("bot_id", "")
