@@ -217,11 +217,11 @@
     <div class="row">
       <div>
         <label>Bot Name</label>
-        <input id="bot-name" type="text" value="Lumos AI Interviewer" />
+        <input id="bot-name" type="text" value="AI Interviewer" />
       </div>
       <div>
-        <label>Avatar URL <span style="color:#334155">(optional)</span></label>
-        <input id="avatar-url" type="text" placeholder="https://..." />
+        <label>Candidate Name</label>
+        <input id="candidate-name" type="text" placeholder="John Doe" />
       </div>
     </div>
 
@@ -252,6 +252,73 @@
       const el = document.getElementById('status');
       el.textContent = msg;
       el.className = 'status-box show ' + type;
+    }
+
+    function showResults(data) {
+      const sc = data.scorecard || {};
+      const transcript = data.transcript || [];
+
+      let html = '';
+
+      // Scorecard
+      if (sc.overall_score) {
+        const recColor = sc.recommendation?.includes('STRONG') ? '#22c55e' :
+                         sc.recommendation?.includes('NO') ? '#ef4444' : '#f59e0b';
+        html += `<div style="margin-top:20px;padding:16px;background:#0d1527;border:1px solid #6366f1;border-radius:8px;">
+          <div style="font-size:13px;font-weight:700;color:#a5b4fc;margin-bottom:12px;">SCORECARD — ${sc.candidate_name || 'Candidate'}</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+            <div style="font-size:32px;font-weight:800;color:#f8fafc;">${sc.overall_score}<span style="font-size:16px;color:#64748b">/10</span></div>
+            <div style="padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${sc.recommendation}</div>
+          </div>
+          <div style="font-size:13px;color:#94a3b8;margin-bottom:12px;">${sc.summary || ''}</div>`;
+
+        if (sc.dimensions?.length) {
+          html += `<div style="margin-bottom:10px;">`;
+          for (const d of sc.dimensions) {
+            const pct = (d.score / 10) * 100;
+            html += `<div style="margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                <span style="color:#cbd5e1;">${d.name}</span>
+                <span style="color:#a5b4fc;">${d.score}/10</span>
+              </div>
+              <div style="background:#1e293b;border-radius:999px;height:6px;">
+                <div style="background:#6366f1;width:${pct}%;height:6px;border-radius:999px;"></div>
+              </div>
+              <div style="font-size:11px;color:#475569;margin-top:2px;">${d.comment}</div>
+            </div>`;
+          }
+          html += `</div>`;
+        }
+
+        if (sc.strengths?.length) {
+          html += `<div style="font-size:12px;color:#22c55e;margin-bottom:6px;">✓ ${sc.strengths.join(' &nbsp;·&nbsp; ')}</div>`;
+        }
+        if (sc.concerns?.length) {
+          html += `<div style="font-size:12px;color:#ef4444;margin-bottom:6px;">✗ ${sc.concerns.join(' &nbsp;·&nbsp; ')}</div>`;
+        }
+        if (sc.suggested_next_steps) {
+          html += `<div style="font-size:12px;color:#94a3b8;margin-top:8px;border-top:1px solid #1e293b;padding-top:8px;">Next: ${sc.suggested_next_steps}</div>`;
+        }
+        html += `</div>`;
+      }
+
+      // Transcript
+      if (transcript.length) {
+        html += `<div style="margin-top:16px;padding:14px;background:#0f0f13;border:1px solid #2d2d3d;border-radius:8px;max-height:300px;overflow-y:auto;">
+          <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Transcript</div>`;
+        for (const t of transcript) {
+          const isAI = t.speaker === 'AI';
+          html += `<div style="margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:600;color:${isAI ? '#818cf8' : '#94a3b8'};">${t.speaker}</span>
+            <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${t.text}</div>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      const statusEl = document.getElementById('status');
+      statusEl.innerHTML = html;
+      statusEl.className = 'status-box show success';
     }
 
     function setLoading(loading) {
@@ -303,10 +370,11 @@
       showStatus('Ending interview and fetching transcript…', 'info');
 
       try {
+        const candidateName = document.getElementById('candidate-name').value.trim() || 'Candidate';
         const res = await fetch(`${API}/end-interview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ meeting_url: activeMeetingId }),
+          body: JSON.stringify({ meeting_url: activeMeetingId, candidate_name: candidateName }),
         });
 
         const data = await res.json();
@@ -315,12 +383,11 @@
         document.getElementById('session-badge').style.display = 'none';
         activeMeetingId = null;
 
-        const lines = data.conversation
-          ? data.conversation.split('\n').slice(0, 6).join('\n')
-          : '(no conversation recorded)';
-
-        showStatus(`Interview ended.\n\nConversation preview:\n${lines}`, 'success');
+        showStatus('Interview ended. Generating scorecard...', 'info');
         setLoading(false);
+
+        // Show results
+        showResults(data);
       } catch (err) {
         showStatus('Error: ' + err.message, 'error');
         setLoading(false);

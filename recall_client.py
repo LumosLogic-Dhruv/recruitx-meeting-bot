@@ -16,6 +16,7 @@ class RecallClient:
         payload: dict = {
             "meeting_url": meeting_url,
             "bot_name": bot_name,
+            "transcription_options": {"provider": "meeting_captions"},
         }
         async with httpx.AsyncClient() as client:
             res = await client.post(

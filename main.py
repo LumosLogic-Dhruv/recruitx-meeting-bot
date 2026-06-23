@@ -30,6 +30,7 @@ class StartInterviewRequest(BaseModel):
 
 class EndInterviewRequest(BaseModel):
     meeting_url: str
+    candidate_name: str = "Candidate"
 
 
 def _make_recall() -> RecallClient:
@@ -99,8 +100,10 @@ async def start_interview(req: StartInterviewRequest):
         task = asyncio.create_task(_poll_transcript(bot_id))
         _sessions[bot_id]["task"] = task
 
-    # Send opening greeting once bot is in the meeting
-    asyncio.create_task(_send_greeting(bot_id))
+    # Greeting is sent via webhook trigger (_send_greeting_now) when bot enters call
+    # _send_greeting (polling fallback) only runs if no webhook
+    if not webhook:
+        asyncio.create_task(_send_greeting(bot_id))
 
     return {"status": "started", "bot_id": bot_id, "meeting_url": req.meeting_url}
 
@@ -223,7 +226,7 @@ async def recall_webhook(request: Request):
             text = " ".join(w.get("text", "") for w in words).strip()
             if text:
                 print(f"[Webhook] {speaker}: {text}")
-                pipeline.on_transcript_update(text)
+                pipeline.on_transcript_update(text, speaker)
 
     return {"ok": True}
 
@@ -246,11 +249,35 @@ async def end_interview(req: EndInterviewRequest):
     await recall.stop_bot(bot_id)
 
     pipeline: ConversationPipeline = session.get("pipeline")
+    transcript = pipeline.get_transcript_text() if pipeline else ""
+    transcript_list = pipeline.get_transcript_list() if pipeline else []
+
+    # Generate scorecard
+    scorecard = {}
+    if pipeline and transcript:
+        print("[Scorecard] Generating...")
+        try:
+            scorecard = await pipeline.generate_scorecard(req.candidate_name)
+            print("[Scorecard] Done.")
+        except Exception as e:
+            print(f"[Scorecard] Error: {e}")
+
     return {
         "status": "ended",
         "meeting_url": req.meeting_url,
-        "conversation": pipeline.get_transcript_text() if pipeline else "",
+        "transcript": transcript_list,
+        "conversation": transcript,
+        "scorecard": scorecard,
     }
+
+
+@app.get("/transcript/{bot_id}")
+def get_transcript(bot_id: str):
+    session = _sessions.get(bot_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    pipeline: ConversationPipeline = session.get("pipeline")
+    return {"transcript": pipeline.get_transcript_list() if pipeline else []}
 
 
 @app.get("/sessions")
