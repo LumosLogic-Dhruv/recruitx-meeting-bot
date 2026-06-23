@@ -19,13 +19,26 @@ class RecallClient:
         webhook_url: str = "",
         deepgram_api_key: str = "",
     ) -> dict:
-        # AP Northeast region does not support transcription_options in the payload.
-        # Transcription is delivered via real-time webhook events (transcript.data).
-        # Configure the webhook URL in the Recall.ai dashboard under Webhooks.
+        recording_config: dict = {
+            "transcript": {
+                "provider": {
+                    "deepgram_streaming": {"model": "nova-3"},
+                }
+            }
+        }
+        # Per-bot realtime endpoint so transcript.data events reach our server.
+        # This is separate from the global webhook (which handles bot lifecycle events).
+        if webhook_url:
+            recording_config["realtime_endpoints"] = [
+                {"url": webhook_url, "type": "webhook", "events": ["transcript.data"]}
+            ]
+
         payload: dict = {
             "meeting_url": meeting_url,
             "bot_name": bot_name,
+            "recording_config": recording_config,
         }
+
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{self.base_url}/bot/",
@@ -36,7 +49,7 @@ class RecallClient:
         if not res.is_success:
             print(f"[Recall] create_bot failed {res.status_code}: {res.text}")
             res.raise_for_status()
-        print("[Recall] Bot created — transcription via Recall webhook events")
+        print(f"[Recall] Bot created with Deepgram streaming transcription (endpoint: {webhook_url or 'none'})")
         return res.json()
 
     async def get_bot(self, bot_id: str) -> dict:

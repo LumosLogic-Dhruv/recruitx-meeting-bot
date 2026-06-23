@@ -76,6 +76,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     bot_data = await recall.create_bot(
         req.meeting_url,
         req.bot_name,
+        webhook_url=_webhook_url(),
         deepgram_api_key=_deepgram_key(),
     )
     bot_id = bot_data["id"]
@@ -168,26 +169,25 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             session["greeted"] = True
             background_tasks.add_task(_webhook_greeting, bot_id)
 
-    # Real-time transcript segment
+    # Real-time transcript segment (delivered via per-bot realtime_endpoints)
     if event == "transcript.data":
         bot_id = data.get("bot", {}).get("id", "")
         session = _sessions.get(bot_id)
         if not session:
             return {"ok": True}
 
-        session["using_webhook"] = True  # Signal poll loop to stand down
         pipeline: ConversationPipeline = session["pipeline"]
         bot_name: str = session["bot_name"]
 
-        # Recall wraps transcript data in nested "data" key
-        transcript = data.get("data", {}).get("transcript", data.get("transcript", {}))
-        words = transcript.get("words", [])
-        is_final = transcript.get("is_final", False)
-        speaker = transcript.get("speaker", "Candidate")
+        # New API payload: data.data.words + data.data.participant.name
+        inner = data.get("data", {})
+        words = inner.get("words", [])
+        participant = inner.get("participant", {})
+        speaker = participant.get("name") or "Candidate"
 
-        print(f"[Webhook] Transcript from {speaker}: is_final={is_final} words={len(words)}")
+        print(f"[Webhook] Transcript from {speaker}: words={len(words)}")
 
-        if is_final and words and speaker.lower() != bot_name.lower():
+        if words and speaker.lower() != bot_name.lower():
             text = " ".join(w.get("text", "") for w in words).strip()
             if text:
                 print(f"[Webhook] {speaker}: {text}")
