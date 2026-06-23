@@ -19,16 +19,13 @@ class RecallClient:
         webhook_url: str = "",
         deepgram_api_key: str = "",
     ) -> dict:
-        deepgram_config: dict = {"model": "nova-2", "smart_format": True}
-        if deepgram_api_key:
-            deepgram_config["api_key"] = deepgram_api_key
-
+        # Recall.ai accepts only the provider name here.
+        # The Deepgram API key must be linked in the Recall.ai dashboard under Integrations.
         payload: dict = {
             "meeting_url": meeting_url,
             "bot_name": bot_name,
             "transcription_options": {
                 "provider": "deepgram",
-                "deepgram": deepgram_config,
             },
         }
 
