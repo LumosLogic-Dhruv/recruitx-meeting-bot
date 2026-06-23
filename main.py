@@ -44,6 +44,11 @@ def _deepgram_key() -> str:
     return os.getenv("DEEPGRAM_API_KEY", "")
 
 
+def _webhook_url() -> str:
+    base = os.getenv("RENDER_URL", "").rstrip("/")
+    return f"{base}/webhook/recall" if base else ""
+
+
 @app.get("/")
 def ui():
     return FileResponse("static/index.html")
