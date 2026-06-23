@@ -135,8 +135,10 @@ async def _poll_transcript(bot_id: str):
 
 async def _send_greeting_now(bot_id: str):
     """Send greeting immediately — triggered by webhook event."""
+    print(f"[Greeting] _send_greeting_now called for {bot_id}")
     session = _sessions.get(bot_id)
     if not session:
+        print(f"[Greeting] No session found for {bot_id}, sessions={list(_sessions.keys())}")
         return
     await asyncio.sleep(3)
     pipeline: ConversationPipeline = session["pipeline"]
