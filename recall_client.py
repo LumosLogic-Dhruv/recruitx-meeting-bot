@@ -19,27 +19,36 @@ class RecallClient:
         webhook_url: str = "",
         deepgram_api_key: str = "",
     ) -> dict:
-        # Recall.ai accepts only the provider name here.
-        # The Deepgram API key must be linked in the Recall.ai dashboard under Integrations.
-        payload: dict = {
-            "meeting_url": meeting_url,
-            "bot_name": bot_name,
-            "transcription_options": {
-                "provider": "deepgram",
+        # Try with Deepgram transcription first; fall back to no transcription if
+        # the credential isn't configured in the Recall dashboard yet.
+        for attempt, payload in enumerate([
+            {
+                "meeting_url": meeting_url,
+                "bot_name": bot_name,
+                "transcription_options": {"provider": "deepgram"},
             },
-        }
+            {
+                "meeting_url": meeting_url,
+                "bot_name": bot_name,
+            },
+        ]):
+            async with httpx.AsyncClient() as client:
+                res = await client.post(
+                    f"{self.base_url}/bot/",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=30.0,
+                )
+            if res.is_success:
+                if attempt == 1:
+                    print("[Recall] WARNING: Bot created WITHOUT transcription — add Deepgram credential in Recall dashboard")
+                else:
+                    print("[Recall] Bot created with Deepgram transcription")
+                return res.json()
+            print(f"[Recall] create_bot attempt {attempt+1} failed {res.status_code}: {res.text}")
 
-        async with httpx.AsyncClient() as client:
-            res = await client.post(
-                f"{self.base_url}/bot/",
-                headers=self.headers,
-                json=payload,
-                timeout=30.0,
-            )
-            if not res.is_success:
-                print(f"[Recall] Create bot error {res.status_code}: {res.text}")
-                res.raise_for_status()
-            return res.json()
+        res.raise_for_status()
+        return {}  # unreachable
 
     async def get_bot(self, bot_id: str) -> dict:
         async with httpx.AsyncClient() as client:
