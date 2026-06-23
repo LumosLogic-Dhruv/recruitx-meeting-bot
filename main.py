@@ -144,35 +144,12 @@ async def _poll_and_greet(bot_id: str):
         except Exception as e:
             print(f"[Poll] Greeting error: {e}")
 
-    # Poll transcript continuously as fallback
-    print("[Poll] Starting transcript poll loop...")
+    # Transcript comes via webhook events (transcript.data) in the AP region.
+    # The /transcript/ REST endpoint requires transcription_options which AP region rejects.
+    # Keep this loop alive so stop_event can cleanly terminate the task.
+    print("[Poll] Waiting for transcript via webhook events...")
     while not stop_event.is_set():
-        await asyncio.sleep(4)
-        session = _sessions.get(bot_id)
-        if not session:
-            break
-        # Skip polling if webhook is actively delivering transcripts
-        if session.get("using_webhook"):
-            continue
-        try:
-            segments = await recall.get_transcript(bot_id)
-            seen = session["seen_transcript_count"]
-            new_segments = segments[seen:]
-            for seg in new_segments:
-                words = seg.get("words", [])
-                text = " ".join(w.get("text", "") for w in words).strip()
-                speaker_info = seg.get("speaker", {})
-                name = (
-                    speaker_info.get("name", "Candidate")
-                    if isinstance(speaker_info, dict)
-                    else str(speaker_info)
-                )
-                if text and name.lower() != bot_name.lower():
-                    print(f"[Poll] {name}: {text}")
-                    pipeline.on_transcript_update(text, name)
-            session["seen_transcript_count"] = len(segments)
-        except Exception as e:
-            print(f"[Poll] Transcript error: {e}")
+        await asyncio.sleep(10)
 
 
 @app.post("/webhook/recall")

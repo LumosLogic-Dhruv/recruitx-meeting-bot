@@ -19,36 +19,25 @@ class RecallClient:
         webhook_url: str = "",
         deepgram_api_key: str = "",
     ) -> dict:
-        # Try with Deepgram transcription first; fall back to no transcription if
-        # the credential isn't configured in the Recall dashboard yet.
-        for attempt, payload in enumerate([
-            {
-                "meeting_url": meeting_url,
-                "bot_name": bot_name,
-                "transcription_options": {"provider": "deepgram"},
-            },
-            {
-                "meeting_url": meeting_url,
-                "bot_name": bot_name,
-            },
-        ]):
-            async with httpx.AsyncClient() as client:
-                res = await client.post(
-                    f"{self.base_url}/bot/",
-                    headers=self.headers,
-                    json=payload,
-                    timeout=30.0,
-                )
-            if res.is_success:
-                if attempt == 1:
-                    print("[Recall] WARNING: Bot created WITHOUT transcription — add Deepgram credential in Recall dashboard")
-                else:
-                    print("[Recall] Bot created with Deepgram transcription")
-                return res.json()
-            print(f"[Recall] create_bot attempt {attempt+1} failed {res.status_code}: {res.text}")
-
-        res.raise_for_status()
-        return {}  # unreachable
+        # AP Northeast region does not support transcription_options in the payload.
+        # Transcription is delivered via real-time webhook events (transcript.data).
+        # Configure the webhook URL in the Recall.ai dashboard under Webhooks.
+        payload: dict = {
+            "meeting_url": meeting_url,
+            "bot_name": bot_name,
+        }
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{self.base_url}/bot/",
+                headers=self.headers,
+                json=payload,
+                timeout=30.0,
+            )
+        if not res.is_success:
+            print(f"[Recall] create_bot failed {res.status_code}: {res.text}")
+            res.raise_for_status()
+        print("[Recall] Bot created — transcription via Recall webhook events")
+        return res.json()
 
     async def get_bot(self, bot_id: str) -> dict:
         async with httpx.AsyncClient() as client:
