@@ -61,6 +61,10 @@ class RecallClient:
                 },
                 timeout=30.0,
             )
+            if not res.is_success:
+                print(f"[Recall] Speak error {res.status_code}: {res.text}")
+            else:
+                print(f"[Recall] Speak accepted: {res.status_code} | audio_bytes={len(audio_bytes)}")
             res.raise_for_status()
 
     async def stop_bot(self, bot_id: str):

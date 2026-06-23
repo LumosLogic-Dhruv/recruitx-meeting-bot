@@ -57,7 +57,7 @@ class ConversationPipeline:
             model="tts-1",
             voice="alloy",
             input=text,
-            response_format="wav",
+            response_format="pcm",  # raw 16-bit PCM at 24000Hz, no header
         )
         return response.content
 

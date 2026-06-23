@@ -196,24 +196,26 @@ async def recall_webhook(request: Request):
     print(f"[Webhook] Event: {event} | Data keys: {list(data.keys())}")
 
     if event in ("bot.in_call_recording", "bot.in_call_not_recording"):
-        bot_id = data.get("bot_id", "")
+        bot_id = data.get("bot", {}).get("id", "")
+        print(f"[Webhook] Bot in call: {bot_id}")
         session = _sessions.get(bot_id)
         if session and not session.get("greeted"):
             session["greeted"] = True
             asyncio.create_task(_send_greeting_now(bot_id))
 
     if event == "transcript.data":
-        bot_id = data.get("bot_id", "")
+        bot_id = data.get("bot", {}).get("id", "")
         session = _sessions.get(bot_id)
         if not session:
             return {"ok": True}
 
         pipeline: ConversationPipeline = session["pipeline"]
         bot_name: str = session["bot_name"]
-        transcript = data.get("transcript", {})
+        transcript = data.get("data", {}).get("transcript", data.get("transcript", {}))
         words = transcript.get("words", [])
         is_final = transcript.get("is_final", False)
         speaker = transcript.get("speaker", "Candidate")
+        print(f"[Webhook] Transcript from {speaker}: is_final={is_final} words={len(words)}")
 
         if is_final and words and speaker.lower() != bot_name.lower():
             text = " ".join(w.get("text", "") for w in words).strip()
