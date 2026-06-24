@@ -25,9 +25,9 @@ class RecallClient:
                     "deepgram_streaming": {
                         "model": "nova-3",
                         "smart_format": True,
-                        # 500ms avoids splitting mid-sentence pauses into separate segments.
-                        # The pipeline then waits another 7s of true silence before responding.
-                        "endpointing": 500,
+                        # 1000ms: waits a full second of silence before firing a segment.
+                        # Reduces mid-sentence fragmentation when candidate pauses to think.
+                        "endpointing": 1000,
                     },
                 }
             }

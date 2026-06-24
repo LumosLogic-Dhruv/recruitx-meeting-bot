@@ -9,19 +9,38 @@ import httpx
 # After the last Deepgram segment, wait this long before the AI responds.
 # Deepgram endpointing=500ms already filters micro-pauses; 7s catches genuine
 # thinking pauses without cutting the candidate off mid-sentence.
-# Adaptive silence timeouts — shorter for brief greetings, longer for detailed answers.
-# This lets the bot respond nearly instantly to "hello" while still giving candidates
-# time to finish a long thought without being cut off.
-SILENCE_SHORT   = 2.5   # 1–5 words  e.g. "hello", "yes", "my name is Dhruv"
-SILENCE_MEDIUM  = 4.0   # 6–15 words e.g. brief intro or one-line answer
-SILENCE_LONG    = 7.0   # 16–35 words
-SILENCE_XLONG   = 10.0  # 35+ words  e.g. detailed technical explanation
-SILENCE_INTERRUPTED = 3.0  # candidate spoke over the bot — respond fast
+# Adaptive silence timeouts.
+SILENCE_SHORT      = 3.0   # 1–5 words  — "hello", "yes", "my name is Dhruv"
+SILENCE_MEDIUM     = 5.0   # 6–15 words — brief intro or one-liner
+SILENCE_LONG       = 8.0   # 16–35 words
+SILENCE_XLONG      = 12.0  # 35+ words  — long detailed answer
+SILENCE_INCOMPLETE = 10.0  # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 3.0  # candidate spoke over bot — respond fast
 
-# Minimum words the candidate must say before the bot responds.
-# Prevents reacting to mic-test fragments like "So", "Okay.", "Yeah" caused
-# by low mic volume or Deepgram picking up only the tail of an utterance.
-MIN_WORDS_TO_RESPOND = 3
+# Minimum words before the bot responds — prevents reacting to fragments.
+MIN_WORDS_TO_RESPOND = 5
+
+# Words that strongly indicate the speaker hasn't finished their sentence.
+# If the accumulated text ends with one of these, use SILENCE_INCOMPLETE.
+_TRAILING_WORDS = {
+    # conjunctions / connectors
+    'and', 'or', 'but', 'so', 'because', 'although', 'though', 'while',
+    'which', 'that', 'who', 'whom', 'whose', 'where', 'when', 'how',
+    # prepositions
+    'the', 'a', 'an', 'in', 'on', 'at', 'for', 'by', 'with', 'from',
+    'to', 'of', 'into', 'about', 'through', 'during', 'between', 'among',
+    # filler / transition words people say mid-sentence
+    'basically', 'like', 'just', 'also', 'then', 'now', 'as', 'well',
+    'even', 'still', 'already', 'both', 'some', 'any', 'more', 'other',
+    # pronouns / articles that always precede a noun
+    'my', 'our', 'their', 'this', 'these', 'those', 'its',
+    'i', "i'm", "i've", "i'll", "i'd", 'we', 'they', 'he', 'she',
+    # verb helpers that need a following verb/noun
+    'was', 'were', 'are', 'is', 'have', 'has', 'had', 'will', 'would',
+    'can', 'could', 'should', 'not', 'it', 'be', 'been', 'being',
+    # common speech disfluencies
+    'uh', 'um', 'uhh', 'hmm', 'yeah', 'okay', 'ok', 'so',
+}
 
 # Backchannel ("I see", "Right") after this many words have arrived from the
 # candidate since the last bot turn, and at most once every MIN_INTERVAL seconds.
@@ -159,11 +178,31 @@ class ConversationPipeline:
             print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
             self._reset_silence_timer()
 
+    def _is_incomplete(self, text: str) -> bool:
+        """Return True if the text looks like the candidate is mid-sentence.
+        Detects trailing conjunctions, prepositions, articles, and disfluencies."""
+        words = text.strip().split()
+        if not words:
+            return False
+        # Strip trailing punctuation except sentence-ending marks
+        last = words[-1].lower().rstrip(',;:')
+        # If last word is in trailing set → speaker almost certainly isn't done
+        if last in _TRAILING_WORDS:
+            return True
+        # If last character is a comma (pause mid-list) → probably not done
+        if text.rstrip().endswith(','):
+            return True
+        return False
+
     def _adaptive_timeout(self, text: str) -> float:
         """Pick silence timeout based on how much the candidate said.
-        Short greetings → near-instant reply; long answers → more breathing room."""
+        Short greetings → fast reply; incomplete sentences → wait much longer."""
         if self._was_interrupted:
             return SILENCE_INTERRUPTED
+        # If text clearly ends mid-sentence, be very patient
+        if self._is_incomplete(text):
+            print(f"[Pipeline] Incomplete sentence detected — waiting {SILENCE_INCOMPLETE}s")
+            return SILENCE_INCOMPLETE
         words = len(text.split())
         if words <= 5:
             return SILENCE_SHORT
