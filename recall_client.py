@@ -108,7 +108,7 @@ class RecallClient:
                 res.raise_for_status()
 
     async def poll_bot_recording(self, bot_id: str, max_wait: int = 300) -> dict:
-        """Poll GET /bot/{id}/ until recordings[].status.code == 'done'. Returns the recording object."""
+        """Poll GET /bot/{id}/ until recording is done. Returns the recording object."""
         interval = 15
         elapsed = 0
         while elapsed < max_wait:
@@ -116,8 +116,26 @@ class RecallClient:
             elapsed += interval
             try:
                 bot = await self.get_bot(bot_id)
-                for rec in bot.get("recordings") or []:
-                    if (rec.get("status") or {}).get("code") == "done":
+                print(f"[Recall] Bot keys: {list(bot.keys())}")
+
+                # Recall.ai may return 'recording' (object), 'recordings' (list), or both.
+                candidates: list[dict] = []
+                r = bot.get("recording")
+                if isinstance(r, list):
+                    candidates = r
+                elif isinstance(r, dict):
+                    candidates = [r]
+                rs = bot.get("recordings")
+                if isinstance(rs, list):
+                    candidates += rs
+                elif isinstance(rs, dict):
+                    candidates.append(rs)
+
+                print(f"[Recall] Recording candidates: {len(candidates)}")
+                for rec in candidates:
+                    status_code = (rec.get("status") or {}).get("code", "")
+                    print(f"[Recall] Recording id={rec.get('id')} status={status_code}")
+                    if status_code == "done":
                         print(f"[Recall] Recording done: id={rec.get('id')}")
                         return rec
             except Exception as e:
