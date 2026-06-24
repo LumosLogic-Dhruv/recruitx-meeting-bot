@@ -49,7 +49,7 @@ _url_to_bot: dict[str, str] = {}
 class StartInterviewRequest(BaseModel):
     meeting_url: str
     system_prompt: str
-    bot_name: str = "AI Interviewer"
+    bot_name: str = "RecruitX AI Interviewer"
 
 
 class EndInterviewRequest(BaseModel):
@@ -282,7 +282,7 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
             {
                 "meetingUrl": req.meeting_url,
                 "candidateName": req.candidate_name,
-                "botName": session.get("bot_name") or "Alex",
+                "botName": session.get("bot_name") or "RecruitX AI Interviewer",
                 "transcript": transcript_list,
                 "scorecard": scorecard,
             }

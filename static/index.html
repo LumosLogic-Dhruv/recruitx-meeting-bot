@@ -827,6 +827,13 @@
             </div>
 
             <div class="form-group">
+              <label>Select Role & System Prompt</label>
+              <select id="prompt-select" onchange="onPromptSelectChange()">
+                <option value="">-- Custom / Generate New --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
               <label>System Prompt</label>
               <textarea id="prompt" style="min-height: 180px;">You are Alex, a professional AI interviewer. Conduct a structured, conversational interview.
 
@@ -840,15 +847,9 @@ RULES:
 - Never repeat questions already asked</textarea>
             </div>
 
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-              <div class="form-group">
-                <label>Bot Name</label>
-                <input id="bot-name" type="text" value="Alex" />
-              </div>
-              <div class="form-group">
-                <label>Candidate Name</label>
-                <input id="candidate-name" type="text" placeholder="Jane Doe" />
-              </div>
+            <div class="form-group">
+              <label>Candidate Name</label>
+              <input id="candidate-name" type="text" placeholder="Jane Doe" />
             </div>
 
             <div style="display: flex; gap: 12px; margin-top: 10px;">
@@ -1127,7 +1128,9 @@ RULES:
       document.querySelectorAll('.dashboard-view').forEach(view => view.classList.remove('active'));
       document.getElementById(`view-${viewId}`).classList.add('active');
 
-      if (viewId === 'history') {
+      if (viewId === 'interview') {
+        loadPromptsDropdown();
+      } else if (viewId === 'history') {
         loadMeetingsHistory();
       } else if (viewId === 'prompts') {
         loadPromptsLibrary();
@@ -1204,7 +1207,7 @@ RULES:
     async function startInterview() {
       const raw = document.getElementById('meeting-input').value.trim();
       const prompt = document.getElementById('prompt').value.trim();
-      const botName = document.getElementById('bot-name').value.trim() || 'Alex';
+      const botName = "RecruitX AI Interviewer";
 
       if (!raw) return showStatus('Please enter a Google Meet link.', 'error');
       if (!prompt) return showStatus('Please enter a system prompt.', 'error');
@@ -1477,11 +1480,9 @@ RULES:
 
     function useGeneratedPrompt() {
       const text = document.getElementById('generated-prompt-text').value;
-      const role = document.getElementById('role-input').value.trim();
       
       // Load into tab 1 fields
       document.getElementById('prompt').value = text;
-      document.getElementById('bot-name').value = role ? `${role.split(' ')[0]} Bot` : 'Alex';
       
       // Navigate to Room view
       showView('interview');
@@ -1540,8 +1541,47 @@ RULES:
       const text = window[`_prompt_${id}`];
       if (text) {
         document.getElementById('prompt').value = text;
-        document.getElementById('bot-name').value = `${roleName.split(' ')[0]} Bot`;
         showView('interview');
+      }
+    }
+
+    // Helper functions for dropdown population
+    async function loadPromptsDropdown() {
+      const select = document.getElementById('prompt-select');
+      if (!select) return;
+      
+      try {
+        const res = await fetch(`${API}/api/prompts`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const prompts = data.prompts || [];
+
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">-- Custom / Generate New --</option>';
+        prompts.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p._id;
+          opt.textContent = p.roleName;
+          select.appendChild(opt);
+          window[`_prompt_${p._id}`] = p.promptText;
+        });
+        
+        if (currentVal && window[`_prompt_${currentVal}`]) {
+          select.value = currentVal;
+        }
+      } catch (_) {}
+    }
+
+    function onPromptSelectChange() {
+      const select = document.getElementById('prompt-select');
+      const selectedId = select.value;
+      if (selectedId) {
+        const text = window[`_prompt_${selectedId}`];
+        if (text) {
+          document.getElementById('prompt').value = text;
+        }
       }
     }
   </script>
