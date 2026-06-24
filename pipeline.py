@@ -9,7 +9,8 @@ import httpx
 # After the last Deepgram segment, wait this long before the AI responds.
 # Deepgram endpointing=500ms already filters micro-pauses; 7s catches genuine
 # thinking pauses without cutting the candidate off mid-sentence.
-SILENCE_TIMEOUT = 7.0
+SILENCE_TIMEOUT = 20.0          # normal wait after candidate finishes speaking
+SILENCE_TIMEOUT_INTERRUPTED = 4.0  # fast-respond when candidate spoke over the bot
 
 # Minimum words the candidate must say before the bot responds.
 # Prevents reacting to mic-test fragments like "So", "Okay.", "Yeah" caused
@@ -71,6 +72,11 @@ class ConversationPipeline:
         self._last_backchannel_time: float = 0.0
         self._backchannel_idx: int = 0
 
+        # Interruption state — set when candidate speaks while bot is talking.
+        # Causes the TTS consumer to stop queuing more sentences after the
+        # current one, and switches to a faster silence timeout.
+        self._was_interrupted: bool = False
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
@@ -97,7 +103,10 @@ class ConversationPipeline:
         self._pending_speaker = speaker
 
         if self._speaking:
-            print(f"[Pipeline] Buffered (bot speaking): {text[:50]}")
+            # Candidate spoke while bot was talking — flag an interruption so the
+            # TTS consumer stops after the current sentence and we respond faster.
+            self._was_interrupted = True
+            print(f"[Pipeline] Interrupted — buffered: {text[:50]}")
             return
 
         # Count words for backchannel threshold
@@ -145,10 +154,16 @@ class ConversationPipeline:
             self._reset_silence_timer()
 
     async def _wait_for_silence(self):
-        await asyncio.sleep(SILENCE_TIMEOUT)
+        # Use shorter timeout if the candidate interrupted the bot — they clearly
+        # want to respond so no need to wait the full 20s.
+        timeout = SILENCE_TIMEOUT_INTERRUPTED if self._was_interrupted else SILENCE_TIMEOUT
+        if self._was_interrupted:
+            print(f"[Pipeline] Fast-respond mode (interrupted): waiting {timeout}s")
+        await asyncio.sleep(timeout)
         text = self._pending_text.strip()
         speaker = self._pending_speaker
         self._pending_text = ""
+        self._was_interrupted = False
         if not text:
             return
         if len(text.split()) < MIN_WORDS_TO_RESPOND:
@@ -161,6 +176,7 @@ class ConversationPipeline:
     async def _process_turn(self, user_text: str, speaker: str = "Candidate"):
         self._speaking = True
         self._words_since_last_bot = 0
+        self._was_interrupted = False  # fresh start for this turn
 
         # Cancel any pending backchannel before speaking
         if self._backchannel_task and not self._backchannel_task.done():
@@ -206,6 +222,15 @@ class ConversationPipeline:
                 while True:
                     sentence = await queue.get()
                     if sentence is None:
+                        break
+                    # Stop speaking if candidate interrupted between sentences.
+                    # We can't cancel audio already sent to Recall.ai, but we can
+                    # avoid queuing more sentences on top of the candidate.
+                    if self._was_interrupted:
+                        print(f"[Pipeline] Interrupt detected — stopping after current sentence")
+                        # Drain the rest of the queue without playing
+                        while sentence is not None:
+                            sentence = await queue.get()
                         break
                     print(f"[Pipeline] TTS → Recall: {sentence[:70]}")
                     audio = await self._tts(sentence)
