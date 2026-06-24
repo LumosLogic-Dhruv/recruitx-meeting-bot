@@ -11,16 +11,16 @@
   
   <style>
     :root {
-      --bg: #09090b;
-      --card: #18181b;
-      --card-hover: #202024;
-      --border: #27272a;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --card-hover: #f1f5f9;
+      --border: #e2e8f0;
       --border-focus: #8b5cf6;
-      --text: #f4f4f5;
-      --text-muted: #a1a1aa;
+      --text: #0f172a;
+      --text-muted: #64748b;
       --primary: #8b5cf6;
       --primary-hover: #7c3aed;
-      --primary-glow: rgba(139, 92, 246, 0.15);
+      --primary-glow: rgba(139, 92, 246, 0.08);
       --success: #10b981;
       --error: #ef4444;
       --warning: #f59e0b;
@@ -51,21 +51,21 @@
       justify-content: center;
       min-height: 100vh;
       width: 100vw;
-      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 40%),
-                  radial-gradient(circle at bottom left, rgba(76, 29, 149, 0.1), transparent 45%),
-                  #09090b;
+      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.08), transparent 40%),
+                  radial-gradient(circle at bottom left, rgba(76, 29, 149, 0.06), transparent 45%),
+                  #f8fafc;
       padding: 20px;
     }
 
     .auth-card {
-      background: rgba(24, 24, 27, 0.7);
+      background: rgba(255, 255, 255, 0.8);
       backdrop-filter: blur(16px);
       border: 1px solid var(--border);
       border-radius: 24px;
       padding: 40px;
       width: 100%;
       max-width: 460px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.05);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), 0 0 20px rgba(139, 92, 246, 0.02);
       animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
@@ -93,6 +93,7 @@
       font-size: 26px;
       font-weight: 700;
       letter-spacing: -0.02em;
+      color: var(--text);
       margin-bottom: 8px;
     }
 
@@ -103,7 +104,7 @@
 
     .auth-tabs {
       display: flex;
-      background: rgba(9, 9, 11, 0.6);
+      background: #f1f5f9;
       padding: 4px;
       border-radius: 12px;
       border: 1px solid var(--border);
@@ -125,7 +126,7 @@
     .auth-tab.active {
       background: var(--card);
       color: var(--text);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(0, 0, 0, 0.03);
     }
 
     /* Main Dashboard Layout */
@@ -133,7 +134,7 @@
       display: none;
       flex-direction: column;
       min-height: 100vh;
-      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.06), transparent 50%), #09090b;
+      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.04), transparent 50%), var(--bg);
     }
 
     .navbar {
@@ -142,7 +143,7 @@
       justify-content: space-between;
       padding: 16px 40px;
       border-bottom: 1px solid var(--border);
-      background: rgba(9, 9, 11, 0.8);
+      background: rgba(255, 255, 255, 0.85);
       backdrop-filter: blur(8px);
       position: sticky;
       top: 0;
@@ -179,7 +180,7 @@
     .nav-menu {
       display: flex;
       gap: 8px;
-      background: rgba(24, 24, 27, 0.5);
+      background: #f1f5f9;
       border: 1px solid var(--border);
       padding: 4px;
       border-radius: 12px;
@@ -197,7 +198,7 @@
 
     .nav-item:hover {
       color: var(--text);
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(0, 0, 0, 0.04);
     }
 
     .nav-item.active {
@@ -280,7 +281,7 @@
 
     input, textarea, select {
       width: 100%;
-      background: rgba(9, 9, 11, 0.8);
+      background: #ffffff;
       border: 1px solid var(--border);
       border-radius: 10px;
       color: var(--text);
@@ -297,7 +298,7 @@
     }
 
     textarea { resize: vertical; min-height: 120px; line-height: 1.55; }
-    input::placeholder, textarea::placeholder { color: #52525b; }
+    input::placeholder, textarea::placeholder { color: #a1a1aa; }
 
     .btn {
       display: inline-flex;
@@ -335,12 +336,12 @@
     }
 
     .btn-secondary {
-      background: rgba(39, 39, 42, 0.6);
+      background: #f4f4f5;
       border: 1px solid var(--border);
       color: var(--text);
     }
     .btn-secondary:hover {
-      background: rgba(39, 39, 42, 0.9);
+      background: #e4e4e7;
     }
 
     /* Grid Layouts */
@@ -363,7 +364,7 @@
       border: 1px solid var(--border);
       border-radius: 20px;
       padding: 30px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
     }
 
     /* Status Notifications */
@@ -377,9 +378,9 @@
       animation: fadeIn 0.3s;
     }
     .status-alert.show { display: block; }
-    .status-alert.success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: #34d399; }
-    .status-alert.error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: #fca5a5; }
-    .status-alert.info { background: rgba(139, 92, 246, 0.1); border: 1px solid var(--primary); color: #c084fc; }
+    .status-alert.success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: #065f46; }
+    .status-alert.error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: #991b1b; }
+    .status-alert.info { background: rgba(139, 92, 246, 0.1); border: 1px solid var(--primary); color: #6b21a8; }
 
     /* --- VIEW 1: INTERVIEW ROOM --- */
     .badge {
@@ -391,14 +392,14 @@
       border-radius: 999px;
       padding: 4px 12px;
       font-size: 11px;
-      color: #34d399;
+      color: #065f46;
       font-weight: 600;
     }
 
     .badge-live {
       background: rgba(239, 68, 68, 0.1);
       border-color: var(--error);
-      color: #fca5a5;
+      color: #991b1b;
     }
 
     .dot-live {
@@ -418,7 +419,7 @@
       height: 600px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
     }
 
     .live-header {
@@ -432,7 +433,7 @@
     .live-title {
       font-size: 16px;
       font-weight: 700;
-      color: #fff;
+      color: var(--text);
     }
 
     .live-sub {
@@ -474,16 +475,16 @@
       line-height: 1.55;
       padding: 12px 16px;
       border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.02);
     }
     .msg.ai .msg-bubble {
-      background: rgba(39, 39, 42, 0.4);
+      background: #f1f5f9;
       border: 1px solid var(--border);
-      color: #fff;
+      color: var(--text);
     }
     .msg.human .msg-bubble {
-      background: rgba(139, 92, 246, 0.1);
-      border: 1px solid rgba(139, 92, 246, 0.25);
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.15);
       color: var(--text);
     }
 
@@ -499,7 +500,7 @@
     .scorecard-box {
       margin-top: 24px;
       padding: 24px;
-      background: rgba(139, 92, 246, 0.05);
+      background: rgba(139, 92, 246, 0.03);
       border: 1px solid var(--primary);
       border-radius: 16px;
       animation: fadeIn 0.4s;
@@ -524,7 +525,7 @@
     .sc-score {
       font-size: 36px;
       font-weight: 800;
-      color: #fff;
+      color: var(--text);
     }
     .sc-score span {
       font-size: 16px;
@@ -551,7 +552,7 @@
     .sc-dim-name { color: var(--text); font-weight: 500; }
     .sc-dim-score { color: var(--primary); font-weight: 600; }
     
-    .sc-bar-bg { background: rgba(255, 255, 255, 0.05); border-radius: 99px; height: 6px; }
+    .sc-bar-bg { background: rgba(0, 0, 0, 0.05); border-radius: 99px; height: 6px; }
     .sc-bar { background: var(--primary); height: 6px; border-radius: 99px; }
     .sc-dim-comment { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
@@ -598,7 +599,7 @@
     .history-title {
       font-size: 18px;
       font-weight: 700;
-      color: #fff;
+      color: var(--text);
       margin-bottom: 6px;
     }
 
@@ -627,7 +628,7 @@
       display: none;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.8);
+      background: rgba(15, 23, 42, 0.3);
       z-index: 1000;
       align-items: center;
       justify-content: center;
@@ -645,7 +646,7 @@
       height: 80vh;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15);
       animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
@@ -665,7 +666,7 @@
       cursor: pointer;
       transition: color 0.2s;
     }
-    .modal-close:hover { color: #fff; }
+    .modal-close:hover { color: var(--text); }
 
     .modal-body {
       flex: 1;
@@ -710,11 +711,11 @@
     .prompt-title {
       font-size: 16px;
       font-weight: 700;
-      color: #fff;
+      color: var(--text);
     }
 
     .prompt-text {
-      background: rgba(9, 9, 11, 0.6);
+      background: #f8fafc;
       border: 1px solid var(--border);
       padding: 14px;
       border-radius: 10px;
@@ -742,6 +743,72 @@
     @keyframes zoomIn {
       from { opacity: 0; transform: scale(0.95); }
       to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Responsive Media Queries */
+    @media (max-width: 1024px) {
+      .grid-2col {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+
+      .navbar {
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px 20px;
+        align-items: center;
+        text-align: center;
+      }
+
+      .navbar .user-info {
+        text-align: center;
+      }
+
+      .navbar .nav-user {
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .view-content {
+        padding: 20px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .nav-menu {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .modal-content {
+        width: 95vw;
+        height: 95vh;
+        border-radius: 16px;
+      }
+
+      .modal-body {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+
+      .modal-transcript {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        max-height: 400px;
+        padding: 20px;
+      }
+
+      .modal-scorecard {
+        padding: 20px;
+      }
+
+      .live-panel {
+        height: 500px;
+      }
+
+      .card {
+        padding: 20px;
+      }
     }
   </style>
 </head>
@@ -817,7 +884,7 @@
           <!-- Setup Card -->
           <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
             <div>
-              <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">Setup Interview</h3>
+              <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Setup Interview</h3>
               <p style="color: var(--text-muted); font-size: 13px;">Deploy a bot into a Google Meet call.</p>
             </div>
 
@@ -888,7 +955,7 @@ RULES:
       <!-- VIEW 2: PAST TRANSCRIPTS -->
       <div class="dashboard-view" id="view-history">
         <div style="margin-bottom: 24px;">
-          <h3 style="font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px;">Past Transcripts</h3>
+          <h3 style="font-size: 24px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Past Transcripts</h3>
           <p style="color: var(--text-muted); font-size: 14px;">Historical records of all completed meetings, transcripts, and evaluation scorecards.</p>
         </div>
 
@@ -904,7 +971,7 @@ RULES:
           <!-- Prompt Creator -->
           <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
             <div>
-              <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">AI Prompt Engineer</h3>
+              <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">AI Prompt Engineer</h3>
               <p style="color: var(--text-muted); font-size: 13px;">Generate custom interviewer prompts for specialized roles.</p>
             </div>
 
@@ -932,7 +999,7 @@ RULES:
           <!-- Saved Prompts Library -->
           <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
             <div>
-              <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">Role Prompt Library</h3>
+              <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Role Prompt Library</h3>
               <p style="color: var(--text-muted); font-size: 13px;">Quickly copy or load system prompts for standard roles.</p>
             </div>
 
@@ -952,7 +1019,7 @@ RULES:
     <div class="modal-content" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div>
-          <h3 id="modal-title" style="font-size: 20px; font-weight: 700; color: #fff;">Meeting Evaluation</h3>
+          <h3 id="modal-title" style="font-size: 20px; font-weight: 700; color: var(--text);">Meeting Evaluation</h3>
           <p id="modal-meta" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;"></p>
         </div>
         <button class="modal-close" onclick="closeModal()">&times;</button>
