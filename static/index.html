@@ -879,13 +879,15 @@
 
       <!-- Nav links and user controls -->
       <div id="mobile-menu" class="hidden md:flex flex-col md:flex-row items-center gap-6 w-full md:w-auto mt-4 md:mt-0">
-        <div class="nav-menu flex flex-col md:flex-row gap-2 bg-[#f1f5f9] border border-solid border-[#e2e8f0] p-1 rounded-xl w-full md:w-auto">
+        <!-- Centered Nav Menu on desktop -->
+        <div class="nav-menu flex flex-col md:flex-row gap-2 bg-[#f1f5f9] border border-solid border-[#e2e8f0] p-1 rounded-xl w-full md:w-auto md:absolute md:left-1/2 md:transform md:-translate-x-1/2">
           <div class="nav-item active text-center cursor-pointer" id="nav-interview" onclick="showView('interview')">Interview Room</div>
           <div class="nav-item text-center cursor-pointer" id="nav-history" onclick="showView('history')">Past Transcripts</div>
           <div class="nav-item text-center cursor-pointer" id="nav-prompts" onclick="showView('prompts')">Prompt Generator</div>
         </div>
 
-        <div class="nav-user flex flex-col md:flex-row items-center gap-4 w-full md:w-auto border-t md:border-t-0 border-solid border-[#e2e8f0] pt-4 md:pt-0">
+        <!-- User profile controls (removed top-border and top-padding) -->
+        <div class="nav-user flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div class="user-info text-center md:text-right">
             <div class="name text-[14px] font-semibold text-[#0f172a]" id="user-display-name">Loading...</div>
             <div class="email text-[12px] text-[#64748b]" id="user-display-email">...</div>
