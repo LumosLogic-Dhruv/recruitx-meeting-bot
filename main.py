@@ -508,6 +508,31 @@ def get_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user
         raise HTTPException(500, f"Convex error: {str(e)}")
 
 
+@app.post("/api/meetings/{meeting_id}/fetch-recording")
+async def fetch_recording_for_meeting(meeting_id: str, user: dict = Depends(get_current_user)):
+    """Manually trigger a recording fetch from Recall.ai for an existing meeting.
+    Useful when the automatic background task failed, or to retry after Convex deploy."""
+    try:
+        meeting = convex_client.query("meetings:get", {"id": meeting_id})
+        if not meeting:
+            raise HTTPException(404, "Meeting not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+    bot_id = meeting.get("botId")
+    if not bot_id:
+        raise HTTPException(400, "Meeting has no botId — it was created before recording support was added")
+
+    asyncio.create_task(_fetch_and_store_recording(bot_id, meeting_id))
+    return {
+        "status": "fetching",
+        "message": "Recording fetch started in background. Poll GET /api/meetings/{meeting_id}/recording in 2–5 minutes.",
+        "bot_id": bot_id,
+    }
+
+
 @app.get("/api/prompts")
 def list_prompts(user: dict = Depends(get_current_user)):
     try:

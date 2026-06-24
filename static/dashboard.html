@@ -971,6 +971,29 @@ HARD RULES:
         </div>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
+
+      <!-- Recording Bar (shown when recording is ready) -->
+      <div id="modal-recording-bar" style="display:none; padding:14px 32px; border-bottom:1px solid var(--border); background:#f8fafc; gap:20px; align-items:center; flex-wrap:wrap;">
+        <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.07em; white-space:nowrap;">Recordings</span>
+        <div id="modal-bot-audio-wrap" style="display:flex; flex-direction:column; gap:3px; flex:1; min-width:180px;">
+          <span style="font-size:11px; font-weight:600; color:var(--primary);">Bot Audio</span>
+          <audio id="modal-bot-audio" controls style="width:100%; height:34px;"></audio>
+        </div>
+        <div id="modal-candidate-audio-wrap" style="display:flex; flex-direction:column; gap:3px; flex:1; min-width:180px;">
+          <span style="font-size:11px; font-weight:600; color:var(--text-muted);">Candidate Audio</span>
+          <audio id="modal-candidate-audio" controls style="width:100%; height:34px;"></audio>
+        </div>
+        <a id="modal-full-recording-link" href="#" target="_blank"
+          style="font-size:12px; font-weight:600; color:var(--primary); white-space:nowrap; text-decoration:none; padding:6px 12px; border:1px solid var(--primary); border-radius:8px;">
+          ⬇ Full Recording
+        </a>
+      </div>
+
+      <!-- Recording still processing -->
+      <div id="modal-recording-processing" style="display:none; padding:10px 32px; border-bottom:1px solid var(--border); background:#fffbeb;">
+        <span style="font-size:12px; color:#92400e;">⏳ Recording is being processed by Recall.ai — check back in 2–5 minutes after the interview ended.</span>
+      </div>
+
       <div class="modal-body">
         <div class="modal-transcript" id="modal-transcript-feed">
           <!-- Populated dynamically -->
@@ -1319,22 +1342,31 @@ HARD RULES:
       const modal = document.getElementById('meeting-modal');
       const transcriptFeed = document.getElementById('modal-transcript-feed');
       const scorecardContent = document.getElementById('modal-scorecard-content');
-      
+
+      // Reset recording section
+      document.getElementById('modal-recording-bar').style.display = 'none';
+      document.getElementById('modal-recording-processing').style.display = 'none';
+      document.getElementById('modal-bot-audio').src = '';
+      document.getElementById('modal-candidate-audio').src = '';
+
       transcriptFeed.innerHTML = 'Loading transcript...';
       scorecardContent.innerHTML = 'Loading scorecard...';
-      
       modal.classList.add('show');
-      
+
       try {
-        const res = await fetch(`${API}/api/meetings/${meetingId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to load meeting details');
-        const data = await res.json();
+        // Fetch meeting details and recording in parallel
+        const [meetingRes, recRes] = await Promise.all([
+          fetch(`${API}/api/meetings/${meetingId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch(`${API}/api/meetings/${meetingId}/recording`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        ]);
+
+        if (!meetingRes.ok) throw new Error('Failed to load meeting details');
+        const data = await meetingRes.json();
         const m = data.meeting;
 
         document.getElementById('modal-title').textContent = `Interview: ${m.candidateName}`;
-        document.getElementById('modal-meta').textContent = `Conducted with Bot ${m.botName} on ${new Date(m.createdAt).toLocaleString()} • URL: ${m.meetingUrl}`;
+        document.getElementById('modal-meta').textContent =
+          `${m.botName} · ${new Date(m.createdAt).toLocaleString()} · ${m.meetingUrl}`;
 
         // Populate Transcript
         transcriptFeed.innerHTML = '';
@@ -1359,6 +1391,47 @@ HARD RULES:
           renderScorecard(m.scorecard, 'modal-scorecard-content');
         } else {
           scorecardContent.innerHTML = '<div class="empty-state">No evaluation scorecard available for this meeting.</div>';
+        }
+
+        // Populate Recording section
+        if (recRes.ok) {
+          const rec = await recRes.json();
+          const bar = document.getElementById('modal-recording-bar');
+          const processing = document.getElementById('modal-recording-processing');
+
+          if (rec.ready) {
+            bar.style.display = 'flex';
+            processing.style.display = 'none';
+
+            const botAudio = document.getElementById('modal-bot-audio');
+            const botWrap = document.getElementById('modal-bot-audio-wrap');
+            if (rec.bot_audio_url) {
+              botAudio.src = rec.bot_audio_url;
+              botWrap.style.display = 'flex';
+            } else {
+              botWrap.style.display = 'none';
+            }
+
+            const candidateAudio = document.getElementById('modal-candidate-audio');
+            const candidateWrap = document.getElementById('modal-candidate-audio-wrap');
+            if (rec.candidate_audio_url) {
+              candidateAudio.src = rec.candidate_audio_url;
+              candidateWrap.style.display = 'flex';
+            } else {
+              candidateWrap.style.display = 'none';
+            }
+
+            const fullLink = document.getElementById('modal-full-recording-link');
+            if (rec.recording_url) {
+              fullLink.href = rec.recording_url;
+              fullLink.style.display = 'inline-flex';
+            } else {
+              fullLink.style.display = 'none';
+            }
+          } else if (m.botId) {
+            // botId exists means this meeting was created with recording support but it's still processing
+            processing.style.display = 'block';
+          }
         }
       } catch (err) {
         transcriptFeed.innerHTML = `<div style="color: var(--error)">Error: ${err.message}</div>`;
