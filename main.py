@@ -36,7 +36,7 @@ def get_current_user(authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(401, f"Authentication error: {str(e)}")
 
-app = FastAPI(title="Lumos Meet Interview Bot Server")
+app = FastAPI(title="RecruitX AI Interviewer Bot Server")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
