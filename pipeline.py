@@ -10,12 +10,12 @@ import httpx
 # Deepgram endpointing=500ms already filters micro-pauses; 7s catches genuine
 # thinking pauses without cutting the candidate off mid-sentence.
 # Adaptive silence timeouts.
-SILENCE_SHORT      = 3.0   # 1–5 words  — "hello", "yes", "my name is Dhruv"
-SILENCE_MEDIUM     = 5.0   # 6–15 words — brief intro or one-liner
-SILENCE_LONG       = 8.0   # 16–35 words
-SILENCE_XLONG      = 12.0  # 35+ words  — long detailed answer
-SILENCE_INCOMPLETE = 10.0  # sentence ends mid-thought ("and", "the", "so"…)
-SILENCE_INTERRUPTED = 3.0  # candidate spoke over bot — respond fast
+SILENCE_SHORT      = 1.5   # 1–5 words  — "hello", "yes", "my name is Dhruv"
+SILENCE_MEDIUM     = 2.0   # 6–15 words — brief intro or one-liner
+SILENCE_LONG       = 4.0   # 16–35 words
+SILENCE_XLONG      = 8.0   # 35+ words  — long detailed answer
+SILENCE_INCOMPLETE = 6.0   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 1.5  # candidate spoke over bot — respond fast
 
 # Minimum words before the bot responds — prevents reacting to fragments.
 MIN_WORDS_TO_RESPOND = 5
