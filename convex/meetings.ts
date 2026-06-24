@@ -13,6 +13,7 @@ export const create = mutation({
       })
     ),
     scorecard: v.any(),
+    botId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const meetingId = await ctx.db.insert("meetings", {
@@ -22,8 +23,22 @@ export const create = mutation({
       transcript: args.transcript,
       scorecard: args.scorecard,
       createdAt: Date.now(),
+      botId: args.botId,
     });
     return meetingId;
+  },
+});
+
+export const updateRecording = mutation({
+  args: {
+    id: v.id("meetings"),
+    recordingUrl: v.optional(v.string()),
+    botAudioUrl: v.optional(v.string()),
+    candidateAudioUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...fields } = args;
+    await ctx.db.patch(id, fields);
   },
 });
 

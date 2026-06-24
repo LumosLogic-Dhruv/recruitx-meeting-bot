@@ -30,7 +30,11 @@ class RecallClient:
                         "endpointing": 1000,
                     },
                 }
-            }
+            },
+            # Full meeting recording (mixed audio + video as MP4).
+            "video_mixed_mp4": {},
+            # Separate MP3 audio track per participant (bot track + candidate track).
+            "audio_separate_mp3": {},
         }
         # Per-bot realtime endpoint so transcript.data events reach our server.
         # This is separate from the global webhook (which handles bot lifecycle events).
@@ -102,3 +106,48 @@ class RecallClient:
             )
             if res.status_code not in (200, 204, 404):
                 res.raise_for_status()
+
+    async def poll_bot_recording(self, bot_id: str, max_wait: int = 300) -> dict:
+        """Poll GET /bot/{id}/ until recordings[].status.code == 'done'. Returns the recording object."""
+        interval = 15
+        elapsed = 0
+        while elapsed < max_wait:
+            await asyncio.sleep(interval)
+            elapsed += interval
+            try:
+                bot = await self.get_bot(bot_id)
+                for rec in bot.get("recordings") or []:
+                    if (rec.get("status") or {}).get("code") == "done":
+                        print(f"[Recall] Recording done: id={rec.get('id')}")
+                        return rec
+            except Exception as e:
+                print(f"[Recall] Recording poll error: {e}")
+        print(f"[Recall] Recording not ready after {max_wait}s for bot {bot_id}")
+        return {}
+
+    async def get_separate_audio(self, recording_id: str, max_wait: int = 120) -> list:
+        """Poll GET /audio_separate/?recording_id={id} until all tracks are done. Returns results list."""
+        interval = 10
+        elapsed = 0
+        while elapsed < max_wait:
+            try:
+                async with httpx.AsyncClient() as client:
+                    res = await client.get(
+                        f"{self.base_url}/audio_separate/",
+                        headers=self.headers,
+                        params={"recording_id": recording_id},
+                        timeout=15.0,
+                    )
+                    res.raise_for_status()
+                    results = res.json().get("results", [])
+                    if results and all(
+                        (r.get("status") or {}).get("code") == "done" for r in results
+                    ):
+                        print(f"[Recall] Separate audio ready: {len(results)} track(s)")
+                        return results
+            except Exception as e:
+                print(f"[Recall] Separate audio poll error: {e}")
+            await asyncio.sleep(interval)
+            elapsed += interval
+        print(f"[Recall] Separate audio not ready after {max_wait}s for recording {recording_id}")
+        return []

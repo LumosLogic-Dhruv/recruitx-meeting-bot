@@ -261,6 +261,56 @@ async def _webhook_greeting(bot_id: str):
         print(f"[Webhook] Greeting error: {e}")
 
 
+async def _fetch_and_store_recording(bot_id: str, meeting_id: str):
+    """Background task: poll Recall.ai for the recording, then store URLs in Convex."""
+    print(f"[Recording] Waiting for recording of bot {bot_id}...")
+    recall = _make_recall()
+
+    # Wait for the full mixed recording to be ready (up to 5 min).
+    recording = await recall.poll_bot_recording(bot_id, max_wait=300)
+    if not recording:
+        print(f"[Recording] Gave up waiting for bot {bot_id}")
+        return
+
+    recording_id = recording.get("id")
+
+    # Extract full mixed video URL.
+    shortcuts = recording.get("media_shortcuts") or {}
+    video_mixed = shortcuts.get("video_mixed") or {}
+    recording_url = (video_mixed.get("data") or {}).get("download_url")
+
+    # Fetch per-participant separate audio (bot track + candidate track).
+    bot_audio_url = None
+    candidate_audio_url = None
+    if recording_id:
+        tracks = await recall.get_separate_audio(recording_id, max_wait=120)
+        for track in tracks:
+            participant = track.get("participant") or {}
+            url = (track.get("data") or {}).get("download_url")
+            if not url:
+                continue
+            # Recall.ai bots join as non-hosts; the meeting owner (candidate) is the host.
+            if participant.get("is_host"):
+                candidate_audio_url = url
+            else:
+                bot_audio_url = url
+
+    try:
+        convex_client.mutation(
+            "meetings:updateRecording",
+            {
+                "id": meeting_id,
+                "recordingUrl": recording_url,
+                "botAudioUrl": bot_audio_url,
+                "candidateAudioUrl": candidate_audio_url,
+            },
+        )
+        print(f"[Recording] URLs stored for meeting {meeting_id}: "
+              f"recording={bool(recording_url)} bot={bool(bot_audio_url)} candidate={bool(candidate_audio_url)}")
+    except Exception as e:
+        print(f"[Recording] Failed to update Convex: {e}")
+
+
 @app.post("/end-interview")
 async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_current_user)):
     bot_id = _url_to_bot.pop(req.meeting_url, None)
@@ -295,8 +345,9 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
             print(f"[Scorecard] Error: {e}")
 
     # Save the completed meeting and transcript to Convex
+    meeting_id = None
     try:
-        convex_client.mutation(
+        meeting_id = convex_client.mutation(
             "meetings:create",
             {
                 "meetingUrl": req.meeting_url,
@@ -304,11 +355,16 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
                 "botName": session.get("bot_name") or "RecruitX AI Interviewer",
                 "transcript": transcript_list,
                 "scorecard": scorecard,
+                "botId": bot_id,
             }
         )
-        print("[Convex] Meeting stored successfully.")
+        print(f"[Convex] Meeting stored: {meeting_id}")
     except Exception as e:
-        print(f"[Convex] Failed to store meeting in database: {e}")
+        print(f"[Convex] Failed to store meeting: {e}")
+
+    # Kick off background task to fetch recording once Recall.ai finishes processing.
+    if meeting_id:
+        asyncio.create_task(_fetch_and_store_recording(bot_id, str(meeting_id)))
 
     return {
         "status": "ended",
@@ -422,11 +478,32 @@ def list_meetings(user: dict = Depends(get_current_user)):
 @app.get("/api/meetings/{meeting_id}")
 def get_meeting(meeting_id: str, user: dict = Depends(get_current_user)):
     try:
-        # Pass ID directly to get details
         meeting = convex_client.query("meetings:get", {"id": meeting_id})
         if not meeting:
             raise HTTPException(404, "Meeting not found")
         return {"meeting": meeting}
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+
+@app.get("/api/meetings/{meeting_id}/recording")
+def get_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user)):
+    """Return recording URLs for a meeting. URLs may be null while Recall.ai is still processing."""
+    try:
+        meeting = convex_client.query("meetings:get", {"id": meeting_id})
+        if not meeting:
+            raise HTTPException(404, "Meeting not found")
+        recording_url = meeting.get("recordingUrl")
+        bot_audio_url = meeting.get("botAudioUrl")
+        candidate_audio_url = meeting.get("candidateAudioUrl")
+        return {
+            "ready": bool(recording_url or bot_audio_url or candidate_audio_url),
+            "recording_url": recording_url,
+            "bot_audio_url": bot_audio_url,
+            "candidate_audio_url": candidate_audio_url,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Convex error: {str(e)}")
 

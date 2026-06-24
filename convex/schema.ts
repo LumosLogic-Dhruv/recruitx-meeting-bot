@@ -18,8 +18,12 @@ export default defineSchema({
         text: v.string(),
       })
     ),
-    scorecard: v.any(), // contains overall_score, recommendation, summary, etc.
+    scorecard: v.any(),
     createdAt: v.number(),
+    botId: v.optional(v.string()),
+    recordingUrl: v.optional(v.string()),
+    botAudioUrl: v.optional(v.string()),
+    candidateAudioUrl: v.optional(v.string()),
   }),
 
   rolePrompts: defineTable({
