@@ -9,8 +9,14 @@ import httpx
 # After the last Deepgram segment, wait this long before the AI responds.
 # Deepgram endpointing=500ms already filters micro-pauses; 7s catches genuine
 # thinking pauses without cutting the candidate off mid-sentence.
-SILENCE_TIMEOUT = 20.0          # normal wait after candidate finishes speaking
-SILENCE_TIMEOUT_INTERRUPTED = 4.0  # fast-respond when candidate spoke over the bot
+# Adaptive silence timeouts — shorter for brief greetings, longer for detailed answers.
+# This lets the bot respond nearly instantly to "hello" while still giving candidates
+# time to finish a long thought without being cut off.
+SILENCE_SHORT   = 2.5   # 1–5 words  e.g. "hello", "yes", "my name is Dhruv"
+SILENCE_MEDIUM  = 4.0   # 6–15 words e.g. brief intro or one-line answer
+SILENCE_LONG    = 7.0   # 16–35 words
+SILENCE_XLONG   = 10.0  # 35+ words  e.g. detailed technical explanation
+SILENCE_INTERRUPTED = 3.0  # candidate spoke over the bot — respond fast
 
 # Minimum words the candidate must say before the bot responds.
 # Prevents reacting to mic-test fragments like "So", "Okay.", "Yeah" caused
@@ -153,12 +159,24 @@ class ConversationPipeline:
             print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
             self._reset_silence_timer()
 
-    async def _wait_for_silence(self):
-        # Use shorter timeout if the candidate interrupted the bot — they clearly
-        # want to respond so no need to wait the full 20s.
-        timeout = SILENCE_TIMEOUT_INTERRUPTED if self._was_interrupted else SILENCE_TIMEOUT
+    def _adaptive_timeout(self, text: str) -> float:
+        """Pick silence timeout based on how much the candidate said.
+        Short greetings → near-instant reply; long answers → more breathing room."""
         if self._was_interrupted:
-            print(f"[Pipeline] Fast-respond mode (interrupted): waiting {timeout}s")
+            return SILENCE_INTERRUPTED
+        words = len(text.split())
+        if words <= 5:
+            return SILENCE_SHORT
+        elif words <= 15:
+            return SILENCE_MEDIUM
+        elif words <= 35:
+            return SILENCE_LONG
+        else:
+            return SILENCE_XLONG
+
+    async def _wait_for_silence(self):
+        timeout = self._adaptive_timeout(self._pending_text)
+        print(f"[Pipeline] Silence timer: {timeout}s ({len(self._pending_text.split())} words so far)")
         await asyncio.sleep(timeout)
         text = self._pending_text.strip()
         speaker = self._pending_speaker
