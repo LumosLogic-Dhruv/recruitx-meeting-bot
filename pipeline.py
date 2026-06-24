@@ -11,6 +11,11 @@ import httpx
 # thinking pauses without cutting the candidate off mid-sentence.
 SILENCE_TIMEOUT = 7.0
 
+# Minimum words the candidate must say before the bot responds.
+# Prevents reacting to mic-test fragments like "So", "Okay.", "Yeah" caused
+# by low mic volume or Deepgram picking up only the tail of an utterance.
+MIN_WORDS_TO_RESPOND = 3
+
 # Backchannel ("I see", "Right") after this many words have arrived from the
 # candidate since the last bot turn, and at most once every MIN_INTERVAL seconds.
 BACKCHANNEL_WORD_THRESHOLD = 15
@@ -19,6 +24,22 @@ BACKCHANNELS = ["I see.", "Right.", "Got it.", "Okay.", "Mm-hmm."]
 
 # Sentence boundary — flush LLM stream to TTS on any of these.
 _SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
+
+# Prepended to every system prompt regardless of what the user wrote.
+# Acts as a hard guardrail so the AI cannot ignore these rules even if the
+# generated prompt is script-like or overly long.
+_RULES_PREFIX = """\
+ABSOLUTE RULES — THESE OVERRIDE EVERYTHING ELSE:
+1. Ask EXACTLY ONE question per response. Never combine two questions in one turn.
+2. Maximum 2 sentences per response. Be brief and conversational.
+3. ONLY reference facts the candidate has explicitly stated in THIS conversation. \
+Never invent or assume their background.
+4. If the candidate's answer is unclear or very short, ask them to elaborate — \
+do NOT make up what they meant or move on as if they answered fully.
+5. React to what was JUST said. Do not follow a pre-written script or recite memorised lines.
+6. Never start a response with the candidate's name followed by a fact you invented.
+
+"""
 
 
 class ConversationPipeline:
@@ -33,7 +54,7 @@ class ConversationPipeline:
         self._openai = AsyncOpenAI(api_key=openai_key)
         self._model = openai_model
         self._system_prompt = system_prompt
-        self._history: list[dict] = [{"role": "system", "content": system_prompt}]
+        self._history: list[dict] = [{"role": "system", "content": _RULES_PREFIX + system_prompt}]
         self._pending_text: str = ""
         self._pending_speaker: str = "Candidate"
         self._silence_task: asyncio.Task | None = None
@@ -128,8 +149,12 @@ class ConversationPipeline:
         text = self._pending_text.strip()
         speaker = self._pending_speaker
         self._pending_text = ""
-        if text:
-            await self._process_turn(text, speaker)
+        if not text:
+            return
+        if len(text.split()) < MIN_WORDS_TO_RESPOND:
+            print(f"[Pipeline] Fragment too short ({len(text.split())} words): '{text}' — ignored")
+            return
+        await self._process_turn(text, speaker)
 
     # ── Core turn: streaming LLM → sentence-level TTS → Recall.ai ─────────────
 
