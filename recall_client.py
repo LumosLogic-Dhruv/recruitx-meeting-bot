@@ -25,10 +25,9 @@ class RecallClient:
                     "deepgram_streaming": {
                         "model": "nova-3",
                         "smart_format": True,
-                        # 300ms matches CallerX's proven value — short enough to feel
-                        # responsive but long enough to capture natural speech segments.
-                        # The pipeline accumulates multiple segments before responding.
-                        "endpointing": 300,
+                        # 500ms avoids splitting mid-sentence pauses into separate segments.
+                        # The pipeline then waits another 7s of true silence before responding.
+                        "endpointing": 500,
                     },
                 }
             }

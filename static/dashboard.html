@@ -871,21 +871,57 @@ RULES:
           <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
             <div>
               <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">AI Prompt Engineer</h3>
-              <p style="color: var(--text-muted); font-size: 13px;">Generate custom interviewer prompts for specialized roles.</p>
+              <p style="color: var(--text-muted); font-size: 13px;">Generate a contextual interviewer prompt from a role name or uploaded documents.</p>
             </div>
 
-            <div class="form-group">
-              <label>Role Name</label>
-              <input id="role-input" type="text" placeholder="e.g. Senior Frontend Engineer" />
+            <!-- Tabs -->
+            <div style="display: flex; gap: 4px; background: #f1f5f9; border: 1px solid var(--border); border-radius: 10px; padding: 4px;">
+              <button id="tab-role" onclick="switchPromptTab('role')"
+                style="flex:1; padding: 8px 12px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--primary); color: #fff; transition: all 0.2s;">
+                By Role Name
+              </button>
+              <button id="tab-docs" onclick="switchPromptTab('docs')"
+                style="flex:1; padding: 8px 12px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.2s;">
+                From CV + JD
+              </button>
             </div>
 
-            <button class="btn btn-primary" onclick="generatePrompt()" id="btn-generate-prompt">
-              Generate Interviewer Prompt
-            </button>
+            <!-- Tab: By Role Name -->
+            <div id="pane-role" style="display: flex; flex-direction: column; gap: 14px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Role Name</label>
+                <input id="role-input" type="text" placeholder="e.g. Senior Frontend Engineer" />
+              </div>
+              <button class="btn btn-primary" onclick="generatePrompt()" id="btn-generate-prompt">
+                Generate Interviewer Prompt
+              </button>
+            </div>
+
+            <!-- Tab: From Documents -->
+            <div id="pane-docs" style="display: none; flex-direction: column; gap: 14px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Role Name (optional)</label>
+                <input id="doc-role-input" type="text" placeholder="e.g. Backend Engineer (auto-detected if blank)" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Candidate CV <span style="font-weight:400; text-transform:none; letter-spacing:0;">(PDF or TXT)</span></label>
+                <input id="cv-file" type="file" accept=".pdf,.txt,.doc,.docx"
+                  style="padding: 10px 12px; cursor: pointer; background: #f8fafc;" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Job Description <span style="font-weight:400; text-transform:none; letter-spacing:0;">(PDF or TXT)</span></label>
+                <input id="jd-file" type="file" accept=".pdf,.txt,.doc,.docx"
+                  style="padding: 10px 12px; cursor: pointer; background: #f8fafc;" />
+              </div>
+              <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Upload at least one document. The AI will tailor questions to the candidate's actual background and the JD requirements.</p>
+              <button class="btn btn-primary" onclick="generatePromptFromDocs()" id="btn-generate-from-docs">
+                Generate from Documents
+              </button>
+            </div>
 
             <div id="prompt-gen-status" class="status-alert"></div>
 
-            <div id="generated-result-box" style="display: none; flex-direction: column; gap: 12px; margin-top: 16px;">
+            <div id="generated-result-box" style="display: none; flex-direction: column; gap: 12px; margin-top: 8px;">
               <label>Generated Prompt</label>
               <textarea id="generated-prompt-text" style="min-height: 200px;" readonly></textarea>
               <div style="display:flex; gap:12px;">
@@ -1439,6 +1475,77 @@ RULES:
       if (text) {
         document.getElementById('prompt').value = text;
         showView('interview');
+      }
+    }
+
+    // --- PROMPT TAB SWITCHING ---
+    function switchPromptTab(tab) {
+      const isRole = tab === 'role';
+      document.getElementById('pane-role').style.display = isRole ? 'flex' : 'none';
+      document.getElementById('pane-docs').style.display = isRole ? 'none' : 'flex';
+
+      const tabRole = document.getElementById('tab-role');
+      const tabDocs = document.getElementById('tab-docs');
+      tabRole.style.background = isRole ? 'var(--primary)' : 'transparent';
+      tabRole.style.color = isRole ? '#fff' : 'var(--text-muted)';
+      tabDocs.style.background = isRole ? 'transparent' : 'var(--primary)';
+      tabDocs.style.color = isRole ? 'var(--text-muted)' : '#fff';
+
+      // Clear status and result when switching tabs
+      document.getElementById('prompt-gen-status').className = 'status-alert';
+      document.getElementById('generated-result-box').style.display = 'none';
+    }
+
+    // --- GENERATE FROM DOCUMENTS ---
+    async function generatePromptFromDocs() {
+      const cvInput = document.getElementById('cv-file');
+      const jdInput = document.getElementById('jd-file');
+      const roleInput = document.getElementById('doc-role-input');
+      const statusEl = document.getElementById('prompt-gen-status');
+      const resultBox = document.getElementById('generated-result-box');
+      const resultText = document.getElementById('generated-prompt-text');
+      const btn = document.getElementById('btn-generate-from-docs');
+
+      if (!cvInput.files.length && !jdInput.files.length) {
+        statusEl.textContent = 'Please upload at least one document (CV or Job Description).';
+        statusEl.className = 'status-alert show error';
+        return;
+      }
+
+      statusEl.textContent = 'Extracting text and generating contextual prompt...';
+      statusEl.className = 'status-alert show info';
+      resultBox.style.display = 'none';
+      btn.disabled = true;
+
+      try {
+        const formData = new FormData();
+        if (cvInput.files.length) formData.append('cv_file', cvInput.files[0]);
+        if (jdInput.files.length) formData.append('jd_file', jdInput.files[0]);
+        formData.append('role_name', roleInput.value.trim());
+
+        const res = await fetch(`${API}/api/prompts/generate-from-docs`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Generation failed');
+
+        statusEl.textContent = `Prompt generated from documents and saved to library.`;
+        statusEl.className = 'status-alert show success';
+        resultText.value = data.prompt_text;
+        resultBox.style.display = 'flex';
+        btn.disabled = false;
+
+        // Clear file inputs
+        cvInput.value = '';
+        jdInput.value = '';
+
+        loadPromptsLibrary();
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.className = 'status-alert show error';
+        btn.disabled = false;
       }
     }
 

@@ -7,3 +7,5 @@ pydantic>=2.10.0
 convex>=0.7.0
 pyjwt>=2.13.0
 bcrypt>=5.0.0
+python-multipart>=0.0.9
+pypdf>=4.0.0

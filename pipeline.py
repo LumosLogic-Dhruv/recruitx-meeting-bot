@@ -1,16 +1,35 @@
 import asyncio
 import json
+import re
+import time
 from typing import Callable, Awaitable
 from openai import AsyncOpenAI
+import httpx
 
-# How long the pipeline waits after the last Deepgram segment before responding.
-# Deepgram endpointing=300ms means segments arrive on short pauses; we accumulate
-# them for 4.5s of actual silence before the AI fires.
-SILENCE_TIMEOUT = 4.5
+# After the last Deepgram segment, wait this long before the AI responds.
+# Deepgram endpointing=500ms already filters micro-pauses; 7s catches genuine
+# thinking pauses without cutting the candidate off mid-sentence.
+SILENCE_TIMEOUT = 7.0
+
+# Backchannel ("I see", "Right") after this many words have arrived from the
+# candidate since the last bot turn, and at most once every MIN_INTERVAL seconds.
+BACKCHANNEL_WORD_THRESHOLD = 15
+BACKCHANNEL_MIN_INTERVAL = 6.0
+BACKCHANNELS = ["I see.", "Right.", "Got it.", "Okay.", "Mm-hmm."]
+
+# Sentence boundary — flush LLM stream to TTS on any of these.
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 
 
 class ConversationPipeline:
-    def __init__(self, system_prompt: str, openai_key: str, openai_model: str = "gpt-4o-mini"):
+    def __init__(
+        self,
+        system_prompt: str,
+        openai_key: str,
+        openai_model: str = "gpt-4o-mini",
+        elevenlabs_key: str = "",
+        voice_id: str = "V9LCAAi4tTlqe9JadbCo",
+    ):
         self._openai = AsyncOpenAI(api_key=openai_key)
         self._model = openai_model
         self._system_prompt = system_prompt
@@ -18,9 +37,20 @@ class ConversationPipeline:
         self._pending_text: str = ""
         self._pending_speaker: str = "Candidate"
         self._silence_task: asyncio.Task | None = None
+        self._backchannel_task: asyncio.Task | None = None
         self._speaking: bool = False
         self._on_response: Callable[[str, bytes], Awaitable[None]] | None = None
         self._full_transcript: list[dict] = []
+
+        self._elevenlabs_key = elevenlabs_key
+        self._voice_id = voice_id
+
+        # Backchannel state
+        self._words_since_last_bot: int = 0
+        self._last_backchannel_time: float = 0.0
+        self._backchannel_idx: int = 0
+
+    # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
         self._on_response = callback
@@ -42,19 +72,46 @@ class ConversationPipeline:
             self._flush_pending()
 
     def on_transcript_update(self, text: str, speaker: str = "Candidate"):
-        # Accumulate text regardless of whether bot is currently speaking.
-        # Speaker-name filtering (in the webhook handler) already removes echo —
-        # we don't need a time-based cooldown that drops real candidate speech.
         self._pending_text = (self._pending_text + " " + text).strip()
         self._pending_speaker = speaker
 
         if self._speaking:
-            # Bot is mid-response: buffer without starting timer.
-            # Timer starts in _flush_pending() when bot finishes.
             print(f"[Pipeline] Buffered (bot speaking): {text[:50]}")
             return
 
+        # Count words for backchannel threshold
+        self._words_since_last_bot += len(text.split())
+        self._maybe_schedule_backchannel()
         self._reset_silence_timer()
+
+    # ── Backchannel ────────────────────────────────────────────────────────────
+
+    def _maybe_schedule_backchannel(self):
+        now = time.monotonic()
+        if (
+            self._words_since_last_bot >= BACKCHANNEL_WORD_THRESHOLD
+            and now - self._last_backchannel_time >= BACKCHANNEL_MIN_INTERVAL
+        ):
+            self._last_backchannel_time = now
+            self._words_since_last_bot = 0
+            if self._backchannel_task and not self._backchannel_task.done():
+                self._backchannel_task.cancel()
+            self._backchannel_task = asyncio.create_task(self._play_backchannel())
+
+    async def _play_backchannel(self):
+        bc = BACKCHANNELS[self._backchannel_idx % len(BACKCHANNELS)]
+        self._backchannel_idx += 1
+        try:
+            audio = await self._tts(bc)
+            if audio and self._on_response and not self._speaking:
+                print(f"[Pipeline] Backchannel: {bc}")
+                await self._on_response(bc, audio)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[Pipeline] Backchannel error: {e}")
+
+    # ── Silence timer ──────────────────────────────────────────────────────────
 
     def _reset_silence_timer(self):
         if self._silence_task and not self._silence_task.done():
@@ -62,7 +119,6 @@ class ConversationPipeline:
         self._silence_task = asyncio.create_task(self._wait_for_silence())
 
     def _flush_pending(self):
-        """Called when bot finishes speaking — start silence timer if candidate said anything."""
         if self._pending_text:
             print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
             self._reset_silence_timer()
@@ -75,34 +131,107 @@ class ConversationPipeline:
         if text:
             await self._process_turn(text, speaker)
 
+    # ── Core turn: streaming LLM → sentence-level TTS → Recall.ai ─────────────
+
     async def _process_turn(self, user_text: str, speaker: str = "Candidate"):
         self._speaking = True
+        self._words_since_last_bot = 0
+
+        # Cancel any pending backchannel before speaking
+        if self._backchannel_task and not self._backchannel_task.done():
+            self._backchannel_task.cancel()
+
         try:
             print(f"[Pipeline] Processing — {speaker}: {user_text[:100]}")
             self._full_transcript.append({"speaker": speaker, "text": user_text})
             self._history.append({"role": "user", "content": user_text})
 
-            response = await self._openai.chat.completions.create(
-                model=self._model,
-                messages=self._history,
-                temperature=0.7,
-                max_tokens=300,
-            )
-            ai_text = response.choices[0].message.content or ""
-            self._history.append({"role": "assistant", "content": ai_text})
-            self._full_transcript.append({"speaker": "AI", "text": ai_text})
-            print(f"[Pipeline] AI: {ai_text[:100]}")
+            # Producer-consumer: LLM streams tokens → sentence queue → TTS → Recall
+            queue: asyncio.Queue[str | None] = asyncio.Queue()
+            full_text: list[str] = []
 
-            if ai_text and self._on_response:
-                audio = await self._tts(ai_text)
-                await self._on_response(ai_text, audio)
+            async def llm_producer():
+                buf = ""
+                stream = await self._openai.chat.completions.create(
+                    model=self._model,
+                    messages=self._history,
+                    temperature=0.7,
+                    max_tokens=300,
+                    stream=True,
+                )
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta.content or ""
+                    buf += delta
+                    full_text.append(delta)
+                    # Flush on every sentence boundary
+                    while True:
+                        m = _SENTENCE_END.search(buf)
+                        if not m:
+                            break
+                        sentence = buf[:m.start() + 1].strip()
+                        buf = buf[m.end():]
+                        if sentence:
+                            await queue.put(sentence)
+                # Flush whatever is left (e.g. final sentence without trailing space)
+                if buf.strip():
+                    await queue.put(buf.strip())
+                await queue.put(None)  # sentinel
+
+            async def tts_consumer():
+                while True:
+                    sentence = await queue.get()
+                    if sentence is None:
+                        break
+                    print(f"[Pipeline] TTS → Recall: {sentence[:70]}")
+                    audio = await self._tts(sentence)
+                    if audio and self._on_response:
+                        await self._on_response(sentence, audio)
+
+            await asyncio.gather(
+                asyncio.create_task(llm_producer()),
+                asyncio.create_task(tts_consumer()),
+            )
+
+            full_response = "".join(full_text)
+            if full_response:
+                self._history.append({"role": "assistant", "content": full_response})
+                self._full_transcript.append({"speaker": "AI", "text": full_response})
+                print(f"[Pipeline] AI complete: {full_response[:100]}")
+
         except Exception as e:
             print(f"[Pipeline] Error: {e}")
         finally:
             self._speaking = False
             self._flush_pending()
 
+    # ── TTS: ElevenLabs turbo (low-latency) with OpenAI fallback ───────────────
+
     async def _tts(self, text: str) -> bytes:
+        if self._elevenlabs_key:
+            try:
+                return await self._tts_elevenlabs(text)
+            except Exception as e:
+                print(f"[Pipeline] ElevenLabs error, falling back to OpenAI TTS: {e}")
+        return await self._tts_openai(text)
+
+    async def _tts_elevenlabs(self, text: str) -> bytes:
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}"
+        payload = {
+            "text": text,
+            "model_id": "eleven_turbo_v2_5",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+            "output_format": "mp3_44100_128",
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(
+                url,
+                headers={"xi-api-key": self._elevenlabs_key, "Content-Type": "application/json"},
+                json=payload,
+            )
+            res.raise_for_status()
+            return res.content
+
+    async def _tts_openai(self, text: str) -> bytes:
         response = await self._openai.audio.speech.create(
             model="tts-1",
             voice="nova",
@@ -110,6 +239,8 @@ class ConversationPipeline:
             response_format="mp3",
         )
         return response.content
+
+    # ── Transcript / Scorecard helpers ─────────────────────────────────────────
 
     def get_transcript_text(self) -> str:
         return "\n".join(f"{e['speaker']}: {e['text']}" for e in self._full_transcript)

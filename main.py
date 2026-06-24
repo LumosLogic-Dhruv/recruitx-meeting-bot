@@ -1,7 +1,8 @@
 import asyncio
+import io
 import os
 import datetime
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Header
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Header, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from dotenv import load_dotenv
 import jwt
 import bcrypt
 from convex import ConvexClient
+import pypdf
 
 from recall_client import RecallClient
 from pipeline import ConversationPipeline
@@ -107,6 +109,8 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     pipeline = ConversationPipeline(
         system_prompt=req.system_prompt,
         openai_key=os.getenv("OPENAI_API_KEY", ""),
+        elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
+        voice_id=os.getenv("ELEVENLABS_VOICE_ID", "V9LCAAi4tTlqe9JadbCo"),
     )
 
     async def on_ai_response(text: str, audio_bytes: bytes):
@@ -436,54 +440,123 @@ def list_prompts(user: dict = Depends(get_current_user)):
         raise HTTPException(500, f"Convex error: {str(e)}")
 
 
+PROMPT_ENGINEER_INSTRUCTION = """You are an expert recruiter and prompt engineer.
+Generate a detailed, effective system prompt for an AI voice interviewer conducting a Google Meet interview.
+
+The generated prompt MUST follow this style exactly:
+- The AI has a human name (e.g. "Alex") and a warm, conversational tone
+- Use natural filler words: "So...", "Right, interesting...", "Got it, that makes sense..."
+- React genuinely to answers: "Oh wow, that's solid" or "Hmm, tell me more about that"
+- Use contractions always. Keep responses SHORT — 1-2 sentences per turn max.
+- Ask exactly ONE question at a time. Never list multiple questions.
+- If the candidate's answer is interesting or vague, follow up on IT before moving on.
+- Do NOT ask questions the candidate has already answered.
+- Cover: intro → background → role-specific technical skills (pick 3-4 key areas) → soft skills → wrap up with next steps.
+- Mirror the candidate's energy level.
+- Keep the interview under 10 minutes.
+
+Output ONLY the system prompt text — no preamble, no markdown headers outside the prompt itself."""
+
+
+async def _call_openai_for_prompt(user_message: str) -> str:
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_key:
+        raise HTTPException(500, "OpenAI API key not configured")
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=openai_key)
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": PROMPT_ENGINEER_INSTRUCTION},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=0.7,
+        max_tokens=800,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+def _extract_pdf_text(file_bytes: bytes) -> str:
+    reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _extract_file_text(filename: str, file_bytes: bytes) -> str:
+    if filename.lower().endswith(".pdf"):
+        return _extract_pdf_text(file_bytes)
+    return file_bytes.decode("utf-8", errors="ignore")
+
+
 @app.post("/api/prompts/generate")
 async def generate_prompt(req: GeneratePromptRequest, user: dict = Depends(get_current_user)):
     role = req.role_name.strip()
     if not role:
         raise HTTPException(400, "Role name is required")
 
-    system_instruction = (
-        "You are an expert recruiter and prompt engineer. "
-        "Generate a highly detailed and effective system prompt for an AI interviewer. "
-        "The generated prompt should tell the AI interviewer how to act, what rules to follow, and the flow of the interview.\n"
-        "Ensure the output is ONLY the system prompt text, formatted cleanly. "
-        "It MUST contain rules like: ask exactly ONE question per response, keep responses under 40 words, introduce yourself, review candidate background, and end with a summary. "
-        "Make it highly tailored to the specific role name provided."
-    )
-    
     user_message = f"Generate an AI interviewer system prompt for the role: '{role}'."
-    
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    if not openai_key:
-        raise HTTPException(500, "OpenAI API key not configured")
-        
+
     try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=openai_key)
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_message}
-            ],
-            temperature=0.7,
-            max_tokens=600
-        )
-        generated_prompt = response.choices[0].message.content.strip()
-        
-        # Save to Convex
+        generated_prompt = await _call_openai_for_prompt(user_message)
+
         try:
-            convex_client.mutation(
-                "prompts:create",
-                {
-                    "roleName": role,
-                    "promptText": generated_prompt
-                }
-            )
+            convex_client.mutation("prompts:create", {"roleName": role, "promptText": generated_prompt})
         except Exception as e:
             print(f"[Convex] Failed to save prompt: {e}")
 
         return {"role_name": role, "prompt_text": generated_prompt}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"OpenAI error: {str(e)}")
+
+
+@app.post("/api/prompts/generate-from-docs")
+async def generate_prompt_from_docs(
+    cv_file: UploadFile | None = File(None),
+    jd_file: UploadFile | None = File(None),
+    role_name: str = Form(""),
+    user: dict = Depends(get_current_user),
+):
+    if not cv_file and not jd_file:
+        raise HTTPException(400, "Upload at least one document (CV or Job Description).")
+
+    cv_text = ""
+    jd_text = ""
+
+    if cv_file and cv_file.filename:
+        cv_bytes = await cv_file.read()
+        cv_text = _extract_file_text(cv_file.filename, cv_bytes)
+
+    if jd_file and jd_file.filename:
+        jd_bytes = await jd_file.read()
+        jd_text = _extract_file_text(jd_file.filename, jd_bytes)
+
+    role = role_name.strip() or "the role"
+
+    parts = [f"Generate an AI interviewer system prompt for the role: '{role}'."]
+    if jd_text:
+        parts.append(f"\n\nJOB DESCRIPTION:\n{jd_text[:3000]}")
+    if cv_text:
+        parts.append(f"\n\nCANDIDATE CV:\n{cv_text[:3000]}")
+    if cv_text:
+        parts.append(
+            "\n\nTailor the questions to the candidate's actual background from their CV — "
+            "ask follow-up questions about specific projects or technologies they mention."
+        )
+
+    user_message = "".join(parts)
+
+    try:
+        generated_prompt = await _call_openai_for_prompt(user_message)
+
+        label = role_name.strip() or (jd_file.filename if jd_file else "Document Upload")
+        try:
+            convex_client.mutation("prompts:create", {"roleName": label, "promptText": generated_prompt})
+        except Exception as e:
+            print(f"[Convex] Failed to save prompt: {e}")
+
+        return {"role_name": label, "prompt_text": generated_prompt}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Generation error: {str(e)}")
