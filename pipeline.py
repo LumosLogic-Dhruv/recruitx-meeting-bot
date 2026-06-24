@@ -1,11 +1,12 @@
 import asyncio
 import json
-import time
 from typing import Callable, Awaitable
 from openai import AsyncOpenAI
 
-SILENCE_TIMEOUT = 3.5   # seconds of silence before AI responds (Deepgram endpointing=800ms + natural gaps)
-ECHO_COOLDOWN = 4.0     # seconds to ignore input after bot finishes speaking
+# How long the pipeline waits after the last Deepgram segment before responding.
+# Deepgram endpointing=300ms means segments arrive on short pauses; we accumulate
+# them for 4.5s of actual silence before the AI fires.
+SILENCE_TIMEOUT = 4.5
 
 
 class ConversationPipeline:
@@ -18,7 +19,6 @@ class ConversationPipeline:
         self._pending_speaker: str = "Candidate"
         self._silence_task: asyncio.Task | None = None
         self._speaking: bool = False
-        self._spoke_at: float = 0.0
         self._on_response: Callable[[str, bytes], Awaitable[None]] | None = None
         self._full_transcript: list[dict] = []
 
@@ -26,7 +26,6 @@ class ConversationPipeline:
         self._on_response = callback
 
     async def send_greeting(self, bot_name: str) -> bytes:
-        """Send opening greeting; tracks it in history so LLM knows it already introduced itself."""
         self._speaking = True
         try:
             greeting = (
@@ -36,27 +35,37 @@ class ConversationPipeline:
             audio = await self._tts(greeting)
             self._history.append({"role": "assistant", "content": greeting})
             self._full_transcript.append({"speaker": "AI", "text": greeting})
-            print(f"[Pipeline] Greeting sent: {greeting[:60]}...")
+            print(f"[Pipeline] Greeting sent.")
             return audio
         finally:
             self._speaking = False
-            self._spoke_at = time.monotonic()
+            self._flush_pending()
 
     def on_transcript_update(self, text: str, speaker: str = "Candidate"):
-        if self._speaking:
-            return
-        # Drop echo: ignore input arriving too soon after bot finishes speaking
-        if time.monotonic() - self._spoke_at < ECHO_COOLDOWN:
-            print(f"[Pipeline] Dropping echo from {speaker}: {text[:40]}")
-            return
-
-        # Accumulate — multiple partial segments arrive before silence fires
+        # Accumulate text regardless of whether bot is currently speaking.
+        # Speaker-name filtering (in the webhook handler) already removes echo —
+        # we don't need a time-based cooldown that drops real candidate speech.
         self._pending_text = (self._pending_text + " " + text).strip()
         self._pending_speaker = speaker
 
+        if self._speaking:
+            # Bot is mid-response: buffer without starting timer.
+            # Timer starts in _flush_pending() when bot finishes.
+            print(f"[Pipeline] Buffered (bot speaking): {text[:50]}")
+            return
+
+        self._reset_silence_timer()
+
+    def _reset_silence_timer(self):
         if self._silence_task and not self._silence_task.done():
             self._silence_task.cancel()
         self._silence_task = asyncio.create_task(self._wait_for_silence())
+
+    def _flush_pending(self):
+        """Called when bot finishes speaking — start silence timer if candidate said anything."""
+        if self._pending_text:
+            print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
+            self._reset_silence_timer()
 
     async def _wait_for_silence(self):
         await asyncio.sleep(SILENCE_TIMEOUT)
@@ -69,7 +78,7 @@ class ConversationPipeline:
     async def _process_turn(self, user_text: str, speaker: str = "Candidate"):
         self._speaking = True
         try:
-            print(f"[Pipeline] Processing turn — {speaker}: {user_text[:80]}")
+            print(f"[Pipeline] Processing — {speaker}: {user_text[:100]}")
             self._full_transcript.append({"speaker": speaker, "text": user_text})
             self._history.append({"role": "user", "content": user_text})
 
@@ -82,16 +91,16 @@ class ConversationPipeline:
             ai_text = response.choices[0].message.content or ""
             self._history.append({"role": "assistant", "content": ai_text})
             self._full_transcript.append({"speaker": "AI", "text": ai_text})
-            print(f"[Pipeline] AI response: {ai_text[:80]}...")
+            print(f"[Pipeline] AI: {ai_text[:100]}")
 
             if ai_text and self._on_response:
                 audio = await self._tts(ai_text)
                 await self._on_response(ai_text, audio)
         except Exception as e:
-            print(f"[Pipeline] Error in process_turn: {e}")
+            print(f"[Pipeline] Error: {e}")
         finally:
             self._speaking = False
-            self._spoke_at = time.monotonic()
+            self._flush_pending()
 
     async def _tts(self, text: str) -> bytes:
         response = await self._openai.audio.speech.create(

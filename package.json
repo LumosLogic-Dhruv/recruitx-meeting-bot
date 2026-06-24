@@ -1,0 +1,15 @@
+{
+  "name": "meet-interview-poc-convex",
+  "version": "1.0.0",
+  "description": "Lumos Meet Interview POC Convex integration",
+  "main": "index.js",
+  "scripts": {
+    "convex:dev": "convex dev"
+  },
+  "dependencies": {
+    "convex": "^1.11.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

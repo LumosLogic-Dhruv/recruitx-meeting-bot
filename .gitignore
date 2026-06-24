@@ -1,5 +1,9 @@
 # Environment — never commit real keys
 .env
+.env.local
+
+# Node.js
+node_modules/
 
 # Python
 __pycache__/

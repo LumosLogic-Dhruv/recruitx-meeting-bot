@@ -1,16 +1,40 @@
 import asyncio
 import os
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+import datetime
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import jwt
+import bcrypt
+from convex import ConvexClient
 
 from recall_client import RecallClient
 from pipeline import ConversationPipeline
 
 load_dotenv()
+
+# Convex Client Setup
+CONVEX_URL = os.getenv("CONVEX_URL", "https://focused-poodle-713.eu-west-1.convex.cloud")
+convex_client = ConvexClient(CONVEX_URL)
+
+JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-me")
+
+def get_current_user(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing or invalid token")
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid token")
+    except Exception as e:
+        raise HTTPException(401, f"Authentication error: {str(e)}")
 
 app = FastAPI(title="Lumos Meet Interview Bot Server")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -60,7 +84,7 @@ def health():
 
 
 @app.post("/start-interview")
-async def start_interview(req: StartInterviewRequest, background_tasks: BackgroundTasks):
+async def start_interview(req: StartInterviewRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     if req.meeting_url in _url_to_bot:
         raise HTTPException(400, "Interview already active for this meeting URL")
 
@@ -219,7 +243,7 @@ async def _webhook_greeting(bot_id: str):
 
 
 @app.post("/end-interview")
-async def end_interview(req: EndInterviewRequest):
+async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_current_user)):
     bot_id = _url_to_bot.pop(req.meeting_url, None)
     if not bot_id:
         raise HTTPException(404, "No active interview for this meeting URL")
@@ -251,6 +275,22 @@ async def end_interview(req: EndInterviewRequest):
         except Exception as e:
             print(f"[Scorecard] Error: {e}")
 
+    # Save the completed meeting and transcript to Convex
+    try:
+        convex_client.mutation(
+            "meetings:create",
+            {
+                "meetingUrl": req.meeting_url,
+                "candidateName": req.candidate_name,
+                "botName": session.get("bot_name") or "Alex",
+                "transcript": transcript_list,
+                "scorecard": scorecard,
+            }
+        )
+        print("[Convex] Meeting stored successfully.")
+    except Exception as e:
+        print(f"[Convex] Failed to store meeting in database: {e}")
+
     return {
         "status": "ended",
         "meeting_url": req.meeting_url,
@@ -261,7 +301,7 @@ async def end_interview(req: EndInterviewRequest):
 
 
 @app.get("/transcript/{bot_id}")
-def get_transcript(bot_id: str):
+def get_transcript(bot_id: str, user: dict = Depends(get_current_user)):
     session = _sessions.get(bot_id)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -270,5 +310,165 @@ def get_transcript(bot_id: str):
 
 
 @app.get("/sessions")
-def list_sessions():
+def list_sessions(user: dict = Depends(get_current_user)):
     return {"active": list(_url_to_bot.keys())}
+
+
+# --- Authentication, Historical Meetings & Prompt Generation endpoints ---
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class GeneratePromptRequest(BaseModel):
+    role_name: str
+
+
+@app.post("/api/auth/signup")
+def signup(req: SignupRequest):
+    if not req.email or not req.password or not req.name:
+        raise HTTPException(400, "All fields are required")
+    
+    # Hash password
+    salt = bcrypt.gensalt()
+    password_hash = bcrypt.hashpw(req.password.encode('utf-8'), salt).decode('utf-8')
+    
+    try:
+        user_id = convex_client.mutation("users:create", {
+            "name": req.name,
+            "email": req.email.lower().strip(),
+            "passwordHash": password_hash
+        })
+        return {"status": "success", "userId": user_id}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    email = req.email.lower().strip()
+    try:
+        user = convex_client.query("users:getByEmail", {"email": email})
+        if not user:
+            raise HTTPException(400, "Invalid email or password")
+        
+        # Verify password
+        if not bcrypt.checkpw(req.password.encode('utf-8'), user["passwordHash"].encode('utf-8')):
+            raise HTTPException(400, "Invalid email or password")
+        
+        # Create JWT token
+        token_payload = {
+            "sub": user["_id"],
+            "name": user["name"],
+            "email": user["email"],
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        }
+        token = jwt.encode(token_payload, JWT_SECRET, algorithm="HS256")
+        
+        return {
+            "token": token,
+            "user": {
+                "id": user["_id"],
+                "name": user["name"],
+                "email": user["email"]
+            }
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(500, f"Login error: {str(e)}")
+
+
+@app.get("/api/auth/me")
+def auth_me(user: dict = Depends(get_current_user)):
+    return {"user": user}
+
+
+@app.get("/api/meetings")
+def list_meetings(user: dict = Depends(get_current_user)):
+    try:
+        meetings = convex_client.query("meetings:list")
+        return {"meetings": meetings}
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+
+@app.get("/api/meetings/{meeting_id}")
+def get_meeting(meeting_id: str, user: dict = Depends(get_current_user)):
+    try:
+        # Pass ID directly to get details
+        meeting = convex_client.query("meetings:get", {"id": meeting_id})
+        if not meeting:
+            raise HTTPException(404, "Meeting not found")
+        return {"meeting": meeting}
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+
+@app.get("/api/prompts")
+def list_prompts(user: dict = Depends(get_current_user)):
+    try:
+        prompts = convex_client.query("prompts:list")
+        return {"prompts": prompts}
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+
+@app.post("/api/prompts/generate")
+async def generate_prompt(req: GeneratePromptRequest, user: dict = Depends(get_current_user)):
+    role = req.role_name.strip()
+    if not role:
+        raise HTTPException(400, "Role name is required")
+
+    system_instruction = (
+        "You are an expert recruiter and prompt engineer. "
+        "Generate a highly detailed and effective system prompt for an AI interviewer. "
+        "The generated prompt should tell the AI interviewer how to act, what rules to follow, and the flow of the interview.\n"
+        "Ensure the output is ONLY the system prompt text, formatted cleanly. "
+        "It MUST contain rules like: ask exactly ONE question per response, keep responses under 40 words, introduce yourself, review candidate background, and end with a summary. "
+        "Make it highly tailored to the specific role name provided."
+    )
+    
+    user_message = f"Generate an AI interviewer system prompt for the role: '{role}'."
+    
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_key:
+        raise HTTPException(500, "OpenAI API key not configured")
+        
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=openai_key)
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0.7,
+            max_tokens=600
+        )
+        generated_prompt = response.choices[0].message.content.strip()
+        
+        # Save to Convex
+        try:
+            convex_client.mutation(
+                "prompts:create",
+                {
+                    "roleName": role,
+                    "promptText": generated_prompt
+                }
+            )
+        except Exception as e:
+            print(f"[Convex] Failed to save prompt: {e}")
+
+        return {"role_name": role, "prompt_text": generated_prompt}
+    except Exception as e:
+        raise HTTPException(500, f"OpenAI error: {str(e)}")

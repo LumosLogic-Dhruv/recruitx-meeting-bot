@@ -3,301 +3,832 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lumos AI Interviewer</title>
+  <title>Lumos AI Interviewer Hub</title>
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
   <style>
+    :root {
+      --bg: #09090b;
+      --card: #18181b;
+      --card-hover: #202024;
+      --border: #27272a;
+      --border-focus: #8b5cf6;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --primary: #8b5cf6;
+      --primary-hover: #7c3aed;
+      --primary-glow: rgba(139, 92, 246, 0.15);
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f13;
-      color: #e2e8f0;
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
       display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 24px;
+      flex-direction: column;
+      overflow-x: hidden;
     }
 
-    .layout {
-      display: flex;
-      gap: 20px;
-      width: 100%;
-      max-width: 1100px;
-      align-items: flex-start;
-    }
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
-    .card {
-      background: #1a1a24;
-      border: 1px solid #2d2d3d;
-      border-radius: 16px;
-      padding: 32px;
-      flex: 0 0 480px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-    }
-
-    .live-panel {
-      flex: 1;
-      background: #1a1a24;
-      border: 1px solid #2d2d3d;
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-      display: none;
-    }
-
-    .live-panel.show { display: block; }
-
-    .logo {
+    /* Auth Screen styling */
+    .auth-container {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      min-height: 100vh;
+      width: 100vw;
+      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 40%),
+                  radial-gradient(circle at bottom left, rgba(76, 29, 149, 0.1), transparent 45%),
+                  #09090b;
+      padding: 20px;
+    }
+
+    .auth-card {
+      background: rgba(24, 24, 27, 0.7);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      width: 100%;
+      max-width: 460px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.05);
+      animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .auth-logo {
+      display: inline-flex;
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--primary), #d8b4fe);
+      border-radius: 12px;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 24px;
+      color: #fff;
+      margin-bottom: 16px;
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    }
+
+    .auth-header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    .auth-header p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .auth-tabs {
+      display: flex;
+      background: rgba(9, 9, 11, 0.6);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
       margin-bottom: 24px;
     }
 
-    .logo-dot {
-      width: 32px;
-      height: 32px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
       border-radius: 8px;
-      flex-shrink: 0;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      color: var(--text-muted);
     }
 
-    .logo h1 { font-size: 20px; font-weight: 700; color: #f8fafc; }
-    .logo span { font-size: 12px; color: #64748b; }
+    .auth-tab.active {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Main Dashboard Layout */
+    .app-container {
+      display: none;
+      flex-direction: column;
+      min-height: 100vh;
+      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.06), transparent 50%), #09090b;
+    }
+
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 40px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(9, 9, 11, 0.8);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .nav-logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--primary), #a78bfa);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+      box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+    }
+
+    .nav-brand h2 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .nav-menu {
+      display: flex;
+      gap: 8px;
+      background: rgba(24, 24, 27, 0.5);
+      border: 1px solid var(--border);
+      padding: 4px;
+      border-radius: 12px;
+    }
+
+    .nav-item {
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .nav-item.active {
+      color: #fff;
+      background: var(--primary);
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+    }
+
+    .nav-user {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .user-info {
+      text-align: right;
+    }
+
+    .user-info .name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .user-info .email {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .btn-logout {
+      padding: 8px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-logout:hover {
+      border-color: var(--error);
+      color: var(--error);
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    /* Views */
+    .view-content {
+      flex: 1;
+      padding: 40px;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .dashboard-view {
+      display: none;
+      animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .dashboard-view.active {
+      display: block;
+    }
+
+    /* Common Components styling */
+    .form-group {
+      margin-bottom: 20px;
+    }
 
     label {
       display: block;
       font-size: 12px;
       font-weight: 600;
-      color: #64748b;
+      color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: .06em;
-      margin-bottom: 6px;
-      margin-top: 16px;
+      margin-bottom: 8px;
     }
 
-    label:first-of-type { margin-top: 0; }
-
-    input, textarea {
+    input, textarea, select {
       width: 100%;
-      background: #0d0d11;
-      border: 1px solid #2d2d3d;
-      border-radius: 8px;
-      color: #e2e8f0;
-      font-size: 13px;
-      padding: 10px 12px;
+      background: rgba(9, 9, 11, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      padding: 12px 14px;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
       font-family: inherit;
     }
 
-    input:focus, textarea:focus { border-color: #6366f1; }
-    textarea { resize: vertical; min-height: 140px; line-height: 1.55; }
-    input::placeholder, textarea::placeholder { color: #2d3748; }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 1px var(--border-focus);
     }
 
-    .actions {
-      display: flex;
-      gap: 10px;
-      margin-top: 20px;
-    }
+    textarea { resize: vertical; min-height: 120px; line-height: 1.55; }
+    input::placeholder, textarea::placeholder { color: #52525b; }
 
-    button {
-      flex: 1;
-      padding: 11px;
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
       border: none;
-      border-radius: 8px;
-      font-size: 13px;
+      border-radius: 10px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.15s, transform 0.1s;
+      transition: opacity 0.15s, transform 0.1s, background-color 0.2s;
     }
 
-    button:active { transform: scale(0.98); }
-    button:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
-    #btn-start { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
-    #btn-end   { background: #1e293b; border: 1px solid #ef4444; color: #ef4444; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.2);
+    }
+    .btn-primary:hover {
+      opacity: 0.95;
+    }
 
-    .status-box {
-      margin-top: 16px;
-      padding: 12px 14px;
-      border-radius: 8px;
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--error);
+      color: var(--error);
+    }
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .btn-secondary {
+      background: rgba(39, 39, 42, 0.6);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: rgba(39, 39, 42, 0.9);
+    }
+
+    /* Grid Layouts */
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    .grid-3col {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    /* Card styling */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Status Notifications */
+    .status-alert {
+      padding: 12px 16px;
+      border-radius: 10px;
       font-size: 13px;
       line-height: 1.5;
+      margin-top: 16px;
       display: none;
+      animation: fadeIn 0.3s;
     }
+    .status-alert.show { display: block; }
+    .status-alert.success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: #34d399; }
+    .status-alert.error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: #fca5a5; }
+    .status-alert.info { background: rgba(139, 92, 246, 0.1); border: 1px solid var(--primary); color: #c084fc; }
 
-    .status-box.show { display: block; }
-    .status-box.success { background: #0d2218; border: 1px solid #22c55e; color: #86efac; }
-    .status-box.error   { background: #200d0d; border: 1px solid #ef4444; color: #fca5a5; }
-    .status-box.info    { background: #0d1527; border: 1px solid #6366f1; color: #a5b4fc; }
-
+    /* --- VIEW 1: INTERVIEW ROOM --- */
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: #0d2218;
-      border: 1px solid #22c55e;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--success);
       border-radius: 999px;
       padding: 4px 12px;
       font-size: 11px;
-      color: #86efac;
-      margin-top: 12px;
+      color: #34d399;
+      font-weight: 600;
+    }
+
+    .badge-live {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--error);
+      color: #fca5a5;
     }
 
     .dot-live {
       width: 7px; height: 7px;
-      background: #22c55e;
+      background: var(--success);
       border-radius: 50%;
       animation: pulse 1.4s infinite;
     }
+    .badge-live .dot-live { background: var(--error); }
 
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    .divider { height: 1px; background: #2d2d3d; margin: 20px 0; }
-    .section-title {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: #475569;
-      margin-bottom: 12px;
+    .live-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      height: 600px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
     }
 
-    /* Live panel */
     .live-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 16px;
     }
 
     .live-title {
-      font-size: 13px;
+      font-size: 16px;
       font-weight: 700;
-      color: #a5b4fc;
+      color: #fff;
     }
 
     .live-sub {
-      font-size: 11px;
-      color: #475569;
+      font-size: 12px;
+      color: var(--text-muted);
       margin-top: 2px;
     }
 
-    #chat-feed {
+    .chat-feed {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      max-height: calc(100vh - 160px);
-      overflow-y: auto;
-      padding-right: 4px;
+      gap: 16px;
     }
-
-    #chat-feed::-webkit-scrollbar { width: 4px; }
-    #chat-feed::-webkit-scrollbar-track { background: transparent; }
-    #chat-feed::-webkit-scrollbar-thumb { background: #2d2d3d; border-radius: 99px; }
 
     .msg {
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 4px;
+      max-width: 80%;
     }
+
+    .msg.ai { align-self: flex-start; }
+    .msg.human { align-self: flex-end; }
 
     .msg-label {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .06em;
+      letter-spacing: .05em;
     }
-
-    .msg.ai .msg-label { color: #818cf8; }
-    .msg.human .msg-label { color: #64748b; }
+    .msg.ai .msg-label { color: var(--primary); }
+    .msg.human .msg-label { color: var(--text-muted); }
 
     .msg-bubble {
-      font-size: 13px;
+      font-size: 14px;
       line-height: 1.55;
-      padding: 10px 13px;
-      border-radius: 10px;
-      max-width: 92%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
-
     .msg.ai .msg-bubble {
-      background: #1e1e2e;
-      border: 1px solid #2d2d4d;
-      color: #c7d2fe;
-      align-self: flex-start;
+      background: rgba(39, 39, 42, 0.4);
+      border: 1px solid var(--border);
+      color: #fff;
     }
-
     .msg.human .msg-bubble {
-      background: #1e293b;
-      border: 1px solid #2d3d50;
-      color: #cbd5e1;
-      align-self: flex-end;
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.25);
+      color: var(--text);
     }
 
     .empty-state {
       text-align: center;
-      color: #334155;
+      color: var(--text-muted);
+      font-size: 14px;
+      padding: 80px 0;
+      margin: auto;
+    }
+
+    /* Scorecard layout */
+    .scorecard-box {
+      margin-top: 24px;
+      padding: 24px;
+      background: rgba(139, 92, 246, 0.05);
+      border: 1px solid var(--primary);
+      border-radius: 16px;
+      animation: fadeIn 0.4s;
+    }
+
+    .sc-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .sc-score-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .sc-score {
+      font-size: 36px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .sc-score span {
+      font-size: 16px;
+      color: var(--text-muted);
+    }
+
+    .sc-badge {
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .sc-summary {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    .sc-dim { margin-bottom: 12px; }
+    .sc-dim-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .sc-dim-name { color: var(--text); font-weight: 500; }
+    .sc-dim-score { color: var(--primary); font-weight: 600; }
+    
+    .sc-bar-bg { background: rgba(255, 255, 255, 0.05); border-radius: 99px; height: 6px; }
+    .sc-bar { background: var(--primary); height: 6px; border-radius: 99px; }
+    .sc-dim-comment { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .sc-tags { font-size: 13px; margin-bottom: 8px; line-height: 1.6; }
+    .sc-tags.good { color: var(--success); }
+    .sc-tags.bad { color: var(--error); }
+
+    .sc-next {
       font-size: 13px;
-      padding: 40px 0;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      margin-top: 12px;
     }
 
-    /* Scorecard styles */
-    .scorecard {
-      margin-top: 16px;
-      padding: 16px;
-      background: #0d1527;
-      border: 1px solid #6366f1;
+    /* --- VIEW 2: PAST TRANSCRIPTS --- */
+    .history-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, background-color 0.2s;
+    }
+
+    .history-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(139, 92, 246, 0.4);
+      background-color: var(--card-hover);
+    }
+
+    .history-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .history-date {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .history-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .history-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .score-badge {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(139, 92, 246, 0.1);
+      color: var(--primary);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* Meeting detail modal style */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      backdrop-filter: blur(4px);
+    }
+    .modal.show { display: flex; }
+    
+    .modal-content {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      width: 100%;
+      max-width: 1100px;
+      height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+      animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .modal-close:hover { color: #fff; }
+
+    .modal-body {
+      flex: 1;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      height: 100%;
+    }
+
+    .modal-transcript {
+      border-right: 1px solid var(--border);
+      padding: 32px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-scorecard {
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    /* --- VIEW 3: PROMPT GENERATOR --- */
+    .prompt-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .prompt-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .prompt-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .prompt-text {
+      background: rgba(9, 9, 11, 0.6);
+      border: 1px solid var(--border);
+      padding: 14px;
       border-radius: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 150px;
+      overflow-y: auto;
     }
 
-    .sc-header { font-size: 11px; font-weight: 700; color: #a5b4fc; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .06em; }
-    .sc-score-row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
-    .sc-score { font-size: 30px; font-weight: 800; color: #f8fafc; }
-    .sc-score span { font-size: 14px; color: #475569; }
-    .sc-badge { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-    .sc-summary { font-size: 12px; color: #94a3b8; margin-bottom: 12px; line-height: 1.5; }
-    .sc-dim { margin-bottom: 8px; }
-    .sc-dim-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; }
-    .sc-dim-name { color: #cbd5e1; }
-    .sc-dim-score { color: #a5b4fc; }
-    .sc-bar-bg { background: #1e293b; border-radius: 999px; height: 5px; }
-    .sc-bar { background: #6366f1; height: 5px; border-radius: 999px; }
-    .sc-dim-comment { font-size: 10px; color: #475569; margin-top: 2px; }
-    .sc-tags { font-size: 11px; margin-bottom: 6px; line-height: 1.6; }
-    .sc-tags.good { color: #22c55e; }
-    .sc-tags.bad  { color: #ef4444; }
-    .sc-next { font-size: 11px; color: #94a3b8; border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 6px; }
+    .prompt-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes zoomIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <!-- Config panel -->
-    <div class="card">
-      <div class="logo">
-        <div class="logo-dot"></div>
-        <div>
-          <h1>Lumos AI Interviewer</h1>
-          <span>Powered by Recall.ai · Deepgram · OpenAI</span>
-        </div>
+
+  <!-- AUTH SCREEN -->
+  <div class="auth-container" id="auth-screen">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">L</div>
+        <h1 id="auth-title">Welcome to Lumos</h1>
+        <p id="auth-desc">Sign in to orchestrate interview bots & view transcripts</p>
       </div>
 
-      <div class="section-title">Meeting</div>
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tab-login-btn" onclick="toggleAuthTab('login')">Sign In</div>
+        <div class="auth-tab" id="tab-signup-btn" onclick="toggleAuthTab('signup')">Sign Up</div>
+      </div>
 
-      <label>Google Meet Link</label>
-      <input id="meeting-input" type="text" placeholder="https://meet.google.com/abc-defg-hij" />
+      <form id="auth-form" onsubmit="handleAuthSubmit(event)">
+        <div class="form-group" id="name-group" style="display:none;">
+          <label>Full Name</label>
+          <input type="text" id="auth-name" placeholder="John Doe" />
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="auth-email" required placeholder="name@company.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="auth-password" required placeholder="••••••••" />
+        </div>
+        
+        <button class="btn btn-primary" style="width:100%; margin-top: 10px;" type="submit" id="btn-auth-submit">Sign In</button>
+      </form>
 
-      <div class="divider"></div>
-      <div class="section-title">Bot Configuration</div>
+      <div id="auth-status" class="status-alert"></div>
+    </div>
+  </div>
 
-      <label>System Prompt</label>
-      <textarea id="prompt">You are Alex, a professional AI interviewer. Conduct a structured, conversational interview.
+  <!-- APPLICATION HUB -->
+  <div class="app-container" id="app-screen">
+    <!-- Navbar -->
+    <div class="navbar">
+      <a href="#" class="nav-brand">
+        <div class="nav-logo">L</div>
+        <div>
+          <h2>Lumos AI Interviewer</h2>
+        </div>
+      </a>
+
+      <div class="nav-menu">
+        <div class="nav-item active" id="nav-interview" onclick="showView('interview')">Interview Room</div>
+        <div class="nav-item" id="nav-history" onclick="showView('history')">Past Transcripts</div>
+        <div class="nav-item" id="nav-prompts" onclick="showView('prompts')">Prompt Generator</div>
+      </div>
+
+      <div class="nav-user">
+        <div class="user-info">
+          <div class="name" id="user-display-name">Loading...</div>
+          <div class="email" id="user-display-email">...</div>
+        </div>
+        <button class="btn-logout" onclick="logout()">Sign Out</button>
+      </div>
+    </div>
+
+    <!-- Views -->
+    <div class="view-content">
+
+      <!-- VIEW 1: INTERVIEW ROOM -->
+      <div class="dashboard-view active" id="view-interview">
+        <div class="grid-2col">
+          <!-- Setup Card -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">Setup Interview</h3>
+              <p style="color: var(--text-muted); font-size: 13px;">Deploy a bot into a Google Meet call.</p>
+            </div>
+
+            <div class="form-group">
+              <label>Google Meet Link</label>
+              <input id="meeting-input" type="text" placeholder="https://meet.google.com/abc-defg-hij" />
+            </div>
+
+            <div class="form-group">
+              <label>System Prompt</label>
+              <textarea id="prompt" style="min-height: 180px;">You are Alex, a professional AI interviewer. Conduct a structured, conversational interview.
 
 RULES:
 - Ask exactly ONE question per response
@@ -307,60 +838,311 @@ RULES:
 - If an answer is vague, ask one focused follow-up
 - Be warm, concise, and professional at all times
 - Never repeat questions already asked</textarea>
+            </div>
 
-      <div class="row">
-        <div>
-          <label>Bot Name</label>
-          <input id="bot-name" type="text" value="Alex" />
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+              <div class="form-group">
+                <label>Bot Name</label>
+                <input id="bot-name" type="text" value="Alex" />
+              </div>
+              <div class="form-group">
+                <label>Candidate Name</label>
+                <input id="candidate-name" type="text" placeholder="Jane Doe" />
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 10px;">
+              <button class="btn btn-primary" style="flex:1" id="btn-start" onclick="startInterview()">Start Interview</button>
+              <button class="btn btn-danger" style="flex:1" id="btn-end" onclick="endInterview()" disabled>End Interview</button>
+            </div>
+
+            <div id="status" class="status-alert"></div>
+            
+            <div id="session-badge" style="display:none; align-self: flex-start;">
+              <div class="badge"><div class="dot-live"></div><span id="badge-text">Session active</span></div>
+            </div>
+
+            <!-- Scorecard appears here after end -->
+            <div id="scorecard-area"></div>
+          </div>
+
+          <!-- Live Conversation feed -->
+          <div class="live-panel">
+            <div class="live-header">
+              <div>
+                <div class="live-title">Live Conversation</div>
+                <div class="live-sub" id="live-sub">Waiting for interview to start…</div>
+              </div>
+              <div class="badge badge-live" id="live-badge" style="display:none">
+                <div class="dot-live"></div><span>LIVE</span>
+              </div>
+            </div>
+            <div class="chat-feed" id="chat-feed">
+              <div class="empty-state">No active session. The real-time transcript will appear here.</div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label>Candidate Name</label>
-          <input id="candidate-name" type="text" placeholder="Jane Doe" />
+      </div>
+
+      <!-- VIEW 2: PAST TRANSCRIPTS -->
+      <div class="dashboard-view" id="view-history">
+        <div style="margin-bottom: 24px;">
+          <h3 style="font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px;">Past Transcripts</h3>
+          <p style="color: var(--text-muted); font-size: 14px;">Historical records of all completed meetings, transcripts, and evaluation scorecards.</p>
+        </div>
+
+        <div class="grid-3col" id="meetings-list-container">
+          <!-- Populated dynamically -->
+          <div class="empty-state">Loading transcripts from database...</div>
         </div>
       </div>
 
-      <div class="actions">
-        <button id="btn-start" onclick="startInterview()">Start Interview</button>
-        <button id="btn-end" onclick="endInterview()" disabled>End Interview</button>
+      <!-- VIEW 3: PROMPT GENERATOR -->
+      <div class="dashboard-view" id="view-prompts">
+        <div class="grid-2col">
+          <!-- Prompt Creator -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">AI Prompt Engineer</h3>
+              <p style="color: var(--text-muted); font-size: 13px;">Generate custom interviewer prompts for specialized roles.</p>
+            </div>
+
+            <div class="form-group">
+              <label>Role Name</label>
+              <input id="role-input" type="text" placeholder="e.g. Senior Frontend Engineer" />
+            </div>
+
+            <button class="btn btn-primary" onclick="generatePrompt()" id="btn-generate-prompt">
+              Generate Interviewer Prompt
+            </button>
+
+            <div id="prompt-gen-status" class="status-alert"></div>
+
+            <div id="generated-result-box" style="display: none; flex-direction: column; gap: 12px; margin-top: 16px;">
+              <label>Generated Prompt</label>
+              <textarea id="generated-prompt-text" style="min-height: 200px;" readonly></textarea>
+              <div style="display:flex; gap:12px;">
+                <button class="btn btn-secondary" onclick="copyGeneratedPrompt()" style="flex:1">Copy</button>
+                <button class="btn btn-primary" onclick="useGeneratedPrompt()" style="flex:1">Use in Meeting</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Saved Prompts Library -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 6px;">Role Prompt Library</h3>
+              <p style="color: var(--text-muted); font-size: 13px;">Quickly copy or load system prompts for standard roles.</p>
+            </div>
+
+            <div style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;" id="prompts-list-container">
+              <!-- Populated dynamically -->
+              <div class="empty-state">No saved prompts yet.</div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div id="status" class="status-box"></div>
-      <div id="session-badge" style="display:none">
-        <div class="badge"><div class="dot-live"></div><span id="badge-text">Session active</span></div>
-      </div>
-
-      <!-- Scorecard appears here after end -->
-      <div id="scorecard-area"></div>
     </div>
+  </div>
 
-    <!-- Live transcript panel (visible during session) -->
-    <div class="live-panel" id="live-panel">
-      <div class="live-header">
+  <!-- MEETING DETAIL MODAL -->
+  <div class="modal" id="meeting-modal" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
         <div>
-          <div class="live-title">Live Conversation</div>
-          <div class="live-sub" id="live-sub">Waiting for bot to join…</div>
+          <h3 id="modal-title" style="font-size: 20px; font-weight: 700; color: #fff;">Meeting Evaluation</h3>
+          <p id="modal-meta" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;"></p>
         </div>
-        <div class="badge" id="live-badge" style="display:none">
-          <div class="dot-live"></div><span>LIVE</span>
-        </div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
-      <div id="chat-feed">
-        <div class="empty-state">Transcript will appear here once the interview starts.</div>
+      <div class="modal-body">
+        <div class="modal-transcript" id="modal-transcript-feed">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="modal-scorecard" id="modal-scorecard-content">
+          <!-- Populated dynamically -->
+        </div>
       </div>
     </div>
   </div>
 
   <script>
     const API = window.location.origin;
+    let authMode = 'login'; // 'login' or 'signup'
+    let token = localStorage.getItem('token') || '';
+    let currentUser = null;
+    
+    // Live Meeting State
     let activeMeetingUrl = null;
     let activeBotId = null;
     let pollInterval = null;
     let lastTranscriptLen = 0;
 
+    // Initialize Page
+    document.addEventListener("DOMContentLoaded", async () => {
+      if (token) {
+        const ok = await checkSession();
+        if (ok) {
+          showApp();
+        } else {
+          showAuth();
+        }
+      } else {
+        showAuth();
+      }
+    });
+
+    // --- AUTHENTICATION FLOWS ---
+    function toggleAuthTab(mode) {
+      authMode = mode;
+      const title = document.getElementById('auth-title');
+      const desc = document.getElementById('auth-desc');
+      const nameGroup = document.getElementById('name-group');
+      const tabLogin = document.getElementById('tab-login-btn');
+      const tabSignup = document.getElementById('tab-signup-btn');
+      const btnSubmit = document.getElementById('btn-auth-submit');
+      
+      document.getElementById('auth-status').classList.remove('show');
+
+      if (mode === 'signup') {
+        title.textContent = 'Create an Account';
+        desc.textContent = 'Get started with Lumos AI Interviewer';
+        nameGroup.style.display = 'block';
+        tabSignup.classList.add('active');
+        tabLogin.classList.remove('active');
+        btnSubmit.textContent = 'Sign Up';
+      } else {
+        title.textContent = 'Welcome to Lumos';
+        desc.textContent = 'Sign in to orchestrate interview bots & view transcripts';
+        nameGroup.style.display = 'none';
+        tabLogin.classList.add('active');
+        tabSignup.classList.remove('active');
+        btnSubmit.textContent = 'Sign In';
+      }
+    }
+
+    async function handleAuthSubmit(e) {
+      e.preventDefault();
+      const statusEl = document.getElementById('auth-status');
+      statusEl.classList.remove('show');
+      
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const name = document.getElementById('auth-name').value.trim();
+
+      const btn = document.getElementById('btn-auth-submit');
+      btn.disabled = true;
+      
+      try {
+        if (authMode === 'signup') {
+          const res = await fetch(`${API}/api/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Sign up failed');
+          
+          // Successful signup, switch to login
+          statusEl.textContent = 'Account created successfully! Signing in...';
+          statusEl.className = 'status-alert show success';
+          
+          // Auto login
+          await attemptLogin(email, password);
+        } else {
+          await attemptLogin(email, password);
+        }
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'status-alert show error';
+        btn.disabled = false;
+      }
+    }
+
+    async function attemptLogin(email, password) {
+      const res = await fetch(`${API}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Login failed');
+      
+      token = data.token;
+      currentUser = data.user;
+      localStorage.setItem('token', token);
+      
+      showApp();
+    }
+
+    async function checkSession() {
+      try {
+        const res = await fetch(`${API}/api/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          currentUser = data.user;
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    function showAuth() {
+      document.getElementById('auth-screen').style.display = 'flex';
+      document.getElementById('app-screen').style.display = 'none';
+      document.getElementById('btn-auth-submit').disabled = false;
+    }
+
+    function showApp() {
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('app-screen').style.display = 'flex';
+      
+      document.getElementById('user-display-name').textContent = currentUser.name || 'User';
+      document.getElementById('user-display-email').textContent = currentUser.email || '';
+      
+      showView('interview');
+    }
+
+    function logout() {
+      stopPolling();
+      token = '';
+      currentUser = null;
+      localStorage.removeItem('token');
+      showAuth();
+    }
+
+    // --- NAVIGATION VIEWS ---
+    function showView(viewId) {
+      // Clear alerts
+      hideStatus();
+      
+      // Update nav active
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      document.getElementById(`nav-${viewId}`).classList.add('active');
+      
+      // Update views visible
+      document.querySelectorAll('.dashboard-view').forEach(view => view.classList.remove('active'));
+      document.getElementById(`view-${viewId}`).classList.add('active');
+
+      if (viewId === 'history') {
+        loadMeetingsHistory();
+      } else if (viewId === 'prompts') {
+        loadPromptsLibrary();
+      }
+    }
+
+    // --- VIEW 1: INTERVIEW ROOM FUNCTIONS ---
     function showStatus(msg, type) {
       const el = document.getElementById('status');
       el.textContent = msg;
-      el.className = 'status-box show ' + type;
+      el.className = 'status-alert show ' + type;
+    }
+
+    function hideStatus() {
+      document.getElementById('status').classList.remove('show');
     }
 
     function setLoading(loading) {
@@ -370,9 +1152,8 @@ RULES:
 
     function renderChat(transcript) {
       const feed = document.getElementById('chat-feed');
-      if (!transcript.length) return;
+      if (!transcript || !transcript.length) return;
 
-      // Only re-render if new messages arrived
       if (transcript.length === lastTranscriptLen) return;
       lastTranscriptLen = transcript.length;
 
@@ -394,13 +1175,16 @@ RULES:
     }
 
     function escapeHtml(s) {
+      if (!s) return '';
       return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
     async function pollTranscript() {
       if (!activeBotId) return;
       try {
-        const res = await fetch(`${API}/transcript/${activeBotId}`);
+        const res = await fetch(`${API}/transcript/${activeBotId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (!res.ok) return;
         const data = await res.json();
         renderChat(data.transcript || []);
@@ -410,7 +1194,7 @@ RULES:
     function startPolling() {
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(pollTranscript, 4000);
-      pollTranscript(); // immediate first call
+      pollTranscript();
     }
 
     function stopPolling() {
@@ -432,7 +1216,10 @@ RULES:
       try {
         const res = await fetch(`${API}/start-interview`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName }),
         });
         const data = await res.json();
@@ -442,11 +1229,10 @@ RULES:
         activeBotId = data.bot_id;
         lastTranscriptLen = 0;
 
-        showStatus('Bot is joining the meeting. It will greet the candidate once it\'s in (1-2 min).', 'success');
+        showStatus('Bot is joining the meeting. It will greet the candidate once it is in (1-2 min).', 'success');
         document.getElementById('session-badge').style.display = 'block';
         document.getElementById('badge-text').textContent = `Live: ${meetingUrl.split('/').pop()}`;
-        document.getElementById('live-panel').classList.add('show');
-        document.getElementById('scorecard-area').innerHTML = '';
+        document.getElementById('chat-feed').innerHTML = '<div class="empty-state">Waiting for bot to connect...</div>';
         setLoading(false);
         startPolling();
       } catch (err) {
@@ -458,20 +1244,22 @@ RULES:
     async function endInterview() {
       if (!activeMeetingUrl) return;
       setLoading(true);
-      showStatus('Ending interview and generating scorecard…', 'info');
+      showStatus('Ending interview and generating evaluation scorecard…', 'info');
       stopPolling();
 
       try {
         const candidateName = document.getElementById('candidate-name').value.trim() || 'Candidate';
         const res = await fetch(`${API}/end-interview`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({ meeting_url: activeMeetingUrl, candidate_name: candidateName }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
 
-        // Show final transcript
         if (data.transcript?.length) renderChat(data.transcript);
 
         document.getElementById('session-badge').style.display = 'none';
@@ -481,24 +1269,24 @@ RULES:
         activeBotId = null;
         setLoading(false);
 
-        showStatus('Interview complete.', 'success');
-        renderScorecard(data.scorecard || {});
+        showStatus('Interview complete. Transcript and Evaluation stored in database.', 'success');
+        renderScorecard(data.scorecard || {}, 'scorecard-area');
       } catch (err) {
         showStatus('Error: ' + err.message, 'error');
         setLoading(false);
       }
     }
 
-    function renderScorecard(sc) {
-      const area = document.getElementById('scorecard-area');
-      if (!sc.overall_score) { area.innerHTML = ''; return; }
+    function renderScorecard(sc, targetContainerId) {
+      const area = document.getElementById(targetContainerId);
+      if (!sc || !sc.overall_score) { area.innerHTML = ''; return; }
 
       const recColor =
-        sc.recommendation?.includes('STRONG') ? '#22c55e' :
-        sc.recommendation?.includes('NO')     ? '#ef4444' : '#f59e0b';
+        sc.recommendation?.includes('STRONG') ? 'var(--success)' :
+        sc.recommendation?.includes('NO')     ? 'var(--error)' : 'var(--warning)';
 
-      let html = `<div class="scorecard">
-        <div class="sc-header">Scorecard — ${escapeHtml(sc.candidate_name || 'Candidate')}</div>
+      let html = `<div class="scorecard-box">
+        <div class="sc-header">Evaluation Summary — ${escapeHtml(sc.candidate_name || 'Candidate')}</div>
         <div class="sc-score-row">
           <div class="sc-score">${sc.overall_score}<span>/10</span></div>
           <div class="sc-badge" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${escapeHtml(sc.recommendation || '')}</div>
@@ -521,10 +1309,240 @@ RULES:
       if (sc.concerns?.length)
         html += `<div class="sc-tags bad">✗ ${sc.concerns.map(escapeHtml).join(' · ')}</div>`;
       if (sc.suggested_next_steps)
-        html += `<div class="sc-next">Next: ${escapeHtml(sc.suggested_next_steps)}</div>`;
+        html += `<div class="sc-next"><strong>Next Steps:</strong> ${escapeHtml(sc.suggested_next_steps)}</div>`;
 
       html += '</div>';
       area.innerHTML = html;
+    }
+
+    // --- VIEW 2: PAST MEETINGS HISTORY ---
+    async function loadMeetingsHistory() {
+      const container = document.getElementById('meetings-list-container');
+      container.innerHTML = '<div class="empty-state">Loading transcripts from database...</div>';
+      
+      try {
+        const res = await fetch(`${API}/api/meetings`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load meetings');
+        const data = await res.json();
+        
+        const meetings = data.meetings || [];
+        if (meetings.length === 0) {
+          container.innerHTML = '<div class="empty-state">No historical interviews found. Completed meetings will show up here.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        meetings.forEach(m => {
+          const formattedDate = new Date(m.createdAt).toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+          const score = m.scorecard?.overall_score || 'N/A';
+          const rec = m.scorecard?.recommendation || 'N/A';
+
+          const card = document.createElement('div');
+          card.className = 'history-card';
+          card.onclick = () => openMeetingDetail(m._id);
+          card.innerHTML = `
+            <div class="history-meta">
+              <span class="history-date">${formattedDate}</span>
+              ${score !== 'N/A' ? `<span class="score-badge">Score: ${score}/10</span>` : ''}
+            </div>
+            <div class="history-title">${escapeHtml(m.candidateName)}</div>
+            <div class="history-sub">
+              <span>Bot: ${escapeHtml(m.botName)}</span>
+              <span>•</span>
+              <span>${m.transcript ? m.transcript.length : 0} messages</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted); border-top: 1px solid var(--border); padding-top:12px; display:flex; justify-content:space-between; align-items:center;">
+              <span>Rec: ${escapeHtml(rec)}</span>
+              <span style="color: var(--primary); font-weight:600;">View Details &rarr;</span>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state" style="color: var(--error)">Error loading history: ${err.message}</div>`;
+      }
+    }
+
+    async function openMeetingDetail(meetingId) {
+      const modal = document.getElementById('meeting-modal');
+      const transcriptFeed = document.getElementById('modal-transcript-feed');
+      const scorecardContent = document.getElementById('modal-scorecard-content');
+      
+      transcriptFeed.innerHTML = 'Loading transcript...';
+      scorecardContent.innerHTML = 'Loading scorecard...';
+      
+      modal.classList.add('show');
+      
+      try {
+        const res = await fetch(`${API}/api/meetings/${meetingId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load meeting details');
+        const data = await res.json();
+        const m = data.meeting;
+
+        document.getElementById('modal-title').textContent = `Interview: ${m.candidateName}`;
+        document.getElementById('modal-meta').textContent = `Conducted with Bot ${m.botName} on ${new Date(m.createdAt).toLocaleString()} • URL: ${m.meetingUrl}`;
+
+        // Populate Transcript
+        transcriptFeed.innerHTML = '';
+        if (m.transcript && m.transcript.length) {
+          m.transcript.forEach(t => {
+            const isAI = t.speaker === 'AI';
+            const div = document.createElement('div');
+            div.className = 'msg ' + (isAI ? 'ai' : 'human');
+            div.style.maxWidth = '95%';
+            div.innerHTML = `
+              <div class="msg-label">${escapeHtml(t.speaker)}</div>
+              <div class="msg-bubble">${escapeHtml(t.text)}</div>
+            `;
+            transcriptFeed.appendChild(div);
+          });
+        } else {
+          transcriptFeed.innerHTML = '<div class="empty-state">No transcript logs recorded.</div>';
+        }
+
+        // Populate Scorecard
+        if (m.scorecard && m.scorecard.overall_score) {
+          renderScorecard(m.scorecard, 'modal-scorecard-content');
+        } else {
+          scorecardContent.innerHTML = '<div class="empty-state">No evaluation scorecard available for this meeting.</div>';
+        }
+      } catch (err) {
+        transcriptFeed.innerHTML = `<div style="color: var(--error)">Error: ${err.message}</div>`;
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('meeting-modal').classList.remove('show');
+    }
+
+    // --- VIEW 3: PROMPT GENERATOR ---
+    async function generatePrompt() {
+      const roleInput = document.getElementById('role-input');
+      const role = roleInput.value.trim();
+      const statusEl = document.getElementById('prompt-gen-status');
+      const resultBox = document.getElementById('generated-result-box');
+      const resultText = document.getElementById('generated-prompt-text');
+      const btn = document.getElementById('btn-generate-prompt');
+
+      if (!role) {
+        statusEl.textContent = 'Please enter a role name.';
+        statusEl.className = 'status-alert show error';
+        return;
+      }
+
+      statusEl.textContent = 'Generating prompt from OpenAI and saving to database...';
+      statusEl.className = 'status-alert show info';
+      resultBox.style.display = 'none';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API}/api/prompts/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ role_name: role })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Prompt generation failed');
+
+        statusEl.textContent = `Prompt for '${role}' successfully generated and stored.`;
+        statusEl.className = 'status-alert show success';
+        
+        resultText.value = data.prompt_text;
+        resultBox.style.display = 'flex';
+        btn.disabled = false;
+        
+        // Refresh library listing
+        loadPromptsLibrary();
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.className = 'status-alert show error';
+        btn.disabled = false;
+      }
+    }
+
+    function copyGeneratedPrompt() {
+      const text = document.getElementById('generated-prompt-text').value;
+      navigator.clipboard.writeText(text);
+      alert('Prompt copied to clipboard!');
+    }
+
+    function useGeneratedPrompt() {
+      const text = document.getElementById('generated-prompt-text').value;
+      const role = document.getElementById('role-input').value.trim();
+      
+      // Load into tab 1 fields
+      document.getElementById('prompt').value = text;
+      document.getElementById('bot-name').value = role ? `${role.split(' ')[0]} Bot` : 'Alex';
+      
+      // Navigate to Room view
+      showView('interview');
+    }
+
+    async function loadPromptsLibrary() {
+      const container = document.getElementById('prompts-list-container');
+      container.innerHTML = '<div class="empty-state">Loading prompts...</div>';
+      
+      try {
+        const res = await fetch(`${API}/api/prompts`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load prompts');
+        const data = await res.json();
+        const prompts = data.prompts || [];
+
+        if (prompts.length === 0) {
+          container.innerHTML = '<div class="empty-state">No saved prompts yet. Generate prompts on the left to see them here.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        prompts.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'prompt-card';
+          card.innerHTML = `
+            <div class="prompt-meta">
+              <span class="prompt-title">${escapeHtml(p.roleName)}</span>
+              <span style="font-size: 11px; color: var(--text-muted);">${new Date(p.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div class="prompt-text">${escapeHtml(p.promptText)}</div>
+            <div class="prompt-actions">
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size:11px;" onclick="copyPromptText('${p._id}')">Copy</button>
+              <button class="btn btn-primary" style="padding: 6px 12px; font-size:11px;" onclick="usePromptText('${p._id}', '${escapeHtml(p.roleName)}')">Use Prompt</button>
+            </div>
+          `;
+          // Store prompts in window for copy/use actions
+          window[`_prompt_${p._id}`] = p.promptText;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state" style="color: var(--error)">Error: ${err.message}</div>`;
+      }
+    }
+
+    function copyPromptText(id) {
+      const text = window[`_prompt_${id}`];
+      if (text) {
+        navigator.clipboard.writeText(text);
+        alert('Prompt copied!');
+      }
+    }
+
+    function usePromptText(id, roleName) {
+      const text = window[`_prompt_${id}`];
+      if (text) {
+        document.getElementById('prompt').value = text;
+        document.getElementById('bot-name').value = `${roleName.split(' ')[0]} Bot`;
+        showView('interview');
+      }
     }
   </script>
 </body>
