@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Lumos AI Interviewer Hub Dashboard" />
+  <title>Dashboard - Lumos AI Interviewer</title>
+  <link rel="icon" type="image/svg+xml" href="/static/LogoWithoutName.svg" />
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      corePlugins: {
+        preflight: false,
+      }
+    }
+  </script>
+  
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --card-hover: #f1f5f9;
+      --border: #e2e8f0;
+      --border-focus: #8b5cf6;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #8b5cf6;
+      --primary-hover: #7c3aed;
+      --primary-glow: rgba(139, 92, 246, 0.08);
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+    /* Main Dashboard Layout */
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.04), transparent 50%), var(--bg);
+    }
+
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 40px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .nav-logo {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-brand h2 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .nav-menu {
+      display: flex;
+      gap: 8px;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      padding: 4px;
+      border-radius: 12px;
+    }
+
+    .nav-item {
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .nav-item.active {
+      color: #fff;
+      background: var(--primary);
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+    }
+
+    .nav-user {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .user-info {
+      text-align: right;
+    }
+
+    .user-info .name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .user-info .email {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .btn-logout {
+      padding: 8px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-logout:hover {
+      border-color: var(--error);
+      color: var(--error);
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    /* Views */
+    .view-content {
+      flex: 1;
+      padding: 40px;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .dashboard-view {
+      display: none;
+      animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .dashboard-view.active {
+      display: block;
+    }
+
+    /* Common Components styling */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 8px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      padding: 12px 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 1px var(--border-focus);
+    }
+
+    textarea { resize: vertical; min-height: 120px; line-height: 1.55; }
+    input::placeholder, textarea::placeholder { color: #a1a1aa; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s, background-color 0.2s;
+    }
+
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.2);
+    }
+    .btn-primary:hover {
+      opacity: 0.95;
+    }
+
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--error);
+      color: var(--error);
+    }
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .btn-secondary {
+      background: #f4f4f5;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: #e4e4e7;
+    }
+
+    /* Grid Layouts */
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    .grid-3col {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    /* Card styling */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    /* Status Notifications */
+    .status-alert {
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 16px;
+      display: none;
+      animation: fadeIn 0.3s;
+    }
+    .status-alert.show { display: block; }
+    .status-alert.success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: #065f46; }
+    .status-alert.error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: #991b1b; }
+    .status-alert.info { background: rgba(139, 92, 246, 0.1); border: 1px solid var(--primary); color: #6b21a8; }
+
+    /* Scorecard layout */
+    .scorecard-box {
+      margin-top: 24px;
+      padding: 24px;
+      background: rgba(139, 92, 246, 0.03);
+      border: 1px solid var(--primary);
+      border-radius: 16px;
+      animation: fadeIn 0.4s;
+    }
+
+    .sc-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .sc-score-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .sc-score {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .sc-score span {
+      font-size: 16px;
+      color: var(--text-muted);
+    }
+
+    .sc-badge {
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .sc-summary {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    .sc-dim { margin-bottom: 12px; }
+    .sc-dim-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .sc-dim-name { color: var(--text); font-weight: 500; }
+    .sc-dim-score { color: var(--primary); font-weight: 600; }
+    
+    .sc-bar-bg { background: rgba(0, 0, 0, 0.05); border-radius: 99px; height: 6px; }
+    .sc-bar { background: var(--primary); height: 6px; border-radius: 99px; }
+    .sc-dim-comment { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .sc-tags { font-size: 13px; margin-bottom: 8px; line-height: 1.6; }
+    .sc-tags.good { color: var(--success); }
+    .sc-tags.bad { color: var(--error); }
+
+    .sc-next {
+      font-size: 13px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      margin-top: 12px;
+    }
+
+    /* History Card layout */
+    .history-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, background-color 0.2s;
+    }
+
+    .history-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(139, 92, 246, 0.4);
+      background-color: var(--card-hover);
+    }
+
+    .history-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .history-date {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .history-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .history-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .score-badge {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(139, 92, 246, 0.1);
+      color: var(--primary);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* Live Panel layout */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--success);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 11px;
+      color: #065f46;
+      font-weight: 600;
+    }
+
+    .badge-live {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--error);
+      color: #991b1b;
+    }
+
+    .dot-live {
+      width: 7px; height: 7px;
+      background: var(--success);
+      border-radius: 50%;
+      animation: pulse 1.4s infinite;
+    }
+    .badge-live .dot-live { background: var(--error); }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .live-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      height: 600px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    .live-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .live-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .live-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .chat-feed {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 80%;
+    }
+
+    .msg.ai { align-self: flex-start; }
+    .msg.human { align-self: flex-end; }
+
+    .msg-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .msg.ai .msg-label { color: var(--primary); }
+    .msg.human .msg-label { color: var(--text-muted); }
+
+    .msg-bubble {
+      font-size: 14px;
+      line-height: 1.55;
+      padding: 12px 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+    }
+    .msg.ai .msg-bubble {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .msg.human .msg-bubble {
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.15);
+      color: var(--text);
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+      padding: 80px 0;
+      margin: auto;
+    }
+
+    /* Prompt Cards */
+    .prompt-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .prompt-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .prompt-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .prompt-text {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .prompt-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    /* Modal styling */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.3);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      backdrop-filter: blur(4px);
+    }
+    .modal.show { display: flex; }
+    
+    .modal-content {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      width: 100%;
+      max-width: 1100px;
+      height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15);
+      animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .modal-close:hover { color: var(--text); }
+
+    .modal-body {
+      flex: 1;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      height: 100%;
+    }
+
+    .modal-transcript {
+      border-right: 1px solid var(--border);
+      padding: 32px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-scorecard {
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes zoomIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Responsive Media Queries */
+    @media (max-width: 1024px) {
+      .grid-2col {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+
+      .navbar {
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px 20px;
+        align-items: center;
+        text-align: center;
+      }
+
+      .navbar .user-info {
+        text-align: center;
+      }
+
+      .navbar .nav-user {
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .view-content {
+        padding: 20px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .nav-menu {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .modal-content {
+        width: 95vw;
+        height: 95vh;
+        border-radius: 16px;
+      }
+
+      .modal-body {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+
+      .modal-transcript {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        max-height: 400px;
+        padding: 20px;
+      }
+
+      .modal-scorecard {
+        padding: 20px;
+      }
+
+      .live-panel {
+        height: 500px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- APPLICATION HUB -->
+  <div class="app-container" id="app-screen">
+    <!-- Navbar -->
+    <div class="navbar flex flex-col md:flex-row justify-between items-center px-6 md:px-10 py-4 border-b border-solid border-[#e2e8f0] bg-white/85 backdrop-blur-md sticky top-0 z-50">
+      <div class="w-full md:w-auto flex justify-between items-center">
+        <a href="/" class="nav-brand flex items-center gap-3 no-underline">
+          <img src="/static/LogoWithoutName.svg" alt="Lumos Logo" class="nav-logo" style="width: 36px; height: 36px; background: none; box-shadow: none; border-radius: 0; object-fit: contain;" />
+          <div>
+            <h2 class="text-[18px] font-bold tracking-tight text-[#0f172a] m-0">Lumos AI Interviewer</h2>
+          </div>
+        </a>
+        <!-- Mobile Menu Toggle Button -->
+        <button class="md:hidden p-2 text-[#64748b] hover:text-[#0f172a] focus:outline-none bg-transparent border-none cursor-pointer" onclick="toggleMobileMenu()">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:24px; height:24px;">
+            <path id="menu-icon" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Nav links and user controls -->
+      <div id="mobile-menu" class="hidden md:flex flex-col md:flex-row items-center gap-6 w-full md:w-auto mt-4 md:mt-0">
+        <!-- Centered Nav Menu on desktop -->
+        <div class="nav-menu flex flex-col md:flex-row gap-2 bg-[#f1f5f9] border border-solid border-[#e2e8f0] p-1 rounded-xl w-full md:w-auto md:absolute md:left-1/2 md:transform md:-translate-x-1/2">
+          <div class="nav-item active text-center cursor-pointer" id="nav-interview" onclick="showView('interview')">Interview Room</div>
+          <div class="nav-item text-center cursor-pointer" id="nav-history" onclick="showView('history')">Past Transcripts</div>
+          <div class="nav-item text-center cursor-pointer" id="nav-prompts" onclick="showView('prompts')">Prompt Generator</div>
+        </div>
+
+        <!-- User profile controls -->
+        <div class="nav-user flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          <div class="user-info text-center md:text-right">
+            <div class="name text-[14px] font-semibold text-[#0f172a]" id="user-display-name">Loading...</div>
+            <div class="email text-[12px] text-[#64748b]" id="user-display-email">...</div>
+          </div>
+          <button class="btn-logout w-full md:w-auto" onclick="logout()">Sign Out</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Views -->
+    <div class="view-content">
+
+      <!-- VIEW 1: INTERVIEW ROOM -->
+      <div class="dashboard-view active" id="view-interview">
+        <div class="grid-2col">
+          <!-- Setup Card -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Setup Interview</h3>
+              <p style="color: var(--text-muted); font-size: 13px;">Deploy a bot into a Google Meet call.</p>
+            </div>
+
+            <div class="form-group">
+              <label>Google Meet Link</label>
+              <input id="meeting-input" type="text" placeholder="https://meet.google.com/abc-defg-hij" />
+            </div>
+
+            <div class="form-group">
+              <label>Select Role & System Prompt</label>
+              <select id="prompt-select" onchange="onPromptSelectChange()">
+                <option value="">-- Custom / Generate New --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>System Prompt</label>
+              <textarea id="prompt" style="min-height: 180px;">You are Alex, a professional AI interviewer. Conduct a structured, conversational interview.
+
+RULES:
+- Ask exactly ONE question per response
+- Keep every response under 40 words
+- Acknowledge the candidate's answer in one brief sentence before asking the next question
+- Flow: introduction → work experience → role-specific skills → behavioral question → wrap up
+- If an answer is vague, ask one focused follow-up
+- Be warm, concise, and professional at all times
+- Never repeat questions already asked</textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Candidate Name</label>
+              <input id="candidate-name" type="text" placeholder="Jane Doe" />
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 10px;">
+              <button class="btn btn-primary" style="flex:1" id="btn-start" onclick="startInterview()">Start Interview</button>
+              <button class="btn btn-danger" style="flex:1" id="btn-end" onclick="endInterview()" disabled>End Interview</button>
+            </div>
+
+            <div id="status" class="status-alert"></div>
+            
+            <div id="session-badge" style="display:none; align-self: flex-start;">
+              <div class="badge"><div class="dot-live"></div><span id="badge-text">Session active</span></div>
+            </div>
+
+            <!-- Scorecard appears here after end -->
+            <div id="scorecard-area"></div>
+          </div>
+
+          <!-- Live Conversation feed -->
+          <div class="live-panel">
+            <div class="live-header">
+              <div>
+                <div class="live-title">Live Conversation</div>
+                <div class="live-sub" id="live-sub">Waiting for interview to start…</div>
+              </div>
+              <div class="badge badge-live" id="live-badge" style="display:none">
+                <div class="dot-live"></div><span>LIVE</span>
+              </div>
+            </div>
+            <div class="chat-feed" id="chat-feed">
+              <div class="empty-state">No active session. The real-time transcript will appear here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: PAST TRANSCRIPTS -->
+      <div class="dashboard-view" id="view-history">
+        <div style="margin-bottom: 24px;">
+          <h3 style="font-size: 24px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Past Transcripts</h3>
+          <p style="color: var(--text-muted); font-size: 14px;">Historical records of all completed meetings, transcripts, and evaluation scorecards.</p>
+        </div>
+
+        <div class="grid-3col" id="meetings-list-container">
+          <!-- Populated dynamically -->
+          <div class="empty-state">Loading transcripts from database...</div>
+        </div>
+      </div>
+
+      <!-- VIEW 3: PROMPT GENERATOR -->
+      <div class="dashboard-view" id="view-prompts">
+        <div class="grid-2col">
+          <!-- Prompt Creator -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">AI Prompt Engineer</h3>
+              <p style="color: var(--text-muted); font-size: 13px;">Generate custom interviewer prompts for specialized roles.</p>
+            </div>
+
+            <div class="form-group">
+              <label>Role Name</label>
+              <input id="role-input" type="text" placeholder="e.g. Senior Frontend Engineer" />
+            </div>
+
+            <button class="btn btn-primary" onclick="generatePrompt()" id="btn-generate-prompt">
+              Generate Interviewer Prompt
+            </button>
+
+            <div id="prompt-gen-status" class="status-alert"></div>
+
+            <div id="generated-result-box" style="display: none; flex-direction: column; gap: 12px; margin-top: 16px;">
+              <label>Generated Prompt</label>
+              <textarea id="generated-prompt-text" style="min-height: 200px;" readonly></textarea>
+              <div style="display:flex; gap:12px;">
+                <button class="btn btn-secondary" onclick="copyGeneratedPrompt()" style="flex:1">Copy</button>
+                <button class="btn btn-primary" onclick="useGeneratedPrompt()" style="flex:1">Use in Meeting</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Saved Prompts Library -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Role Prompt Library</h3>
+              <p style="color: var(--text-muted); font-size: 13px;">Quickly copy or load system prompts for standard roles.</p>
+            </div>
+
+            <div style="max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;" id="prompts-list-container">
+              <!-- Populated dynamically -->
+              <div class="empty-state">No saved prompts yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MEETING DETAIL MODAL -->
+  <div class="modal" id="meeting-modal" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <h3 id="modal-title" style="font-size: 20px; font-weight: 700; color: var(--text);">Meeting Evaluation</h3>
+          <p id="modal-meta" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;"></p>
+        </div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-transcript" id="modal-transcript-feed">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="modal-scorecard" id="modal-scorecard-content">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let token = localStorage.getItem('token') || '';
+    let currentUser = null;
+    
+    // Live Meeting State
+    let activeMeetingUrl = null;
+    let activeBotId = null;
+    let pollInterval = null;
+    let lastTranscriptLen = 0;
+
+    // Route guard: verify authentication on load
+    document.addEventListener("DOMContentLoaded", async () => {
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+      
+      const ok = await checkSession();
+      if (!ok) {
+        token = '';
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        return;
+      }
+      
+      currentUser = JSON.parse(localStorage.getItem('user'));
+      
+      document.getElementById('user-display-name').textContent = currentUser.name || 'User';
+      document.getElementById('user-display-email').textContent = currentUser.email || '';
+      
+      loadPromptsDropdown();
+    });
+
+    async function checkSession() {
+      try {
+        const res = await fetch(`${API}/api/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return res.ok;
+      } catch (_) {}
+      return false;
+    }
+
+    function logout() {
+      stopPolling();
+      token = '';
+      currentUser = null;
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/';
+    }
+
+    // --- NAVIGATION VIEWS ---
+    function showView(viewId) {
+      // Clear alerts
+      hideStatus();
+      
+      // Update nav active
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      document.getElementById(`nav-${viewId}`).classList.add('active');
+      
+      // Update views visible
+      document.querySelectorAll('.dashboard-view').forEach(view => view.classList.remove('active'));
+      document.getElementById(`view-${viewId}`).classList.add('active');
+
+      // Auto close mobile menu on selection
+      const menu = document.getElementById('mobile-menu');
+      const icon = document.getElementById('menu-icon');
+      if (menu && window.innerWidth < 768) {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+        if (icon) icon.setAttribute('d', 'M4 6h16M4 12h16M4 18h16');
+      }
+
+      if (viewId === 'interview') {
+        loadPromptsDropdown();
+      } else if (viewId === 'history') {
+        loadMeetingsHistory();
+      } else if (viewId === 'prompts') {
+        loadPromptsLibrary();
+      }
+    }
+
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      const icon = document.getElementById('menu-icon');
+      
+      if (menu.classList.contains('hidden')) {
+        menu.classList.remove('hidden');
+        menu.classList.add('flex');
+        icon.setAttribute('d', 'M6 18L18 6M6 6l12 12'); // Change to cross icon
+      } else {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+        icon.setAttribute('d', 'M4 6h16M4 12h16M4 18h16'); // Change back to hamburger
+      }
+    }
+
+    // --- VIEW 1: INTERVIEW ROOM FUNCTIONS ---
+    function showStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status-alert show ' + type;
+    }
+
+    function hideStatus() {
+      document.getElementById('status').classList.remove('show');
+    }
+
+    function setLoading(loading) {
+      document.getElementById('btn-start').disabled = loading || !!activeMeetingUrl;
+      document.getElementById('btn-end').disabled = loading || !activeMeetingUrl;
+    }
+
+    function renderChat(transcript) {
+      const feed = document.getElementById('chat-feed');
+      if (!transcript || !transcript.length) return;
+
+      if (transcript.length === lastTranscriptLen) return;
+      lastTranscriptLen = transcript.length;
+
+      feed.innerHTML = '';
+      for (const t of transcript) {
+        const isAI = t.speaker === 'AI';
+        const div = document.createElement('div');
+        div.className = 'msg ' + (isAI ? 'ai' : 'human');
+        div.innerHTML = `
+          <div class="msg-label">${escapeHtml(t.speaker)}</div>
+          <div class="msg-bubble">${escapeHtml(t.text)}</div>
+        `;
+        feed.appendChild(div);
+      }
+      feed.scrollTop = feed.scrollHeight;
+
+      document.getElementById('live-sub').textContent = `${transcript.length} messages`;
+      document.getElementById('live-badge').style.display = 'inline-flex';
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function pollTranscript() {
+      if (!activeBotId) return;
+      try {
+        const res = await fetch(`${API}/transcript/${activeBotId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderChat(data.transcript || []);
+      } catch (_) {}
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(pollTranscript, 4000);
+      pollTranscript();
+    }
+
+    function stopPolling() {
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    }
+
+    async function startInterview() {
+      const raw = document.getElementById('meeting-input').value.trim();
+      const prompt = document.getElementById('prompt').value.trim();
+      const botName = "RecruitX AI Interviewer";
+
+      if (!raw) return showStatus('Please enter a Google Meet link.', 'error');
+      if (!prompt) return showStatus('Please enter a system prompt.', 'error');
+
+      const meetingUrl = raw.startsWith('http') ? raw : `https://meet.google.com/${raw}`;
+      setLoading(true);
+      showStatus('Sending bot into the meeting… (may take 1-2 min to join)', 'info');
+
+      try {
+        const res = await fetch(`${API}/start-interview`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+
+        activeMeetingUrl = meetingUrl;
+        activeBotId = data.bot_id;
+        lastTranscriptLen = 0;
+
+        showStatus('Bot is joining the meeting. It will greet the candidate once it is in (1-2 min).', 'success');
+        document.getElementById('session-badge').style.display = 'block';
+        document.getElementById('badge-text').textContent = `Live: ${meetingUrl.split('/').pop()}`;
+        document.getElementById('chat-feed').innerHTML = '<div class="empty-state">Waiting for bot to connect...</div>';
+        setLoading(false);
+        startPolling();
+      } catch (err) {
+        showStatus('Error: ' + err.message, 'error');
+        setLoading(false);
+      }
+    }
+
+    async function endInterview() {
+      if (!activeMeetingUrl) return;
+      setLoading(true);
+      showStatus('Ending interview and generating evaluation scorecard…', 'info');
+      stopPolling();
+
+      try {
+        const candidateName = document.getElementById('candidate-name').value.trim() || 'Candidate';
+        const res = await fetch(`${API}/end-interview`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ meeting_url: activeMeetingUrl, candidate_name: candidateName }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+
+        if (data.transcript?.length) renderChat(data.transcript);
+
+        document.getElementById('session-badge').style.display = 'none';
+        document.getElementById('live-badge').style.display = 'none';
+        document.getElementById('live-sub').textContent = 'Interview ended';
+        activeMeetingUrl = null;
+        activeBotId = null;
+        setLoading(false);
+
+        showStatus('Interview complete. Transcript and Evaluation stored in database.', 'success');
+        renderScorecard(data.scorecard || {}, 'scorecard-area');
+      } catch (err) {
+        showStatus('Error: ' + err.message, 'error');
+        setLoading(false);
+      }
+    }
+
+    function renderScorecard(sc, targetContainerId) {
+      const area = document.getElementById(targetContainerId);
+      if (!sc || !sc.overall_score) { area.innerHTML = ''; return; }
+
+      const recColor =
+        sc.recommendation?.includes('STRONG') ? 'var(--success)' :
+        sc.recommendation?.includes('NO')     ? 'var(--error)' : 'var(--warning)';
+
+      let html = `<div class="scorecard-box">
+        <div class="sc-header">Evaluation Summary — ${escapeHtml(sc.candidate_name || 'Candidate')}</div>
+        <div class="sc-score-row">
+          <div class="sc-score">${sc.overall_score}<span>/10</span></div>
+          <div class="sc-badge" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${escapeHtml(sc.recommendation || '')}</div>
+        </div>
+        <div class="sc-summary">${escapeHtml(sc.summary || '')}</div>`;
+
+      if (sc.dimensions?.length) {
+        for (const d of sc.dimensions) {
+          const pct = (d.score / 10) * 100;
+          html += `<div class="sc-dim">
+            <div class="sc-dim-row"><span class="sc-dim-name">${escapeHtml(d.name)}</span><span class="sc-dim-score">${d.score}/10</span></div>
+            <div class="sc-bar-bg"><div class="sc-bar" style="width:${pct}%"></div></div>
+            <div class="sc-dim-comment">${escapeHtml(d.comment || '')}</div>
+          </div>`;
+        }
+      }
+
+      if (sc.strengths?.length)
+        html += `<div class="sc-tags good">✓ ${sc.strengths.map(escapeHtml).join(' · ')}</div>`;
+      if (sc.concerns?.length)
+        html += `<div class="sc-tags bad">✗ ${sc.concerns.map(escapeHtml).join(' · ')}</div>`;
+      if (sc.suggested_next_steps)
+        html += `<div class="sc-next"><strong>Next Steps:</strong> ${escapeHtml(sc.suggested_next_steps)}</div>`;
+
+      html += '</div>';
+      area.innerHTML = html;
+    }
+
+    // --- VIEW 2: PAST MEETINGS HISTORY ---
+    async function loadMeetingsHistory() {
+      const container = document.getElementById('meetings-list-container');
+      container.innerHTML = '<div class="empty-state">Loading transcripts from database...</div>';
+      
+      try {
+        const res = await fetch(`${API}/api/meetings`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load meetings');
+        const data = await res.json();
+        
+        const meetings = data.meetings || [];
+        if (meetings.length === 0) {
+          container.innerHTML = '<div class="empty-state">No historical interviews found. Completed meetings will show up here.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        meetings.forEach(m => {
+          const formattedDate = new Date(m.createdAt).toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+          const score = m.scorecard?.overall_score || 'N/A';
+          const rec = m.scorecard?.recommendation || 'N/A';
+
+          const card = document.createElement('div');
+          card.className = 'history-card';
+          card.onclick = () => openMeetingDetail(m._id);
+          card.innerHTML = `
+            <div class="history-meta">
+              <span class="history-date">${formattedDate}</span>
+              ${score !== 'N/A' ? `<span class="score-badge">Score: ${score}/10</span>` : ''}
+            </div>
+            <div class="history-title">${escapeHtml(m.candidateName)}</div>
+            <div class="history-sub">
+              <span>Bot: ${escapeHtml(m.botName)}</span>
+              <span>•</span>
+              <span>${m.transcript ? m.transcript.length : 0} messages</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted); border-top: 1px solid var(--border); padding-top:12px; display:flex; justify-content:space-between; align-items:center;">
+              <span>Rec: ${escapeHtml(rec)}</span>
+              <span style="color: var(--primary); font-weight:600;">View Details &rarr;</span>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state" style="color: var(--error)">Error loading history: ${err.message}</div>`;
+      }
+    }
+
+    async function openMeetingDetail(meetingId) {
+      const modal = document.getElementById('meeting-modal');
+      const transcriptFeed = document.getElementById('modal-transcript-feed');
+      const scorecardContent = document.getElementById('modal-scorecard-content');
+      
+      transcriptFeed.innerHTML = 'Loading transcript...';
+      scorecardContent.innerHTML = 'Loading scorecard...';
+      
+      modal.classList.add('show');
+      
+      try {
+        const res = await fetch(`${API}/api/meetings/${meetingId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load meeting details');
+        const data = await res.json();
+        const m = data.meeting;
+
+        document.getElementById('modal-title').textContent = `Interview: ${m.candidateName}`;
+        document.getElementById('modal-meta').textContent = `Conducted with Bot ${m.botName} on ${new Date(m.createdAt).toLocaleString()} • URL: ${m.meetingUrl}`;
+
+        // Populate Transcript
+        transcriptFeed.innerHTML = '';
+        if (m.transcript && m.transcript.length) {
+          m.transcript.forEach(t => {
+            const isAI = t.speaker === 'AI';
+            const div = document.createElement('div');
+            div.className = 'msg ' + (isAI ? 'ai' : 'human');
+            div.style.maxWidth = '95%';
+            div.innerHTML = `
+              <div class="msg-label">${escapeHtml(t.speaker)}</div>
+              <div class="msg-bubble">${escapeHtml(t.text)}</div>
+            `;
+            transcriptFeed.appendChild(div);
+          });
+        } else {
+          transcriptFeed.innerHTML = '<div class="empty-state">No transcript logs recorded.</div>';
+        }
+
+        // Populate Scorecard
+        if (m.scorecard && m.scorecard.overall_score) {
+          renderScorecard(m.scorecard, 'modal-scorecard-content');
+        } else {
+          scorecardContent.innerHTML = '<div class="empty-state">No evaluation scorecard available for this meeting.</div>';
+        }
+      } catch (err) {
+        transcriptFeed.innerHTML = `<div style="color: var(--error)">Error: ${err.message}</div>`;
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('meeting-modal').classList.remove('show');
+    }
+
+    // --- VIEW 3: PROMPT GENERATOR ---
+    async function generatePrompt() {
+      const roleInput = document.getElementById('role-input');
+      const role = roleInput.value.trim();
+      const statusEl = document.getElementById('prompt-gen-status');
+      const resultBox = document.getElementById('generated-result-box');
+      const resultText = document.getElementById('generated-prompt-text');
+      const btn = document.getElementById('btn-generate-prompt');
+
+      if (!role) {
+        statusEl.textContent = 'Please enter a role name.';
+        statusEl.className = 'status-alert show error';
+        return;
+      }
+
+      statusEl.textContent = 'Generating prompt from OpenAI and saving to database...';
+      statusEl.className = 'status-alert show info';
+      resultBox.style.display = 'none';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API}/api/prompts/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ role_name: role })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Prompt generation failed');
+
+        statusEl.textContent = `Prompt for '${role}' successfully generated and stored.`;
+        statusEl.className = 'status-alert show success';
+        
+        resultText.value = data.prompt_text;
+        resultBox.style.display = 'flex';
+        btn.disabled = false;
+        
+        // Refresh library listing
+        loadPromptsLibrary();
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.className = 'status-alert show error';
+        btn.disabled = false;
+      }
+    }
+
+    function copyGeneratedPrompt() {
+      const text = document.getElementById('generated-prompt-text').value;
+      navigator.clipboard.writeText(text);
+      alert('Prompt copied to clipboard!');
+    }
+
+    function useGeneratedPrompt() {
+      const text = document.getElementById('generated-prompt-text').value;
+      
+      // Load into tab 1 fields
+      document.getElementById('prompt').value = text;
+      
+      // Navigate to Room view
+      showView('interview');
+    }
+
+    async function loadPromptsLibrary() {
+      const container = document.getElementById('prompts-list-container');
+      container.innerHTML = '<div class="empty-state">Loading prompts...</div>';
+      
+      try {
+        const res = await fetch(`${API}/api/prompts`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load prompts');
+        const data = await res.json();
+        const prompts = data.prompts || [];
+
+        if (prompts.length === 0) {
+          container.innerHTML = '<div class="empty-state">No saved prompts yet. Generate prompts on the left to see them here.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        prompts.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'prompt-card';
+          card.innerHTML = `
+            <div class="prompt-meta">
+              <span class="prompt-title">${escapeHtml(p.roleName)}</span>
+              <span style="font-size: 11px; color: var(--text-muted);">${new Date(p.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div class="prompt-text">${escapeHtml(p.promptText)}</div>
+            <div class="prompt-actions">
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size:11px;" onclick="copyPromptText('${p._id}')">Copy</button>
+              <button class="btn btn-primary" style="padding: 6px 12px; font-size:11px;" onclick="usePromptText('${p._id}', '${escapeHtml(p.roleName)}')">Use Prompt</button>
+            </div>
+          `;
+          // Store prompts in window for copy/use actions
+          window[`_prompt_${p._id}`] = p.promptText;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state" style="color: var(--error)">Error: ${err.message}</div>`;
+      }
+    }
+
+    function copyPromptText(id) {
+      const text = window[`_prompt_${id}`];
+      if (text) {
+        navigator.clipboard.writeText(text);
+        alert('Prompt copied!');
+      }
+    }
+
+    function usePromptText(id, roleName) {
+      const text = window[`_prompt_${id}`];
+      if (text) {
+        document.getElementById('prompt').value = text;
+        showView('interview');
+      }
+    }
+
+    // Helper functions for dropdown population
+    async function loadPromptsDropdown() {
+      const select = document.getElementById('prompt-select');
+      if (!select) return;
+      
+      try {
+        const res = await fetch(`${API}/api/prompts`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const prompts = data.prompts || [];
+
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">-- Custom / Generate New --</option>';
+        prompts.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p._id;
+          opt.textContent = p.roleName;
+          select.appendChild(opt);
+          window[`_prompt_${p._id}`] = p.promptText;
+        });
+        
+        if (currentVal && window[`_prompt_${currentVal}`]) {
+          select.value = currentVal;
+        }
+      } catch (_) {}
+    }
+
+    function onPromptSelectChange() {
+      const select = document.getElementById('prompt-select');
+      const selectedId = select.value;
+      if (selectedId) {
+        const text = window[`_prompt_${selectedId}`];
+        if (text) {
+          document.getElementById('prompt').value = text;
+        }
+      }
+    }
+  </script>
+</body>
+</html>

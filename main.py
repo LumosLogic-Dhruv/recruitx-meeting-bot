@@ -78,6 +78,21 @@ def ui():
     return FileResponse("static/index.html")
 
 
+@app.get("/login")
+def login_page():
+    return FileResponse("static/login.html")
+
+
+@app.get("/signup")
+def signup_page():
+    return FileResponse("static/signup.html")
+
+
+@app.get("/dashboard")
+def dashboard_page():
+    return FileResponse("static/dashboard.html")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "active_sessions": list(_sessions.keys())}
