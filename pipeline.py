@@ -10,7 +10,7 @@ import httpx
 # Deepgram endpointing=500ms already filters micro-pauses; 7s catches genuine
 # thinking pauses without cutting the candidate off mid-sentence.
 # Adaptive silence timeouts.
-SILENCE_SHORT      = 1.5   # 1–5 words  — "hello", "yes", "my name is Dhruv"
+SILENCE_SHORT      = 1.0   # 1–5 words  — "hello", "yes", "my name is Dhruv"
 SILENCE_MEDIUM     = 2.0   # 6–15 words — brief intro or one-liner
 SILENCE_LONG       = 4.0   # 16–35 words
 SILENCE_XLONG      = 8.0   # 35+ words  — long detailed answer
@@ -46,7 +46,11 @@ _TRAILING_WORDS = {
 # candidate since the last bot turn, and at most once every MIN_INTERVAL seconds.
 BACKCHANNEL_WORD_THRESHOLD = 15
 BACKCHANNEL_MIN_INTERVAL = 6.0
-BACKCHANNELS = ["I see.", "Right.", "Got it.", "Okay.", "Mm-hmm."]
+BACKCHANNELS = [
+    "Mm-hmm.", "Right.", "Got it.", "Makes sense.", "Okay.",
+    "Interesting.", "Sure, sure.", "Yeah, absolutely.", "Nice.",
+    "I see.", "Fair enough.", "That makes sense.", "Oh, cool.",
+]
 
 # Sentence boundary — flush LLM stream to TTS on any of these.
 _SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
@@ -55,15 +59,18 @@ _SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 # Acts as a hard guardrail so the AI cannot ignore these rules even if the
 # generated prompt is script-like or overly long.
 _RULES_PREFIX = """\
-ABSOLUTE RULES — THESE OVERRIDE EVERYTHING ELSE:
+CORE RULES — ALWAYS FOLLOW THESE:
 1. Ask EXACTLY ONE question per response. Never combine two questions in one turn.
-2. Maximum 2 sentences per response. Be brief and conversational.
+2. Keep responses short and natural — usually 1 to 3 sentences. Never write a lecture or a list.
 3. ONLY reference facts the candidate has explicitly stated in THIS conversation. \
 Never invent or assume their background.
 4. If the candidate's answer is unclear or very short, ask them to elaborate — \
 do NOT make up what they meant or move on as if they answered fully.
 5. React to what was JUST said. Do not follow a pre-written script or recite memorised lines.
 6. Never start a response with the candidate's name followed by a fact you invented.
+7. Sound human and conversational — use contractions (I'm, that's, you've), casual phrasing, \
+and natural acknowledgments like "Oh nice," "That's interesting," "Got it, so..." \
+before asking your next question. Vary how you start each response.
 
 """
 
@@ -91,6 +98,7 @@ class ConversationPipeline:
 
         self._elevenlabs_key = elevenlabs_key
         self._voice_id = voice_id
+        self._http_client = httpx.AsyncClient(timeout=30.0) if elevenlabs_key else None
 
         # Backchannel state
         self._words_since_last_bot: int = 0
@@ -253,7 +261,7 @@ class ConversationPipeline:
                 stream = await self._openai.chat.completions.create(
                     model=self._model,
                     messages=self._history,
-                    temperature=0.7,
+                    temperature=0.85,
                     max_tokens=300,
                     stream=True,
                 )
@@ -329,14 +337,14 @@ class ConversationPipeline:
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             "output_format": "mp3_44100_128",
         }
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(
-                url,
-                headers={"xi-api-key": self._elevenlabs_key, "Content-Type": "application/json"},
-                json=payload,
-            )
-            res.raise_for_status()
-            return res.content
+        client = self._http_client or httpx.AsyncClient(timeout=30.0)
+        res = await client.post(
+            url,
+            headers={"xi-api-key": self._elevenlabs_key, "Content-Type": "application/json"},
+            json=payload,
+        )
+        res.raise_for_status()
+        return res.content
 
     async def _tts_openai(self, text: str) -> bytes:
         response = await self._openai.audio.speech.create(
