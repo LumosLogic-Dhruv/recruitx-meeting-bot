@@ -23,8 +23,10 @@ class RecallClient:
             "transcript": {
                 "provider": {
                     "deepgram_streaming": {
-                        "model": "nova-3",
+                        "model": "nova-2",
+                        "language": "en-IN",
                         "smart_format": True,
+                        "punctuate": True,
                         # 1000ms: waits a full second of silence before firing a segment.
                         # Reduces mid-sentence fragmentation when candidate pauses to think.
                         "endpointing": 1000,
