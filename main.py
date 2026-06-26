@@ -46,6 +46,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 _sessions: dict[str, dict] = {}
 # meeting_url → bot_id
 _url_to_bot: dict[str, str] = {}
+# bot_id → set of "speaker:text" keys already forwarded to the pipeline.
+# Prevents Deepgram from re-delivering a corrected/duplicate final segment and
+# triggering a second AI response for text the pipeline has already processed.
+_seen_segments: dict[str, set] = {}
 
 
 class StartInterviewRequest(BaseModel):
@@ -227,7 +231,6 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         pipeline: ConversationPipeline = session["pipeline"]
         bot_name: str = session["bot_name"]
 
-        # New API payload: data.data.words + data.data.participant.name
         inner = data.get("data", {})
         words = inner.get("words", [])
         participant = inner.get("participant", {})
@@ -238,6 +241,20 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         if words and speaker.lower() != bot_name.lower():
             text = " ".join(w.get("text", "") for w in words).strip()
             if text:
+                # Deduplication: Deepgram occasionally re-delivers a corrected or
+                # duplicate final segment for the same utterance. Without this check
+                # the pipeline would process the same text twice, producing a second
+                # AI response mid-sentence or creating doubled transcript entries.
+                seen = _seen_segments.setdefault(bot_id, set())
+                segment_key = f"{speaker}:{text}"
+                if segment_key in seen:
+                    print(f"[Webhook] Duplicate segment skipped: {text[:50]}")
+                    return {"ok": True}
+                seen.add(segment_key)
+                # Cap the set size to avoid unbounded memory growth on long interviews
+                if len(seen) > 400:
+                    seen.clear()
+
                 print(f"[Webhook] {speaker}: {text}")
                 pipeline.on_transcript_update(text, speaker)
 
@@ -265,50 +282,57 @@ async def _fetch_and_store_recording(bot_id: str, meeting_id: str):
     """Background task: poll Recall.ai for the recording, then store URLs in Convex."""
     print(f"[Recording] Waiting for recording of bot {bot_id}...")
     recall = _make_recall()
-
-    # Wait for the full mixed recording to be ready (up to 5 min).
-    recording = await recall.poll_bot_recording(bot_id, max_wait=300)
-    if not recording:
-        print(f"[Recording] Gave up waiting for bot {bot_id}")
-        return
-
-    recording_id = recording.get("id")
-
-    # Extract full mixed video URL.
-    shortcuts = recording.get("media_shortcuts") or {}
-    video_mixed = shortcuts.get("video_mixed") or {}
-    recording_url = (video_mixed.get("data") or {}).get("download_url")
-
-    # Fetch per-participant separate audio (bot track + candidate track).
-    bot_audio_url = None
-    candidate_audio_url = None
-    if recording_id:
-        tracks = await recall.get_separate_audio(recording_id, max_wait=120)
-        for track in tracks:
-            participant = track.get("participant") or {}
-            url = (track.get("data") or {}).get("download_url")
-            if not url:
-                continue
-            # Recall.ai bots join as non-hosts; the meeting owner (candidate) is the host.
-            if participant.get("is_host"):
-                candidate_audio_url = url
-            else:
-                bot_audio_url = url
-
     try:
-        convex_client.mutation(
-            "meetings:updateRecording",
-            {
-                "id": meeting_id,
-                "recordingUrl": recording_url,
-                "botAudioUrl": bot_audio_url,
-                "candidateAudioUrl": candidate_audio_url,
-            },
-        )
-        print(f"[Recording] URLs stored for meeting {meeting_id}: "
-              f"recording={bool(recording_url)} bot={bool(bot_audio_url)} candidate={bool(candidate_audio_url)}")
-    except Exception as e:
-        print(f"[Recording] Failed to update Convex: {e}")
+        # Wait for the full mixed recording to be ready (up to 5 min).
+        recording = await recall.poll_bot_recording(bot_id, max_wait=300)
+        if not recording:
+            print(f"[Recording] Gave up waiting for bot {bot_id}")
+            return
+
+        recording_id = recording.get("id")
+
+        # Extract full mixed video URL.
+        shortcuts = recording.get("media_shortcuts") or {}
+        video_mixed = shortcuts.get("video_mixed") or {}
+        recording_url = (video_mixed.get("data") or {}).get("download_url")
+
+        # Fetch per-participant separate audio (bot track + candidate track).
+        bot_audio_url = None
+        candidate_audio_url = None
+        if recording_id:
+            tracks = await recall.get_separate_audio(recording_id, max_wait=120)
+            for track in tracks:
+                participant = track.get("participant") or {}
+                url = (track.get("data") or {}).get("download_url")
+                if not url:
+                    continue
+                # Recall.ai bots join as non-hosts; the meeting owner (candidate) is the host.
+                if participant.get("is_host"):
+                    candidate_audio_url = url
+                else:
+                    bot_audio_url = url
+
+        try:
+            convex_client.mutation(
+                "meetings:updateRecording",
+                {
+                    "id": meeting_id,
+                    "recordingUrl": recording_url,
+                    "botAudioUrl": bot_audio_url,
+                    "candidateAudioUrl": candidate_audio_url,
+                },
+            )
+            print(
+                f"[Recording] URLs stored for meeting {meeting_id}: "
+                f"recording={bool(recording_url)} bot={bool(bot_audio_url)} "
+                f"candidate={bool(candidate_audio_url)}"
+            )
+        except Exception as e:
+            print(f"[Recording] Failed to update Convex: {e}")
+    finally:
+        # Each call to _make_recall() creates its own AsyncClient.
+        # Always close it when the background task finishes to free the connection pool.
+        await recall.aclose()
 
 
 @app.post("/end-interview")
@@ -330,6 +354,15 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
         await recall.stop_bot(bot_id)
     except Exception as e:
         print(f"[End] Stop bot error (non-fatal): {e}")
+    finally:
+        # Close the session's persistent HTTP connection pool.
+        try:
+            await recall.aclose()
+        except Exception:
+            pass
+
+    # Clean up deduplication state for this bot
+    _seen_segments.pop(bot_id, None)
 
     pipeline: ConversationPipeline = session.get("pipeline")
     transcript_list = pipeline.get_transcript_list() if pipeline else []
@@ -343,6 +376,13 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
             print("[Scorecard] Done.")
         except Exception as e:
             print(f"[Scorecard] Error: {e}")
+
+    # Release pipeline resources (background eval task + ElevenLabs HTTP client)
+    if pipeline:
+        try:
+            await pipeline.aclose()
+        except Exception:
+            pass
 
     # Save the completed meeting and transcript to Convex
     meeting_id = None
@@ -410,11 +450,10 @@ class GeneratePromptRequest(BaseModel):
 def signup(req: SignupRequest):
     if not req.email or not req.password or not req.name:
         raise HTTPException(400, "All fields are required")
-    
-    # Hash password
+
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(req.password.encode('utf-8'), salt).decode('utf-8')
-    
+
     try:
         user_id = convex_client.mutation("users:create", {
             "name": req.name,
@@ -433,12 +472,10 @@ def login(req: LoginRequest):
         user = convex_client.query("users:getByEmail", {"email": email})
         if not user:
             raise HTTPException(400, "Invalid email or password")
-        
-        # Verify password
+
         if not bcrypt.checkpw(req.password.encode('utf-8'), user["passwordHash"].encode('utf-8')):
             raise HTTPException(400, "Invalid email or password")
-        
-        # Create JWT token
+
         token_payload = {
             "sub": user["_id"],
             "name": user["name"],
@@ -446,7 +483,7 @@ def login(req: LoginRequest):
             "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
         }
         token = jwt.encode(token_payload, JWT_SECRET, algorithm="HS256")
-        
+
         return {
             "token": token,
             "user": {
@@ -510,8 +547,7 @@ def get_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user
 
 @app.post("/api/meetings/{meeting_id}/fetch-recording")
 async def fetch_recording_for_meeting(meeting_id: str, user: dict = Depends(get_current_user)):
-    """Manually trigger a recording fetch from Recall.ai for an existing meeting.
-    Useful when the automatic background task failed, or to retry after Convex deploy."""
+    """Manually trigger a recording fetch from Recall.ai for an existing meeting."""
     try:
         meeting = convex_client.query("meetings:get", {"id": meeting_id})
         if not meeting:
