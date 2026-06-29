@@ -608,8 +608,9 @@ async def _call_openai_for_prompt(user_message: str) -> str:
         raise HTTPException(500, "OpenAI API key not configured")
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=openai_key)
+    model_to_use = os.getenv("OPENAI_PROMPT_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o"))
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=model_to_use,
         messages=[
             {"role": "system", "content": PROMPT_ENGINEER_INSTRUCTION},
             {"role": "user", "content": user_message},

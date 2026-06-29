@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import os
 import httpx
 
 
@@ -33,7 +34,7 @@ class RecallClient:
             "transcript": {
                 "provider": {
                     "deepgram_streaming": {
-                        "model": "nova-2",
+                        "model": os.getenv("DEEPGRAM_MODEL", "nova-3"),
                         "language": "en-IN",
                         "smart_format": True,
                         "punctuate": True,

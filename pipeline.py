@@ -139,12 +139,14 @@ class ConversationPipeline:
         self,
         system_prompt: str,
         openai_key: str,
-        openai_model: str = "gpt-4o-mini",
+        openai_model: str | None = None,
         elevenlabs_key: str = "",
         voice_id: str = "V9LCAAi4tTlqe9JadbCo",
     ):
         self._openai = AsyncOpenAI(api_key=openai_key)
-        self._model = openai_model
+        self._model = openai_model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self._eval_model = os.getenv("OPENAI_EVAL_MODEL", "gpt-4o")
+        self._scorecard_model = os.getenv("OPENAI_SCORECARD_MODEL", "gpt-4o")
         self._system_prompt = system_prompt
         self._history: list[dict] = [{"role": "system", "content": _RULES_PREFIX + system_prompt}]
         self._pending_text: str = ""
@@ -302,7 +304,7 @@ class ConversationPipeline:
         self._topics_initialized = True
         try:
             resp = await self._openai.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._eval_model,
                 messages=[{
                     "role": "user",
                     "content": (
@@ -346,7 +348,7 @@ class ConversationPipeline:
                 '}'
             )
             resp = await self._openai.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._eval_model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=180,
                 temperature=0.1,
@@ -454,7 +456,7 @@ class ConversationPipeline:
         )
         try:
             sum_resp = await self._openai.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self._eval_model,
                 messages=[{
                     "role": "user",
                     "content": (
@@ -605,7 +607,7 @@ class ConversationPipeline:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}/stream"
         payload = {
             "text": text,
-            "model_id": "eleven_turbo_v2_5",
+            "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             # mp3_22050_32: 22kHz mono at 32kbps — half the bytes of mp3_44100_128.
             # Imperceptible quality difference for voice; ~40% faster to transfer.
@@ -673,7 +675,7 @@ class ConversationPipeline:
         if len(transcript.split()) > 2000:
             try:
                 sum_resp = await self._openai.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=self._scorecard_model,
                     messages=[{
                         "role": "user",
                         "content": (
@@ -720,7 +722,7 @@ Use the real-time profile data to inform your scores — it was collected live.
 Return ONLY valid JSON, no extra text."""
 
         response = await self._openai.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self._scorecard_model,
             messages=[{"role": "user", "content": scorecard_prompt}],
             temperature=0.3,
             max_tokens=800,
