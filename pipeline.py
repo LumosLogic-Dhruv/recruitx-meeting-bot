@@ -9,17 +9,17 @@ from openai import AsyncOpenAI
 import httpx
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
-# Deepgram endpointing=1000ms fires a transcript segment after 1s of audio silence.
-# Our timer starts AFTER we receive the segment — it waits for the NEXT segment.
-# Natural inter-segment gaps (thinking, breath) are 200–800ms, so timers of 1–2s
-# are enough to catch a follow-on segment while still feeling responsive.
-# Total perceived latency = endpointing(1s) + our timer + LLM + TTS.
-SILENCE_SHORT      = 1.0   # 1–5 words
-SILENCE_MEDIUM     = 2.0   # 6–15 words
-SILENCE_LONG       = 3.5   # 16–35 words
-SILENCE_XLONG      = 5.5   # 35+ words
-SILENCE_INCOMPLETE = 5.0   # sentence ends mid-thought ("and", "the", "so"…)
-SILENCE_INTERRUPTED = 1.2  # candidate spoke over bot — respond fast
+# Deepgram endpointing=300ms fires a segment after 300ms of audio silence.
+# At 300ms, breathing pauses and mid-clause gaps also trigger segments, so our
+# timer must be long enough to accumulate all the fragments of one answer.
+# Target: respond ~1.5s after the candidate stops speaking.
+# Total per turn = endpointing(300ms) + our timer + LLM(~300ms) + TTS(~75ms).
+SILENCE_SHORT      = 1.2   # 1–5 words   → total ~1.5s after candidate stops
+SILENCE_MEDIUM     = 1.8   # 6–15 words  → total ~2.1s
+SILENCE_LONG       = 2.5   # 16–35 words → total ~2.8s
+SILENCE_XLONG      = 4.0   # 35+ words
+SILENCE_INCOMPLETE = 4.5   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 0.8  # candidate spoke over bot — respond fast
 
 MIN_WORDS_TO_RESPOND = 4   # ignore stray fragments shorter than this
 
@@ -40,9 +40,8 @@ _TRAILING_WORDS = {
 BACKCHANNEL_WORD_THRESHOLD = 15
 BACKCHANNEL_MIN_INTERVAL = 6.0
 BACKCHANNELS = [
-    "Mm-hmm.", "Right.", "Got it.", "Makes sense.", "Okay.",
-    "Interesting.", "Sure, sure.", "Yeah, absolutely.", "Nice.",
-    "I see.", "Fair enough.", "That makes sense.", "Oh, cool.",
+    "Mm-hmm.", "Yeah.", "Right.", "I see.", "Okay.",
+    "Mmm.", "Got it.", "Sure.", "Interesting.", "Fair enough.",
 ]
 
 # Fixed: (?:\s+|$) ensures the last sentence in the LLM stream flushes immediately
@@ -51,24 +50,35 @@ BACKCHANNELS = [
 _SENTENCE_END = re.compile(r'(?<=[.!?])(?:\s+|$)')
 
 _RULES_PREFIX = """\
-CORE RULES — ALWAYS FOLLOW THESE:
-1. Ask EXACTLY ONE question per response. Never combine two questions in one turn.
-2. Keep responses short and natural — usually 1 to 3 sentences. Never write a lecture or a list.
-3. ONLY reference facts the candidate has explicitly stated in THIS conversation. \
-Never invent or assume their background.
-4. If the candidate's answer is unclear or very short, ask them to elaborate — \
-do NOT make up what they meant or move on as if they answered fully.
-5. React to what was JUST said. Do not follow a pre-written script or recite memorised lines.
-6. Never start a response with the candidate's name followed by a fact you invented.
-7. Sound human and conversational — use contractions (I'm, that's, you've), casual phrasing, \
-and natural acknowledgments like "Oh nice," "That's interesting," "Got it, so..." \
-before asking your next question. Vary how you start each response.
-8. SPEECH RECOGNITION NOTE: This is a live voice call. The candidate's text is produced \
-by real-time STT and may contain garbled technical terms or feel fragmented. \
-If a term looks misspelled (e.g. "next sales", "RGS", "famous project") try to infer the \
-correct meaning from context — do NOT ask them to repeat themselves just because a word \
-looks odd. Only ask for clarification when the meaning is genuinely unclear after trying \
-to interpret it.
+YOU ARE A HUMAN INTERVIEWER ON A VOICE CALL. These rules are non-negotiable:
+
+1. ONE question per response. Never ask two things at once.
+
+2. MAXIMUM 2 sentences per response — usually just 1. Think phone call, not email. \
+The candidate should be talking more than you.
+
+3. NEVER say "Excellent!", "Great answer!", "Perfect!", "Fantastic!", "Absolutely!" \
+— these are robotic AI clichés that break immersion immediately. \
+React like a real person: "Oh nice.", "Right.", "Yeah.", "Interesting.", "Got it.", \
+"Mmm okay.", "Makes sense.", "Oh cool." — short, casual, varied.
+
+4. Structure every response as: [1-2 word casual reaction] + [one question]. \
+Example: "Nice, so how did you handle the deployment side of that?" \
+Example: "Right, and was that your first time using Kubernetes?" \
+Example: "Interesting — what was the team size?"
+
+5. Use contractions always: I'm, that's, you've, didn't, wasn't, it's. \
+Never write "I am", "that is", "you have" — it sounds robotic when spoken aloud.
+
+6. Only ask about what the candidate JUST said. Never invent facts or assume anything.
+
+7. If the answer is vague or too short, push gently: "Can you walk me through that a bit more?" \
+or "How did that actually work?" — don't accept thin answers and move on.
+
+8. Vary your openers every single turn. Repeating "Got it" five times sounds like a bot.
+
+9. VOICE CALL — STT artifacts: text may have odd spellings or missing words. \
+Infer meaning from context. Only ask for clarification if the meaning is genuinely lost.
 
 """
 
@@ -198,8 +208,8 @@ class ConversationPipeline:
         asyncio.create_task(self._ensure_topics_initialized())
         try:
             greeting = (
-                f"Hello! I'm {bot_name}, your AI interviewer today. "
-                "To get started, could you please introduce yourself and tell me a bit about your background?"
+                f"Hey, thanks for joining! I'm {bot_name}. "
+                "So just to kick things off — tell me a bit about yourself and what you've been working on lately."
             )
             audio = await self._tts(greeting)
             self._history.append({"role": "assistant", "content": greeting})
@@ -291,10 +301,11 @@ class ConversationPipeline:
             print(f"[Pipeline] Incomplete sentence detected — waiting {SILENCE_INCOMPLETE}s")
             return SILENCE_INCOMPLETE
         words = len(text.split())
-        # If there is NO terminal punctuation the segment may be mid-sentence —
-        # add a small extra window so the next Deepgram chunk can arrive first.
+        # With endpointing=300ms, breathing pauses fire mid-sentence segments that
+        # have no terminal punctuation. Add extra time so the next chunk arrives
+        # before the timer fires and we respond to an incomplete thought.
         ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
-        extra = 0.0 if ends_complete else 0.5
+        extra = 0.0 if ends_complete else 0.8
         if words <= 5:
             return SILENCE_SHORT + extra
         elif words <= 15:

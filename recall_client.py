@@ -42,9 +42,10 @@ class RecallClient:
                         # smart_format=true supersedes punctuate — handles punctuation,
                         # dates, currency, phones, URLs. Do NOT add punctuate=true.
                         "smart_format": True,
-                        # 1000ms: gives natural intra-sentence pauses room to complete
-                        # before Deepgram fires a transcript segment.
-                        "endpointing": 1000,
+                        # 300ms: fires fast so the pipeline receives text sooner.
+                        # Mid-sentence fragments still get accumulated by the silence
+                        # timer before the LLM is called. Saves ~700ms per turn vs 1000ms.
+                        "endpointing": 300,
                         # NOTE: `keywords` is NOT supported on nova-3 — use `keyterm`
                         # instead. However Recall.ai does not document `keyterm` as a
                         # passthrough field, so omit it to avoid bot creation failures.
