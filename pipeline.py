@@ -9,16 +9,18 @@ from openai import AsyncOpenAI
 import httpx
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
-# Deepgram endpointing is now 500ms (was 1000ms), so the STT floor is 500ms lower.
-# SILENCE_SHORT/MEDIUM reduced by 200ms each to reclaim that gain at the pipeline level.
-SILENCE_SHORT      = 0.8   # 1–5 words
-SILENCE_MEDIUM     = 1.8   # 6–15 words
-SILENCE_LONG       = 4.0   # 16–35 words
+# Deepgram endpointing is 1000ms. Natural speech has 600–1200ms thinking pauses
+# BETWEEN phrases that arrive as separate Deepgram segments. The silence timer must
+# outlast (endpointing_delay + thinking_pause) so we never fire on a mid-sentence
+# fragment. Rule of thumb: timer > 1000ms endpointing + 1500ms max natural pause.
+SILENCE_SHORT      = 2.5   # 1–5 words  (was 0.8 — caused mid-sentence firing)
+SILENCE_MEDIUM     = 3.5   # 6–15 words (was 1.8)
+SILENCE_LONG       = 5.0   # 16–35 words (was 4.0)
 SILENCE_XLONG      = 8.0   # 35+ words
-SILENCE_INCOMPLETE = 6.0   # sentence ends mid-thought ("and", "the", "so"…)
-SILENCE_INTERRUPTED = 1.5  # candidate spoke over bot — respond fast
+SILENCE_INCOMPLETE = 7.0   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 2.0  # candidate spoke over bot — respond fast
 
-MIN_WORDS_TO_RESPOND = 5
+MIN_WORDS_TO_RESPOND = 8   # ignore fragments shorter than this (was 5)
 
 _TRAILING_WORDS = {
     'and', 'or', 'but', 'so', 'because', 'although', 'though', 'while',
@@ -60,6 +62,12 @@ do NOT make up what they meant or move on as if they answered fully.
 7. Sound human and conversational — use contractions (I'm, that's, you've), casual phrasing, \
 and natural acknowledgments like "Oh nice," "That's interesting," "Got it, so..." \
 before asking your next question. Vary how you start each response.
+8. SPEECH RECOGNITION NOTE: This is a live voice call. The candidate's text is produced \
+by real-time STT and may contain garbled technical terms or feel fragmented. \
+If a term looks misspelled (e.g. "next sales", "RGS", "famous project") try to infer the \
+correct meaning from context — do NOT ask them to repeat themselves just because a word \
+looks odd. Only ask for clarification when the meaning is genuinely unclear after trying \
+to interpret it.
 
 """
 
@@ -271,10 +279,17 @@ class ConversationPipeline:
             print(f"[Pipeline] Incomplete sentence detected — waiting {SILENCE_INCOMPLETE}s")
             return SILENCE_INCOMPLETE
         words = len(text.split())
+        # Deepgram punctuates complete sentences. If punctuation is present the
+        # candidate likely finished a thought; use the standard word-count tiers.
+        # If there is NO terminal punctuation the segment is probably mid-sentence
+        # (natural pause during a longer answer) — add 1.5s of extra headroom so
+        # we don't fire on a fragment before the next Deepgram chunk arrives.
+        ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
+        extra = 0.0 if ends_complete else 1.5
         if words <= 5:
-            return SILENCE_SHORT
+            return SILENCE_SHORT + extra
         elif words <= 15:
-            return SILENCE_MEDIUM
+            return SILENCE_MEDIUM + extra
         elif words <= 35:
             return SILENCE_LONG
         else:
@@ -333,15 +348,18 @@ class ConversationPipeline:
         Runs as a background asyncio.Task — never blocks the bot's response."""
         try:
             prompt = (
-                'Analyze this interview answer. Return JSON only, no markdown.\n\n'
+                'Analyze this interview answer from a live voice call. Return JSON only, no markdown.\n\n'
+                'NOTE: This is a real-time STT transcript. It may contain garbled technical terms '
+                '(e.g. "next sales"=Next.js, "RGS"=some framework) or be a fragment of a longer '
+                'answer. Read charitably — infer the most plausible meaning from context.\n\n'
                 f'Answer: "{user_text[:800]}"\n\n'
                 'Return:\n'
                 '{\n'
-                '  "skills": [technical skills mentioned, empty list if none],\n'
-                '  "technologies": [tools/frameworks/languages mentioned],\n'
+                '  "skills": [technical skills mentioned or clearly implied, empty list if none],\n'
+                '  "technologies": [tools/frameworks/languages mentioned or clearly implied],\n'
                 '  "depth_score": <1-5, how specific and detailed the answer was>,\n'
-                '  "technical_score": <1-5, technical correctness and depth>,\n'
-                '  "communication_score": <1-5, clarity and structure>,\n'
+                '  "technical_score": <1-5, technical correctness and depth — be charitable for ASR noise>,\n'
+                '  "communication_score": <1-5, clarity and structure — ignore STT artefacts>,\n'
                 '  "topic_discussed": "<main topic this answer addressed, 2-4 words>",\n'
                 '  "topic_covered": <true if topic was answered adequately>,\n'
                 '  "strength": "<one brief standout strength, or empty string>",\n'
@@ -693,7 +711,15 @@ class ConversationPipeline:
             except Exception:
                 pass
 
-        scorecard_prompt = f"""You are an expert recruiter. Analyze this interview and generate a detailed scorecard.
+        scorecard_prompt = f"""You are an expert recruiter evaluating a voice interview conducted by an AI bot.
+
+IMPORTANT — ASR TRANSCRIPT NOTICE:
+This transcript was produced by real-time speech-to-text (Deepgram) during a live call. It may contain:
+- Garbled technical terms (e.g. "next sales" = Next.js, "famous project" = company name, "RGS" = some framework)
+- Sentence fragments from mid-speech endpointing (a complete answer may appear as 2–3 short lines in sequence)
+- Filler words and disfluencies that are normal in spoken conversation
+
+You MUST read the transcript charitably: if a candidate's answer is fragmented or uses unusual spellings for a technical term, infer the most likely correct meaning from context. Do NOT penalise for transcript artefacts — only penalise for genuine lack of knowledge or inability to answer after follow-up questions.
 
 Candidate: {candidate_name}
 
