@@ -843,6 +843,7 @@ HARD RULES:
 
             <!-- Scorecard appears here after end -->
             <div id="scorecard-area"></div>
+            <div id="dl-btn-area"></div>
           </div>
 
           <!-- Live Conversation feed -->
@@ -969,7 +970,10 @@ HARD RULES:
           <h3 id="modal-title" style="font-size: 20px; font-weight: 700; color: var(--text);">Meeting Evaluation</h3>
           <p id="modal-meta" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;"></p>
         </div>
-        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button id="modal-download-btn" onclick="downloadCurrentMeeting()" style="display:none; padding:7px 14px; font-size:13px; font-weight:600; color:#fff; background:var(--primary); border:none; border-radius:8px; cursor:pointer;">⬇ Download PDF</button>
+          <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
       </div>
 
       <!-- Recording Bar (shown when recording is ready) -->
@@ -1015,6 +1019,11 @@ HARD RULES:
     let activeBotId = null;
     let pollInterval = null;
     let lastTranscriptLen = 0;
+
+    // Holds data for the currently open modal so the download button can access it
+    let currentModalMeeting = null;
+    // Holds the just-ended interview data for the in-room download button
+    let currentEndedInterview = null;
 
     // Route guard: verify authentication on load
     document.addEventListener("DOMContentLoaded", async () => {
@@ -1242,6 +1251,20 @@ HARD RULES:
 
         showStatus('Interview complete. Transcript and Evaluation stored in database.', 'success');
         renderScorecard(data.scorecard || {}, 'scorecard-area');
+
+        const dlArea = document.getElementById('dl-btn-area');
+        if (data.transcript?.length || data.scorecard?.overall_score) {
+          const candidateName = document.getElementById('candidate-name').value.trim() || 'Candidate';
+          currentEndedInterview = {
+            candidateName,
+            date: new Date().toLocaleString(),
+            transcript: data.transcript || [],
+            scorecard: data.scorecard || {},
+          };
+          dlArea.innerHTML = '<button onclick="downloadEndedInterview()" style="margin-top:12px; padding:9px 18px; font-size:13px; font-weight:600; color:#fff; background:var(--primary); border:none; border-radius:8px; cursor:pointer; width:100%;">⬇ Download Transcript + Scorecard PDF</button>';
+        } else {
+          dlArea.innerHTML = '';
+        }
       } catch (err) {
         showStatus('Error: ' + err.message, 'error');
         setLoading(false);
@@ -1348,6 +1371,8 @@ HARD RULES:
       document.getElementById('modal-recording-processing').style.display = 'none';
       document.getElementById('modal-bot-audio').src = '';
       document.getElementById('modal-candidate-audio').src = '';
+      document.getElementById('modal-download-btn').style.display = 'none';
+      currentModalMeeting = null;
 
       transcriptFeed.innerHTML = 'Loading transcript...';
       scorecardContent.innerHTML = 'Loading scorecard...';
@@ -1364,6 +1389,8 @@ HARD RULES:
         const data = await meetingRes.json();
         const m = data.meeting;
 
+        currentModalMeeting = m;
+        document.getElementById('modal-download-btn').style.display = 'inline-block';
         document.getElementById('modal-title').textContent = `Interview: ${m.candidateName}`;
         document.getElementById('modal-meta').textContent =
           `${m.botName} · ${new Date(m.createdAt).toLocaleString()} · ${m.meetingUrl}`;
@@ -1440,6 +1467,158 @@ HARD RULES:
 
     function closeModal() {
       document.getElementById('meeting-modal').classList.remove('show');
+      document.getElementById('modal-download-btn').style.display = 'none';
+      currentModalMeeting = null;
+    }
+
+    // --- PDF DOWNLOAD ---
+    function downloadCurrentMeeting() {
+      if (!currentModalMeeting) return;
+      const m = currentModalMeeting;
+      downloadInterviewPDF({
+        candidateName: m.candidateName,
+        date: new Date(m.createdAt).toLocaleString(),
+        botName: m.botName,
+        meetingUrl: m.meetingUrl,
+        transcript: m.transcript || [],
+        scorecard: m.scorecard || {},
+      });
+    }
+
+    function downloadEndedInterview() {
+      if (!currentEndedInterview) return;
+      downloadInterviewPDF(currentEndedInterview);
+    }
+
+    function downloadInterviewPDF({ candidateName, date, botName, meetingUrl, transcript, scorecard }) {
+      const win = window.open('', '_blank');
+      win.document.write(buildPrintHTML({ candidateName, date, botName, meetingUrl, transcript, scorecard }));
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); }, 400);
+    }
+
+    function buildPrintHTML({ candidateName, date, botName, meetingUrl, transcript, scorecard }) {
+      const esc = s => (s || '').toString()
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      // Transcript lines
+      let txHtml = '';
+      if (transcript && transcript.length) {
+        txHtml = transcript.map(t => {
+          const isAI = t.speaker === 'AI';
+          return `<div class="tx-row ${isAI ? 'tx-ai' : 'tx-human'}">
+            <span class="tx-label">${esc(t.speaker)}</span>
+            <span class="tx-text">${esc(t.text)}</span>
+          </div>`;
+        }).join('');
+      } else {
+        txHtml = '<p style="color:#888;font-style:italic;">No transcript recorded.</p>';
+      }
+
+      // Scorecard block
+      let scHtml = '';
+      if (scorecard && scorecard.overall_score) {
+        const recColor =
+          (scorecard.recommendation || '').includes('STRONG') ? '#16a34a' :
+          (scorecard.recommendation || '').includes('NO')     ? '#dc2626' : '#d97706';
+
+        let dimsHtml = '';
+        if (scorecard.dimensions?.length) {
+          dimsHtml = scorecard.dimensions.map(d => `
+            <div class="dim">
+              <div class="dim-row">
+                <span class="dim-name">${esc(d.name)}</span>
+                <span class="dim-score">${d.score}/10</span>
+              </div>
+              <div class="bar-bg"><div class="bar-fill" style="width:${(d.score/10)*100}%"></div></div>
+              <div class="dim-comment">${esc(d.comment || '')}</div>
+            </div>`).join('');
+        }
+
+        const tags = (arr, cls, prefix) =>
+          arr?.length ? `<div class="tags ${cls}">${prefix} ${arr.map(esc).join(' · ')}</div>` : '';
+
+        scHtml = `
+          <div class="sc-overall">
+            <span class="sc-score-big">${scorecard.overall_score}<small>/10</small></span>
+            <span class="sc-rec" style="color:${recColor};border-color:${recColor};">${esc(scorecard.recommendation || '')}</span>
+          </div>
+          <p class="sc-summary">${esc(scorecard.summary || '')}</p>
+          ${dimsHtml}
+          ${tags(scorecard.strengths, 'good', '✓')}
+          ${tags(scorecard.concerns,  'bad',  '✗')}
+          ${scorecard.suggested_next_steps ? `<div class="sc-next"><strong>Next Steps:</strong> ${esc(scorecard.suggested_next_steps)}</div>` : ''}`;
+      } else {
+        scHtml = '<p style="color:#888;font-style:italic;">No scorecard available.</p>';
+      }
+
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Interview Report – ${esc(candidateName)}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1e293b; background: #fff; padding: 32px 40px; }
+  h1 { font-size: 22px; font-weight: 700; color: #5b21b6; margin-bottom: 2px; }
+  h2 { font-size: 15px; font-weight: 700; color: #5b21b6; margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #ede9fe; text-transform: uppercase; letter-spacing: .04em; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; margin: 14px 0 0; }
+  .meta-row { font-size: 12px; color: #64748b; }
+  .meta-row strong { color: #1e293b; }
+
+  /* Transcript */
+  .tx-row { display: flex; gap: 10px; margin-bottom: 10px; }
+  .tx-label { font-weight: 700; min-width: 80px; flex-shrink: 0; font-size: 12px; padding-top: 2px; }
+  .tx-ai .tx-label { color: #7c3aed; }
+  .tx-human .tx-label { color: #0369a1; }
+  .tx-text { line-height: 1.55; }
+
+  /* Scorecard */
+  .sc-overall { display: flex; align-items: center; gap: 18px; margin-bottom: 10px; }
+  .sc-score-big { font-size: 40px; font-weight: 800; color: #5b21b6; line-height: 1; }
+  .sc-score-big small { font-size: 18px; font-weight: 400; color: #94a3b8; }
+  .sc-rec { font-size: 13px; font-weight: 700; padding: 4px 12px; border: 1.5px solid; border-radius: 20px; }
+  .sc-summary { color: #475569; margin-bottom: 18px; line-height: 1.6; }
+  .dim { margin-bottom: 14px; }
+  .dim-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .dim-name { font-weight: 600; }
+  .dim-score { font-weight: 700; color: #5b21b6; }
+  .bar-bg { height: 6px; background: #ede9fe; border-radius: 3px; margin-bottom: 4px; }
+  .bar-fill { height: 6px; background: #7c3aed; border-radius: 3px; }
+  .dim-comment { font-size: 12px; color: #64748b; }
+  .tags { font-size: 12px; padding: 8px 12px; border-radius: 8px; margin: 8px 0; line-height: 1.5; }
+  .tags.good { background: #f0fdf4; color: #166534; }
+  .tags.bad  { background: #fef2f2; color: #991b1b; }
+  .sc-next { margin-top: 14px; font-size: 13px; color: #1e293b; line-height: 1.55; }
+
+  /* Page break before scorecard */
+  .page-break { page-break-before: always; padding-top: 20px; }
+
+  @media print {
+    body { padding: 20px 28px; }
+    @page { margin: 15mm; }
+  }
+</style>
+</head>
+<body>
+  <h1>Interview Report</h1>
+  <div class="meta-grid">
+    <div class="meta-row"><strong>Candidate:</strong> ${esc(candidateName)}</div>
+    <div class="meta-row"><strong>Date:</strong> ${esc(date)}</div>
+    ${botName ? `<div class="meta-row"><strong>Interviewer Bot:</strong> ${esc(botName)}</div>` : ''}
+    ${meetingUrl ? `<div class="meta-row"><strong>Meeting:</strong> ${esc(meetingUrl)}</div>` : ''}
+  </div>
+
+  <h2>Interview Transcript</h2>
+  ${txHtml}
+
+  <div class="page-break">
+    <h2>Evaluation Scorecard</h2>
+    ${scHtml}
+  </div>
+</body>
+</html>`;
     }
 
     // --- VIEW 3: PROMPT GENERATOR ---
