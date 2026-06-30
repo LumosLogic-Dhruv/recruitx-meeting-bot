@@ -14,12 +14,12 @@ import httpx
 # timer must be long enough to accumulate all the fragments of one answer.
 # Target: respond ~1.5s after the candidate stops speaking.
 # Total per turn = endpointing(300ms) + our timer + LLM(~300ms) + TTS(~75ms).
-SILENCE_SHORT      = 1.2   # 1–5 words   → total ~1.5s after candidate stops
-SILENCE_MEDIUM     = 1.8   # 6–15 words  → total ~2.1s
-SILENCE_LONG       = 2.5   # 16–35 words → total ~2.8s
-SILENCE_XLONG      = 4.0   # 35+ words
-SILENCE_INCOMPLETE = 4.5   # sentence ends mid-thought ("and", "the", "so"…)
-SILENCE_INTERRUPTED = 0.8  # candidate spoke over bot — respond fast
+SILENCE_SHORT      = 0.8   # 1–5 words   → total ~1.1s after candidate stops
+SILENCE_MEDIUM     = 1.2   # 6–15 words  → total ~1.5s
+SILENCE_LONG       = 2.0   # 16–35 words → total ~2.3s
+SILENCE_XLONG      = 3.5   # 35+ words
+SILENCE_INCOMPLETE = 4.0   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 0.5  # candidate spoke over bot — respond fast
 
 MIN_WORDS_TO_RESPOND = 4   # ignore stray fragments shorter than this
 
@@ -570,7 +570,7 @@ class ConversationPipeline:
                     model=self._model,
                     messages=messages,
                     temperature=0.85,
-                    max_tokens=300,
+                    max_tokens=120,
                     stream=True,
                 )
                 async for chunk in stream:
