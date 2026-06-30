@@ -9,18 +9,19 @@ from openai import AsyncOpenAI
 import httpx
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
-# Deepgram endpointing is 1000ms. Natural speech has 600–1200ms thinking pauses
-# BETWEEN phrases that arrive as separate Deepgram segments. The silence timer must
-# outlast (endpointing_delay + thinking_pause) so we never fire on a mid-sentence
-# fragment. Rule of thumb: timer > 1000ms endpointing + 1500ms max natural pause.
-SILENCE_SHORT      = 2.5   # 1–5 words  (was 0.8 — caused mid-sentence firing)
-SILENCE_MEDIUM     = 3.5   # 6–15 words (was 1.8)
-SILENCE_LONG       = 5.0   # 16–35 words (was 4.0)
-SILENCE_XLONG      = 8.0   # 35+ words
-SILENCE_INCOMPLETE = 7.0   # sentence ends mid-thought ("and", "the", "so"…)
-SILENCE_INTERRUPTED = 2.0  # candidate spoke over bot — respond fast
+# Deepgram endpointing=1000ms fires a transcript segment after 1s of audio silence.
+# Our timer starts AFTER we receive the segment — it waits for the NEXT segment.
+# Natural inter-segment gaps (thinking, breath) are 200–800ms, so timers of 1–2s
+# are enough to catch a follow-on segment while still feeling responsive.
+# Total perceived latency = endpointing(1s) + our timer + LLM + TTS.
+SILENCE_SHORT      = 1.0   # 1–5 words
+SILENCE_MEDIUM     = 2.0   # 6–15 words
+SILENCE_LONG       = 3.5   # 16–35 words
+SILENCE_XLONG      = 5.5   # 35+ words
+SILENCE_INCOMPLETE = 5.0   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 1.2  # candidate spoke over bot — respond fast
 
-MIN_WORDS_TO_RESPOND = 8   # ignore fragments shorter than this (was 5)
+MIN_WORDS_TO_RESPOND = 4   # ignore stray fragments shorter than this
 
 _TRAILING_WORDS = {
     'and', 'or', 'but', 'so', 'because', 'although', 'though', 'while',
@@ -210,6 +211,7 @@ class ConversationPipeline:
             self._flush_pending()
 
     def on_transcript_update(self, text: str, speaker: str = "Candidate"):
+        """Called on finalized transcript segments (transcript.data events)."""
         self._pending_text = (self._pending_text + " " + text).strip()
         self._pending_speaker = speaker
 
@@ -221,6 +223,16 @@ class ConversationPipeline:
         self._words_since_last_bot += len(text.split())
         self._maybe_schedule_backchannel()
         self._reset_silence_timer()
+
+    def on_partial_transcript(self, speaker: str = "Candidate"):
+        """Called on interim transcript segments (transcript.partial_data events).
+        Does NOT accumulate text — the final event delivers the clean version.
+        Only purpose: reset the silence timer so the AI knows the candidate is
+        still speaking and doesn't respond to an incomplete answer."""
+        if self._speaking:
+            return
+        if self._pending_text:
+            self._reset_silence_timer()
 
     # ── Backchannel ────────────────────────────────────────────────────────────
 
@@ -279,13 +291,10 @@ class ConversationPipeline:
             print(f"[Pipeline] Incomplete sentence detected — waiting {SILENCE_INCOMPLETE}s")
             return SILENCE_INCOMPLETE
         words = len(text.split())
-        # Deepgram punctuates complete sentences. If punctuation is present the
-        # candidate likely finished a thought; use the standard word-count tiers.
-        # If there is NO terminal punctuation the segment is probably mid-sentence
-        # (natural pause during a longer answer) — add 1.5s of extra headroom so
-        # we don't fire on a fragment before the next Deepgram chunk arrives.
+        # If there is NO terminal punctuation the segment may be mid-sentence —
+        # add a small extra window so the next Deepgram chunk can arrive first.
         ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
-        extra = 0.0 if ends_complete else 1.5
+        extra = 0.0 if ends_complete else 0.5
         if words <= 5:
             return SILENCE_SHORT + extra
         elif words <= 15:
@@ -626,12 +635,20 @@ class ConversationPipeline:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}/stream"
         payload = {
             "text": text,
+            # eleven_flash_v2_5: ~75ms time-to-first-audio, 32 languages including
+            # Indian English. Replaced eleven_turbo_v2_5 (deprecated July 2026).
             "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-            # mp3_22050_32: 22kHz mono at 32kbps — half the bytes of mp3_44100_128.
-            # Imperceptible quality difference for voice; ~40% faster to transfer.
+            "voice_settings": {
+                "stability": 0.55,          # slightly above default → consistent voice across turns
+                "similarity_boost": 0.80,   # strong voice adherence
+                "style": 0.0,               # neutral/professional tone for interviews
+                "use_speaker_boost": False, # default True adds compute — False saves ~50ms/sentence
+            },
+            # mp3_22050_32: 22kHz mono 32kbps — smallest MP3 Recall.ai accepts.
+            # Half the bytes of mp3_44100_128 with imperceptible quality difference for voice.
             "output_format": "mp3_22050_32",
-            # Level 4 = maximum ElevenLabs-side latency optimization.
+            # optimize_streaming_latency=4: maximum server-side latency reduction.
+            # Still valid per ElevenLabs docs (not deprecated).
             "optimize_streaming_latency": 4,
         }
         chunks: list[bytes] = []

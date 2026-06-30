@@ -221,8 +221,11 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             session["greeted"] = True
             background_tasks.add_task(_webhook_greeting, bot_id)
 
-    # Real-time transcript segment (delivered via per-bot realtime_endpoints)
-    if event == "transcript.data":
+    # Real-time transcript events from Recall.ai realtime_endpoints
+    # transcript.partial_data = interim words (candidate is mid-sentence)
+    # transcript.data         = finalized utterance (Deepgram endpointing fired)
+    if event in ("transcript.data", "transcript.partial_data"):
+        is_final = event == "transcript.data"
         bot_id = data.get("bot", {}).get("id", "")
         session = _sessions.get(bot_id)
         if not session:
@@ -236,27 +239,30 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         participant = inner.get("participant", {})
         speaker = participant.get("name") or "Candidate"
 
-        print(f"[Webhook] Transcript from {speaker}: words={len(words)}")
-
         if words and speaker.lower() != bot_name.lower():
             text = " ".join(w.get("text", "") for w in words).strip()
-            if text:
-                # Deduplication: Deepgram occasionally re-delivers a corrected or
-                # duplicate final segment for the same utterance. Without this check
-                # the pipeline would process the same text twice, producing a second
-                # AI response mid-sentence or creating doubled transcript entries.
+            if not text:
+                return {"ok": True}
+
+            if is_final:
+                # Deduplicate final segments — Deepgram occasionally re-delivers a
+                # corrected version of the same utterance. Prevents double AI responses.
                 seen = _seen_segments.setdefault(bot_id, set())
                 segment_key = f"{speaker}:{text}"
                 if segment_key in seen:
-                    print(f"[Webhook] Duplicate segment skipped: {text[:50]}")
+                    print(f"[Webhook] Duplicate final skipped: {text[:50]}")
                     return {"ok": True}
                 seen.add(segment_key)
-                # Cap the set size to avoid unbounded memory growth on long interviews
                 if len(seen) > 400:
                     seen.clear()
-
-                print(f"[Webhook] {speaker}: {text}")
+                print(f"[Webhook] FINAL — {speaker}: {text}")
                 pipeline.on_transcript_update(text, speaker)
+            else:
+                # Partial: only reset the silence timer so the pipeline knows
+                # the candidate is still speaking. Do NOT accumulate partial text —
+                # the final event will deliver the clean, punctuated version.
+                print(f"[Webhook] PARTIAL — {speaker}: {text[:50]}…")
+                pipeline.on_partial_transcript(speaker)
 
     return {"ok": True}
 

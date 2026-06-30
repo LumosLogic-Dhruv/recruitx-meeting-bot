@@ -35,31 +35,20 @@ class RecallClient:
                 "provider": {
                     "deepgram_streaming": {
                         "model": os.getenv("DEEPGRAM_MODEL", "nova-3"),
-                        # Removed "language: en-IN" — forcing en-IN hurts nova-3's
-                        # recognition of technical terms (React → "react", Next.js →
-                        # "next sales", RecruitX → "famous project"). Let nova-3
-                        # auto-detect; it handles Indian English natively.
+                        # "multi" = nova-3 multilingual mode: handles Indian English,
+                        # Hindi, and Hinglish code-switching natively. Better than
+                        # "en-IN" (single dialect lock) for mixed-language speakers.
+                        "language": "multi",
+                        # smart_format=true supersedes punctuate — handles punctuation,
+                        # dates, currency, phones, URLs. Do NOT add punctuate=true.
                         "smart_format": True,
-                        "punctuate": True,
-                        # Raised from 500ms → 1000ms.
-                        # 500ms was too aggressive — mid-sentence thinking pauses of
-                        # 600ms+ caused Deepgram to split one answer into 3-4 fragments,
-                        # each arriving as a separate webhook event. The pipeline's silence
-                        # timer then fired on the first fragment before the rest arrived.
-                        # 1000ms gives natural speech pauses room without hurting latency
-                        # noticeably (candidates speak for 5-30s, so +500ms is < 3%).
+                        # 1000ms: gives natural intra-sentence pauses room to complete
+                        # before Deepgram fires a transcript segment.
                         "endpointing": 1000,
-                        # Keyword boosts for technical terms that ASR commonly mishears.
-                        # Format: "term:boost" where boost 1-10 (higher = stronger bias).
-                        "keywords": [
-                            "React:3", "Next.js:3", "Node.js:3", "MongoDB:3",
-                            "TypeScript:3", "JavaScript:2", "Python:2",
-                            "PostgreSQL:3", "MySQL:2", "GraphQL:3", "REST:2",
-                            "Docker:3", "Kubernetes:3", "AWS:3", "GCP:2",
-                            "Redis:3", "FastAPI:3", "Express:2", "Django:2",
-                            "RecruitX:5", "Recall:3", "Deepgram:4", "ElevenLabs:4",
-                            "GitHub:2", "CI/CD:3", "DevOps:2", "microservices:2",
-                        ],
+                        # NOTE: `keywords` is NOT supported on nova-3 — use `keyterm`
+                        # instead. However Recall.ai does not document `keyterm` as a
+                        # passthrough field, so omit it to avoid bot creation failures.
+                        # nova-3 accuracy is sufficient without keyword boosting.
                     },
                 }
             },
@@ -68,7 +57,15 @@ class RecallClient:
         }
         if webhook_url:
             recording_config["realtime_endpoints"] = [
-                {"url": webhook_url, "type": "webhook", "events": ["transcript.data"]}
+                {
+                    "url": webhook_url,
+                    "type": "webhook",
+                    # transcript.data = finalized utterance (primary)
+                    # transcript.partial_data = interim words while candidate is speaking
+                    # Subscribing to both lets the pipeline start its silence timer
+                    # as soon as the first word arrives, not after endpointing fires.
+                    "events": ["transcript.data", "transcript.partial_data"],
+                }
             ]
 
         payload: dict = {
