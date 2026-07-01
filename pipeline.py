@@ -681,12 +681,8 @@ class ConversationPipeline:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}/stream"
         payload = {
             "text": text,
-            # eleven_multilingual_v2: purpose-built for accented & non-western-English
-            # voices. Renders Indian English significantly more naturally than flash_v2_5
-            # (which is speed-optimized for neutral accents). Tradeoff: ~200-250ms TTFA
-            # vs ~75ms for flash — acceptable given our other latency savings.
-            # Override with ELEVENLABS_MODEL_ID=eleven_flash_v2_5 to go back to fast mode.
-            "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
+            # eleven_flash_v2_5: ~75ms TTFA, optimized for low latency.
+            "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
             "voice_settings": {
                 # stability 0.52: slightly above middle keeps the voice consistent
                 # across turns while allowing natural pitch variation within a sentence.
