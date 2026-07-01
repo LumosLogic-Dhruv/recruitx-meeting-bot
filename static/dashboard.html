@@ -544,6 +544,94 @@
       margin: auto;
     }
 
+    /* Voice Picker */
+    .voice-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .voice-card {
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 10px 8px;
+      cursor: pointer;
+      transition: border-color 0.18s, background 0.18s, transform 0.12s;
+      background: #fff;
+      user-select: none;
+      position: relative;
+    }
+
+    .voice-card:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      background: var(--primary-glow);
+    }
+
+    .voice-card.selected {
+      border-color: var(--primary);
+      background: rgba(139, 92, 246, 0.06);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+
+    .voice-card-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 3px;
+    }
+
+    .voice-flag {
+      font-size: 14px;
+    }
+
+    .voice-tag {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      padding: 1px 6px;
+      border-radius: 99px;
+      background: rgba(139, 92, 246, 0.1);
+      color: var(--primary);
+      margin-left: auto;
+    }
+
+    .voice-desc {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    .voice-check {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 14px;
+      height: 14px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .voice-card.selected .voice-check {
+      display: flex;
+    }
+
+    .voice-check::after {
+      content: '';
+      width: 7px;
+      height: 4px;
+      border-left: 1.5px solid #fff;
+      border-bottom: 1.5px solid #fff;
+      transform: rotate(-45deg) translateY(-1px);
+    }
+
     /* Prompt Cards */
     .prompt-card {
       background: var(--card);
@@ -830,6 +918,13 @@ HARD RULES:
               <input id="candidate-name" type="text" placeholder="Jane Doe" />
             </div>
 
+            <div class="form-group">
+              <label>Interviewer Voice</label>
+              <div class="voice-grid" id="voice-grid">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+
             <div style="display: flex; gap: 12px; margin-top: 10px;">
               <button class="btn btn-primary" style="flex:1" id="btn-start" onclick="startInterview()">Start Interview</button>
               <button class="btn btn-danger" style="flex:1" id="btn-end" onclick="endInterview()" disabled>End Interview</button>
@@ -1013,12 +1108,55 @@ HARD RULES:
     const API = window.location.origin;
     let token = localStorage.getItem('token') || '';
     let currentUser = null;
-    
+
     // Live Meeting State
     let activeMeetingUrl = null;
     let activeBotId = null;
     let pollInterval = null;
     let lastTranscriptLen = 0;
+
+    // ── Voice Picker ──────────────────────────────────────────────────────────
+    const VOICES = [
+      { id: "V9LCAAi4tTlqe9JadbCo", name: "Alex",   flag: "🌍", tag: "Default",        desc: "Neutral professional", gender: "male"   },
+      { id: "gHu9GtaHOXcSqFTK06ux", name: "Anjali", flag: "🇮🇳", tag: "Conversational", desc: "Warm, cheerful & clear", gender: "female" },
+      { id: "K2Byg54sHB1oHegvENtI", name: "Kanika", flag: "🇮🇳", tag: "Conversational", desc: "Calm & commanding",      gender: "female" },
+      { id: "RDWdsTU6N02BFftbIEAp", name: "Tara",   flag: "🇮🇳", tag: "Conversational", desc: "Natural & warm",         gender: "female" },
+      { id: "3AMU7jXQuQa3oRvRqUmb", name: "Viraj",  flag: "🇮🇳", tag: "Narration",      desc: "Rich & confident",      gender: "male"   },
+      { id: "Sxk6njaoa7XLsAFT7WcN", name: "Amit",   flag: "🇮🇳", tag: "Conversational", desc: "Warm & sympathetic",    gender: "male"   },
+      { id: "JS6C6yu2x9Byh4i1a8lX", name: "Meher",  flag: "🇮🇳", tag: "Narration",      desc: "Deep & expressive",    gender: "female" },
+      { id: "FFmp1h1BMl0iVHA0JxrI", name: "Tarini", flag: "🇮🇳", tag: "Conversational", desc: "Expressive & natural",  gender: "female" },
+      { id: "zT03pEAEi0VHKciJODfn", name: "Raju",   flag: "🇮🇳", tag: "Conversational", desc: "Friendly & clear",      gender: "male"   },
+    ];
+
+    let selectedVoiceId = localStorage.getItem('selectedVoiceId') || VOICES[0].id;
+
+    function renderVoiceGrid() {
+      const grid = document.getElementById('voice-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+      VOICES.forEach(v => {
+        const card = document.createElement('div');
+        card.className = 'voice-card' + (v.id === selectedVoiceId ? ' selected' : '');
+        card.dataset.id = v.id;
+        card.innerHTML = `
+          <div class="voice-check"></div>
+          <div class="voice-card-name">
+            <span class="voice-flag">${v.flag}</span>
+            <span>${v.name}</span>
+            <span class="voice-tag">${v.tag}</span>
+          </div>
+          <div class="voice-desc">${v.desc}</div>
+        `;
+        card.onclick = () => selectVoice(v.id);
+        grid.appendChild(card);
+      });
+    }
+
+    function selectVoice(id) {
+      selectedVoiceId = id;
+      localStorage.setItem('selectedVoiceId', id);
+      renderVoiceGrid();
+    }
 
     // Holds data for the currently open modal so the download button can access it
     let currentModalMeeting = null;
@@ -1042,10 +1180,11 @@ HARD RULES:
       }
       
       currentUser = JSON.parse(localStorage.getItem('user'));
-      
+
       document.getElementById('user-display-name').textContent = currentUser.name || 'User';
       document.getElementById('user-display-email').textContent = currentUser.email || '';
-      
+
+      renderVoiceGrid();
       loadPromptsDropdown();
     });
 
@@ -1196,11 +1335,11 @@ HARD RULES:
       try {
         const res = await fetch(`${API}/start-interview`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName }),
+          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName, voice_id: selectedVoiceId }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));

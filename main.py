@@ -56,6 +56,7 @@ class StartInterviewRequest(BaseModel):
     meeting_url: str
     system_prompt: str
     bot_name: str = "RecruitX AI Interviewer"
+    voice_id: str = ""
 
 
 class EndInterviewRequest(BaseModel):
@@ -110,12 +111,14 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         raise HTTPException(400, "Interview already active for this meeting URL")
 
     recall = _make_recall()
+    voice_id = req.voice_id or os.getenv("ELEVENLABS_VOICE_ID", "V9LCAAi4tTlqe9JadbCo")
     pipeline = ConversationPipeline(
         system_prompt=req.system_prompt,
         openai_key=os.getenv("OPENAI_API_KEY", ""),
         elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
-        voice_id=os.getenv("ELEVENLABS_VOICE_ID", "V9LCAAi4tTlqe9JadbCo"),
+        voice_id=voice_id,
     )
+    print(f"[Pipeline] Voice: {voice_id}")
 
     async def on_ai_response(text: str, audio_bytes: bytes):
         try:

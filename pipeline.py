@@ -301,11 +301,15 @@ class ConversationPipeline:
             print(f"[Pipeline] Incomplete sentence detected — waiting {SILENCE_INCOMPLETE}s")
             return SILENCE_INCOMPLETE
         words = len(text.split())
-        # With endpointing=300ms, breathing pauses fire mid-sentence segments that
-        # have no terminal punctuation. Add extra time so the next chunk arrives
-        # before the timer fires and we respond to an incomplete thought.
         ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
-        extra = 0.0 if ends_complete else 0.8
+        # Short fragments (≤4 words) without punctuation are likely mid-sentence
+        # bursts from 300ms endpointing — give more buffer to accumulate the rest.
+        # Medium utterances (5-15 words) without punctuation are usually complete
+        # thoughts; nova-3 smart_format just omitted the period. Minimal extra needed.
+        if not ends_complete:
+            extra = 0.5 if words <= 4 else 0.2
+        else:
+            extra = 0.0
         if words <= 5:
             return SILENCE_SHORT + extra
         elif words <= 15:
@@ -589,24 +593,48 @@ class ConversationPipeline:
                     await queue.put(buf.strip())
                 await queue.put(None)
 
-            async def tts_consumer():
+            # tts_delivery_queue carries (sentence_text, tts_task) pairs in order.
+            # start_tts kicks off synthesis the moment text is available; deliver_tts
+            # awaits each task and calls speak() in order. TTS for sentence N+1 runs
+            # in parallel with the speak() call for sentence N, saving ~300ms per
+            # additional sentence compared to sequential synthesis.
+            tts_delivery_queue: asyncio.Queue = asyncio.Queue()
+
+            async def start_tts():
                 while True:
                     sentence = await queue.get()
                     if sentence is None:
+                        await tts_delivery_queue.put(None)
                         break
                     if self._was_interrupted:
-                        print(f"[Pipeline] Interrupt detected — stopping after current sentence")
-                        while sentence is not None:
-                            sentence = await queue.get()
+                        print(f"[Pipeline] Interrupt detected — flushing TTS queue")
+                        try:
+                            while True:
+                                queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                        await tts_delivery_queue.put(None)
+                        break
+                    tts_task = asyncio.create_task(self._tts(sentence))
+                    await tts_delivery_queue.put((sentence, tts_task))
+
+            async def deliver_tts():
+                while True:
+                    item = await tts_delivery_queue.get()
+                    if item is None:
+                        break
+                    sentence, tts_task = item
+                    if self._was_interrupted:
                         break
                     print(f"[Pipeline] TTS → Recall: {sentence[:70]}")
-                    audio = await self._tts(sentence)
+                    audio = await tts_task
                     if audio and self._on_response:
                         await self._on_response(sentence, audio)
 
             await asyncio.gather(
                 asyncio.create_task(llm_producer()),
-                asyncio.create_task(tts_consumer()),
+                asyncio.create_task(start_tts()),
+                asyncio.create_task(deliver_tts()),
             )
 
             full_response = "".join(full_text)
@@ -650,10 +678,19 @@ class ConversationPipeline:
             # Indian English. Replaced eleven_turbo_v2_5 (deprecated July 2026).
             "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
             "voice_settings": {
-                "stability": 0.55,          # slightly above default → consistent voice across turns
-                "similarity_boost": 0.80,   # strong voice adherence
-                "style": 0.0,               # neutral/professional tone for interviews
-                "use_speaker_boost": False, # default True adds compute — False saves ~50ms/sentence
+                # stability 0.42: lower = more natural pitch variation per sentence.
+                # 0.55 was consistent but slightly flat/robotic. 0.42 adds the micro-
+                # variation that makes human speech feel alive without losing coherence.
+                "stability": 0.42,
+                # similarity_boost 0.75: how closely the output tracks the original
+                # voice clone. Slightly reduced from 0.80 — gives the model more room
+                # to breathe and sound less "processed".
+                "similarity_boost": 0.75,
+                # style 0.20: injects conversational warmth and slight expressiveness.
+                # 0.0 was flat; 0.20 adds the tone-shift that makes "Oh interesting"
+                # sound genuinely curious rather than monotone.
+                "style": 0.20,
+                "use_speaker_boost": False, # False saves ~50ms/sentence — keep for latency
             },
             # mp3_22050_32: 22kHz mono 32kbps — smallest MP3 Recall.ai accepts.
             # Half the bytes of mp3_44100_128 with imperceptible quality difference for voice.

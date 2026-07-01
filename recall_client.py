@@ -84,7 +84,7 @@ class RecallClient:
             print(f"[Recall] create_bot failed {res.status_code}: {res.text}")
             res.raise_for_status()
         print(
-            f"[Recall] Bot created — Deepgram endpointing=1000ms, no language lock "
+            f"[Recall] Bot created — Deepgram endpointing=300ms, nova-3 multi "
             f"(endpoint: {webhook_url or 'none'})"
         )
         return res.json()
