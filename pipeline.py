@@ -40,8 +40,8 @@ _TRAILING_WORDS = {
 BACKCHANNEL_WORD_THRESHOLD = 15
 BACKCHANNEL_MIN_INTERVAL = 6.0
 BACKCHANNELS = [
-    "Mm-hmm.", "Yeah.", "Right.", "I see.", "Okay.",
-    "Mmm.", "Got it.", "Sure.", "Interesting.", "Fair enough.",
+    "Right.", "Sure.", "I see.", "Okay.", "Mm-hmm.",
+    "Right, right.", "Sure, sure.", "Got it.", "Okay, okay.", "Interesting.",
 ]
 
 # Fixed: (?:\s+|$) ensures the last sentence in the LLM stream flushes immediately
@@ -50,7 +50,9 @@ BACKCHANNELS = [
 _SENTENCE_END = re.compile(r'(?<=[.!?])(?:\s+|$)')
 
 _RULES_PREFIX = """\
-YOU ARE A HUMAN INTERVIEWER ON A VOICE CALL. These rules are non-negotiable:
+YOU ARE A HUMAN INTERVIEWER ON A VOICE CALL — an Indian professional conducting a \
+real-time interview. Speak the way a warm, experienced Indian recruiter would on a phone call. \
+These rules are non-negotiable:
 
 1. ONE question per response. Never ask two things at once.
 
@@ -58,22 +60,27 @@ YOU ARE A HUMAN INTERVIEWER ON A VOICE CALL. These rules are non-negotiable:
 The candidate should be talking more than you.
 
 3. NEVER say "Excellent!", "Great answer!", "Perfect!", "Fantastic!", "Absolutely!" \
-— these are robotic AI clichés that break immersion immediately. \
-React like a real person: "Oh nice.", "Right.", "Yeah.", "Interesting.", "Got it.", \
-"Mmm okay.", "Makes sense.", "Oh cool." — short, casual, varied.
+— these are robotic AI clichés. \
+React like a real Indian professional would: \
+"Right, I see.", "Okay, so...", "Sure.", "That's good.", "I see, interesting.", \
+"Right right.", "Got it.", "Makes sense.", "Okay, good." \
+— natural Indian English, short, varied, never over-enthusiastic.
 
-4. Structure every response as: [1-2 word casual reaction] + [one question]. \
-Example: "Nice, so how did you handle the deployment side of that?" \
-Example: "Right, and was that your first time using Kubernetes?" \
-Example: "Interesting — what was the team size?"
+4. Structure every response as: [natural reaction] + [one question]. \
+Example: "Right, I see — so how did you handle the deployment side of that?" \
+Example: "Okay, so was that your first time working with Kubernetes?" \
+Example: "Got it — and what was the team size at that point?" \
+Example: "Sure, that makes sense — so what was your specific role there?"
 
-5. Use contractions always: I'm, that's, you've, didn't, wasn't, it's. \
-Never write "I am", "that is", "you have" — it sounds robotic when spoken aloud.
+5. Speak natural Indian English. Use contractions but also allow slightly more formal \
+phrasing where it fits: "Can you tell me...", "So basically...", "Could you walk me through...". \
+Avoid hyper-American slang like "Oh cool", "Oh nice", "Awesome" — an Indian interviewer \
+would never say these.
 
 6. Only ask about what the candidate JUST said. Never invent facts or assume anything.
 
-7. If the answer is vague or too short, push gently: "Can you walk me through that a bit more?" \
-or "How did that actually work?" — don't accept thin answers and move on.
+7. If the answer is vague or too short, push gently: "Can you walk me through that in more detail?" \
+or "How did that actually work in practice?" — don't accept thin answers and move on.
 
 8. Vary your openers every single turn. Repeating "Got it" five times sounds like a bot.
 
@@ -674,22 +681,25 @@ class ConversationPipeline:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}/stream"
         payload = {
             "text": text,
-            # eleven_flash_v2_5: ~75ms time-to-first-audio, 32 languages including
-            # Indian English. Replaced eleven_turbo_v2_5 (deprecated July 2026).
-            "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
+            # eleven_multilingual_v2: purpose-built for accented & non-western-English
+            # voices. Renders Indian English significantly more naturally than flash_v2_5
+            # (which is speed-optimized for neutral accents). Tradeoff: ~200-250ms TTFA
+            # vs ~75ms for flash — acceptable given our other latency savings.
+            # Override with ELEVENLABS_MODEL_ID=eleven_flash_v2_5 to go back to fast mode.
+            "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
             "voice_settings": {
-                # stability 0.42: lower = more natural pitch variation per sentence.
-                # 0.55 was consistent but slightly flat/robotic. 0.42 adds the micro-
-                # variation that makes human speech feel alive without losing coherence.
-                "stability": 0.42,
-                # similarity_boost 0.75: how closely the output tracks the original
-                # voice clone. Slightly reduced from 0.80 — gives the model more room
-                # to breathe and sound less "processed".
-                "similarity_boost": 0.75,
-                # style 0.20: injects conversational warmth and slight expressiveness.
-                # 0.0 was flat; 0.20 adds the tone-shift that makes "Oh interesting"
-                # sound genuinely curious rather than monotone.
-                "style": 0.20,
+                # stability 0.52: slightly above middle keeps the voice consistent
+                # across turns while allowing natural pitch variation within a sentence.
+                # Lower values (we tried 0.42) make short interview phrases sound erratic.
+                "stability": 0.52,
+                # similarity_boost 0.85: with eleven_multilingual_v2, higher values
+                # lock the model closer to the original voice's accent characteristics.
+                # Critical for Indian voices — lower values let the model drift neutral.
+                "similarity_boost": 0.85,
+                # style MUST be 0.0 for conversational use. Non-zero style adds
+                # ElevenLabs server-side compute (~50ms/sentence) AND makes short
+                # 1-2 sentence responses sound over-dramatic rather than natural.
+                "style": 0.0,
                 "use_speaker_boost": False, # False saves ~50ms/sentence — keep for latency
             },
             # mp3_22050_32: 22kHz mono 32kbps — smallest MP3 Recall.ai accepts.
