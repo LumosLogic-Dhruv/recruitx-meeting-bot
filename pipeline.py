@@ -18,23 +18,30 @@ SILENCE_SHORT      = 0.8   # 1–5 words   → total ~1.1s after candidate stops
 SILENCE_MEDIUM     = 1.2   # 6–15 words  → total ~1.5s
 SILENCE_LONG       = 2.0   # 16–35 words → total ~2.3s
 SILENCE_XLONG      = 3.5   # 35+ words
-SILENCE_INCOMPLETE = 4.0   # sentence ends mid-thought ("and", "the", "so"…)
+# 1.8s: was 4.0s which caused 4-5s delays. Indian English speakers frequently end
+# sentences with words like "basically", "okay", "yeah" — these are sentence-ENDERS
+# not mid-sentence indicators. 1.8s gives enough buffer for genuine trailing words
+# (and, but, because) without punishing normal Indian English speech patterns.
+SILENCE_INCOMPLETE = 1.8   # sentence ends mid-thought ("and", "the", "because"…)
 SILENCE_INTERRUPTED = 0.5  # candidate spoke over bot — respond fast
 
 MIN_WORDS_TO_RESPOND = 4   # ignore stray fragments shorter than this
 
+# Only words that GENUINELY mean the sentence is unfinished in mid-utterance.
+# Removed: 'basically', 'okay', 'ok', 'yeah', 'like', 'just', 'also', 'then',
+# 'now', 'well', 'even', 'still', 'already', 'both', 'some', 'any', 'more',
+# 'other', 'as' — Indian English speakers commonly END sentences with these words.
+# Keeping them caused 4.0s silence on almost every normal response.
 _TRAILING_WORDS = {
     'and', 'or', 'but', 'so', 'because', 'although', 'though', 'while',
     'which', 'that', 'who', 'whom', 'whose', 'where', 'when', 'how',
     'the', 'a', 'an', 'in', 'on', 'at', 'for', 'by', 'with', 'from',
     'to', 'of', 'into', 'about', 'through', 'during', 'between', 'among',
-    'basically', 'like', 'just', 'also', 'then', 'now', 'as', 'well',
-    'even', 'still', 'already', 'both', 'some', 'any', 'more', 'other',
     'my', 'our', 'their', 'this', 'these', 'those', 'its',
     'i', "i'm", "i've", "i'll", "i'd", 'we', 'they', 'he', 'she',
     'was', 'were', 'are', 'is', 'have', 'has', 'had', 'will', 'would',
     'can', 'could', 'should', 'not', 'it', 'be', 'been', 'being',
-    'uh', 'um', 'uhh', 'hmm', 'yeah', 'okay', 'ok', 'so',
+    'uh', 'um', 'uhh', 'hmm',
 }
 
 BACKCHANNEL_WORD_THRESHOLD = 15
@@ -59,33 +66,40 @@ These rules are non-negotiable:
 2. MAXIMUM 2 sentences per response — usually just 1. Think phone call, not email. \
 The candidate should be talking more than you.
 
-3. NEVER say "Excellent!", "Great answer!", "Perfect!", "Fantastic!", "Absolutely!" \
-— these are robotic AI clichés. \
-React like a real Indian professional would: \
-"Right, I see.", "Okay, so...", "Sure.", "That's good.", "I see, interesting.", \
-"Right right.", "Got it.", "Makes sense.", "Okay, good." \
-— natural Indian English, short, varied, never over-enthusiastic.
+3. NEVER say "Excellent!", "Great answer!", "Perfect!", "Fantastic!", "Absolutely!", \
+"That's great!", "Wonderful!" — robotic clichés. \
+React like a real Indian professional — pick from this varied list and NEVER repeat \
+the same opener twice in a row: \
+"Right, I see.", "Okay, so...", "Sure.", "Got it.", "Makes sense.", \
+"Interesting.", "I see.", "Right right.", "Okay, understood.", "Sure, okay.", \
+"That makes sense.", "Right, okay.", "I see, okay.", "Sure, good.", "Noted." \
+— short, natural, varied every single turn.
 
-4. Structure every response as: [natural reaction] + [one question]. \
-Example: "Right, I see — so how did you handle the deployment side of that?" \
-Example: "Okay, so was that your first time working with Kubernetes?" \
-Example: "Got it — and what was the team size at that point?" \
-Example: "Sure, that makes sense — so what was your specific role there?"
+4. Structure every response as: [reaction from rule 3] + [one question]. \
+Example: "Got it — so what stack did you use for that?" \
+Example: "Interesting — how large was the team?" \
+Example: "Sure, okay — what was your specific role there?" \
+Example: "Makes sense — and how long did that project take?"
 
-5. Speak natural Indian English. Use contractions but also allow slightly more formal \
-phrasing where it fits: "Can you tell me...", "So basically...", "Could you walk me through...". \
-Avoid hyper-American slang like "Oh cool", "Oh nice", "Awesome" — an Indian interviewer \
-would never say these.
+5. MOVE ON AFTER 2 FOLLOW-UPS ON THE SAME TOPIC. \
+If you have already asked 2 questions about the same project or subject, \
+move to a completely different area — a new technical skill, a different project, \
+or a behavioral question. Do NOT keep drilling the same project for more than 2 turns. \
+A real interviewer covers breadth, not just depth on one thing.
 
-6. Only ask about what the candidate JUST said. Never invent facts or assume anything.
+6. Speak natural Indian English. Avoid hyper-American slang: \
+"Oh cool", "Oh nice", "Awesome", "That's amazing" — an Indian professional would never say these.
 
-7. If the answer is vague or too short, push gently: "Can you walk me through that in more detail?" \
-or "How did that actually work in practice?" — don't accept thin answers and move on.
+7. Only ask about what the candidate JUST said. Never invent facts or assume anything.
 
-8. Vary your openers every single turn. Repeating "Got it" five times sounds like a bot.
+8. STT NOISE RULE — this is a real-time voice call and speech-to-text makes mistakes. \
+If the candidate's answer is short or garbled, ask ONE gentle follow-up: \
+"Could you tell me a bit more about that?" \
+Then move on to a new topic regardless. \
+NEVER ask for clarification on the same point twice.
 
-9. VOICE CALL — STT artifacts: text may have odd spellings or missing words. \
-Infer meaning from context. Only ask for clarification if the meaning is genuinely lost.
+9. VOICE CALL — STT artifacts: text may have odd spellings or fragments. \
+Infer meaning charitably from context. Only flag confusion if meaning is completely lost.
 
 """
 
@@ -610,17 +624,15 @@ class ConversationPipeline:
             async def start_tts():
                 while True:
                     sentence = await queue.get()
-                    if sentence is None:
+                    if sentence is None or self._was_interrupted:
+                        # Signal deliver_tts to stop, then drain any remaining LLM sentences
                         await tts_delivery_queue.put(None)
-                        break
-                    if self._was_interrupted:
-                        print(f"[Pipeline] Interrupt detected — flushing TTS queue")
-                        try:
-                            while True:
-                                queue.get_nowait()
-                        except asyncio.QueueEmpty:
-                            pass
-                        await tts_delivery_queue.put(None)
+                        if self._was_interrupted:
+                            try:
+                                while True:
+                                    queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                pass
                         break
                     tts_task = asyncio.create_task(self._tts(sentence))
                     await tts_delivery_queue.put((sentence, tts_task))
@@ -632,6 +644,7 @@ class ConversationPipeline:
                         break
                     sentence, tts_task = item
                     if self._was_interrupted:
+                        tts_task.cancel()
                         break
                     print(f"[Pipeline] TTS → Recall: {sentence[:70]}")
                     audio = await tts_task
