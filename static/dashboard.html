@@ -830,6 +830,26 @@ HARD RULES:
               <input id="candidate-name" type="text" placeholder="Jane Doe" />
             </div>
 
+            <div class="form-group">
+              <label>Interviewer Voice</label>
+              <div style="display: flex; gap: 10px;">
+                <label id="voice-opt-custom" style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 14px; border: 2px solid var(--primary); border-radius: 10px; flex: 1; background: var(--primary-glow); transition: border-color 0.15s, background 0.15s;">
+                  <input type="radio" name="voice-select" value="custom" checked onchange="updateVoiceStyle()" style="accent-color: var(--primary); width: 16px; height: 16px; flex-shrink: 0;">
+                  <div>
+                    <div style="font-weight: 600; font-size: 13px; color: var(--text);">Indian HR Interviewer</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Confident, professional tone</div>
+                  </div>
+                </label>
+                <label id="voice-opt-nila" style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 14px; border: 2px solid var(--border); border-radius: 10px; flex: 1; background: var(--card); transition: border-color 0.15s, background 0.15s;">
+                  <input type="radio" name="voice-select" value="nila" onchange="updateVoiceStyle()" style="accent-color: var(--primary); width: 16px; height: 16px; flex-shrink: 0;">
+                  <div>
+                    <div style="font-weight: 600; font-size: 13px; color: var(--text);">Nila</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Professional Guide, Indian accent</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <div style="display: flex; gap: 12px; margin-top: 10px;">
               <button class="btn btn-primary" style="flex:1" id="btn-start" onclick="startInterview()">Start Interview</button>
               <button class="btn btn-danger" style="flex:1" id="btn-end" onclick="endInterview()" disabled>End Interview</button>
@@ -1182,10 +1202,28 @@ HARD RULES:
       if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
     }
 
+    function updateVoiceStyle() {
+      const selected = document.querySelector('input[name="voice-select"]:checked')?.value;
+      const customOpt = document.getElementById('voice-opt-custom');
+      const nilaOpt = document.getElementById('voice-opt-nila');
+      if (selected === 'nila') {
+        nilaOpt.style.borderColor = 'var(--primary)';
+        nilaOpt.style.background = 'var(--primary-glow)';
+        customOpt.style.borderColor = 'var(--border)';
+        customOpt.style.background = 'var(--card)';
+      } else {
+        customOpt.style.borderColor = 'var(--primary)';
+        customOpt.style.background = 'var(--primary-glow)';
+        nilaOpt.style.borderColor = 'var(--border)';
+        nilaOpt.style.background = 'var(--card)';
+      }
+    }
+
     async function startInterview() {
       const raw = document.getElementById('meeting-input').value.trim();
       const prompt = document.getElementById('prompt').value.trim();
       const botName = "RecruitX AI Interviewer";
+      const voiceId = document.querySelector('input[name="voice-select"]:checked')?.value || 'custom';
 
       if (!raw) return showStatus('Please enter a Google Meet link.', 'error');
       if (!prompt) return showStatus('Please enter a system prompt.', 'error');
@@ -1201,7 +1239,7 @@ HARD RULES:
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName }),
+          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName, voice_id: voiceId }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));

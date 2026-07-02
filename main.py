@@ -22,6 +22,11 @@ load_dotenv()
 CONVEX_URL = os.getenv("CONVEX_URL", "https://focused-poodle-713.eu-west-1.convex.cloud")
 convex_client = ConvexClient(CONVEX_URL)
 
+VOICE_OPTIONS = {
+    "custom": os.getenv("ELEVENLABS_VOICE_ID", "SNr51KAoFWjq7b0L9cRb"),
+    "nila": os.getenv("ELEVENLABS_VOICE_ID_NILA", "aGb0TwKthRLQTPThYRqI"),
+}
+
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-me")
 
 def get_current_user(authorization: str = Header(None)):
@@ -111,7 +116,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         raise HTTPException(400, "Interview already active for this meeting URL")
 
     recall = _make_recall()
-    voice_id = req.voice_id or os.getenv("ELEVENLABS_VOICE_ID", "V9LCAAi4tTlqe9JadbCo")
+    voice_id = VOICE_OPTIONS.get(req.voice_id, VOICE_OPTIONS["custom"])
     pipeline = ConversationPipeline(
         system_prompt=req.system_prompt,
         openai_key=os.getenv("OPENAI_API_KEY", ""),
