@@ -9,11 +9,12 @@ from openai import AsyncOpenAI
 import httpx
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
-# Deepgram endpointing=300ms fires a segment after 300ms of audio silence.
-# At 300ms, breathing pauses and mid-clause gaps also trigger segments, so our
-# timer must be long enough to accumulate all the fragments of one answer.
-# Target: respond ~1.5s after the candidate stops speaking.
-# Total per turn = endpointing(300ms) + our timer + LLM(~300ms) + TTS(~75ms).
+# Deepgram endpointing=500ms fires a segment after 500ms of audio silence.
+# At 500ms, natural comma-pauses and intra-list breathing no longer trigger
+# spurious mid-sentence segments (confirmed Jul 1 recording: candidate listing
+# AgroSense/PashuMitra/AryaPath was cut off at the comma pause).
+# Target: respond ~1.5-2s after the candidate stops speaking.
+# Total per turn = endpointing(500ms) + our timer + LLM(~300ms) + TTS(~75ms).
 SILENCE_SHORT      = 0.8   # 1–5 words   → total ~1.1s after candidate stops
 SILENCE_MEDIUM     = 1.2   # 6–15 words  → total ~1.5s
 SILENCE_LONG       = 2.0   # 16–35 words → total ~2.3s
@@ -63,6 +64,15 @@ CONFUSION_FALLBACKS = [
 # even when there is no trailing whitespace — previously it sat in the buffer until
 # the stream ended, delaying TTS on the final sentence.
 _SENTENCE_END = re.compile(r'(?<=[.!?])(?:\s+|$)')
+
+# Detects when a candidate makes an enumeration promise before finishing the list
+# e.g. "I worked on three projects" → still listing, apply SILENCE_XLONG.
+_ENUM_PROMISE = re.compile(
+    r'\b(?:two|three|four|five|a\s+few|a\s+couple\s+of?|2|3|4|5)\s+'
+    r'(?:projects?|things?|points?|aspects?|areas?|skills?|tools?|languages?'
+    r'|frameworks?|apps?|products?|experiences?|examples?|main|key)',
+    re.IGNORECASE,
+)
 
 _RULES_PREFIX = """\
 YOU ARE A HUMAN INTERVIEWER ON A VOICE CALL — an Indian professional conducting a \
@@ -320,9 +330,26 @@ class ConversationPipeline:
         self._silence_task = asyncio.create_task(self._wait_for_silence())
 
     def _flush_pending(self):
-        if self._pending_text:
-            print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
-            self._reset_silence_timer()
+        if not self._pending_text:
+            return
+        word_count = len(self._pending_text.split())
+        # Text accumulated DURING bot speech (interruption) is often reflexive noise —
+        # "hmm", "okay sure", "yeah" — too short to be a real answer. Require 8 words
+        # minimum to avoid rapid double-responses where the bot repeats the same
+        # clarification phrase back-to-back (the "double prompting" stuttering bug).
+        if self._was_interrupted and word_count < 8:
+            print(
+                f"[Pipeline] Post-speech buffer too short ({word_count} words) — discarding"
+            )
+            self._pending_text = ""
+            self._was_interrupted = False
+            return
+        print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
+        # Reset interruption flag BEFORE starting the timer so _adaptive_timeout uses
+        # the normal word-count window (0.8s+), not the 0.5s SILENCE_INTERRUPTED shortcut
+        # that causes rapid LLM re-triggers with the same clarification response.
+        self._was_interrupted = False
+        self._reset_silence_timer()
 
     def _is_incomplete(self, text: str) -> bool:
         words = text.strip().split()
@@ -338,6 +365,11 @@ class ConversationPipeline:
     def _adaptive_timeout(self, text: str) -> float:
         if self._was_interrupted:
             return SILENCE_INTERRUPTED
+        # Enumeration promise check BEFORE _is_incomplete — needs the longer XLONG window,
+        # not just the 1.8s incomplete timer, because listing multiple items has longer pauses.
+        if _ENUM_PROMISE.search(text):
+            print(f"[Pipeline] Enumeration in progress — waiting {SILENCE_XLONG}s")
+            return SILENCE_XLONG
         if self._is_incomplete(text):
             print(f"[Pipeline] Incomplete sentence detected — waiting {SILENCE_INCOMPLETE}s")
             return SILENCE_INCOMPLETE
