@@ -51,6 +51,14 @@ BACKCHANNELS = [
     "Right, right.", "Sure, sure.", "Got it.", "Okay, okay.", "Interesting.",
 ]
 
+CONFUSION_PIVOT_THRESHOLD = 2
+CONFUSION_FALLBACKS = [
+    "Sure, let's come back to that. Tell me about another project you've worked on recently.",
+    "Okay, no worries. Let me ask you something different — what's your experience with system design?",
+    "Got it. Let's shift gears — tell me about a technical challenge you've solved recently.",
+    "That's fine. Let me ask you about something else — how do you approach debugging a production issue?",
+]
+
 # Fixed: (?:\s+|$) ensures the last sentence in the LLM stream flushes immediately
 # even when there is no trailing whitespace — previously it sat in the buffer until
 # the stream ended, delaying TTS on the final sentence.
@@ -98,8 +106,15 @@ If the candidate's answer is short or garbled, ask ONE gentle follow-up: \
 Then move on to a new topic regardless. \
 NEVER ask for clarification on the same point twice.
 
+8b. CORRECTION RULE — If the candidate says "it's not X" or "I mean Y": \
+(a) Immediately acknowledge the corrected term: "Got it, MERN stack." \
+(b) NEVER use the old garbled term again in this conversation. \
+(c) Ask your next question using the corrected term only.
+
 9. VOICE CALL — STT artifacts: text may have odd spellings or fragments. \
-Infer meaning charitably from context. Only flag confusion if meaning is completely lost.
+Infer meaning charitably from context. NEVER repeat an unusual or garbled-sounding \
+term back to the candidate verbatim. If unsure what was said, use a generic \
+follow-up: "Could you tell me a bit more about that?" — never echo the garbled word.
 
 """
 
@@ -120,6 +135,7 @@ class InterviewState:
     strengths: list = field(default_factory=list)
     concerns: list = field(default_factory=list)
     questions_asked: int = 0
+    consecutive_confusion_count: int = 0
     start_time: float = field(default_factory=time.monotonic)
 
     def elapsed_minutes(self) -> float:
@@ -152,6 +168,7 @@ class CandidateProfile:
     """Accumulates skills, technologies, and running-average performance scores."""
     skills_detected: list = field(default_factory=list)
     technologies_detected: list = field(default_factory=list)
+    confirmed_corrections: dict = field(default_factory=dict)  # garbled → correct
     communication_score: float = 3.0   # 1–5 running average
     technical_score: float = 3.0       # 1–5 running average
     answer_depth_score: float = 3.0    # 1–5 running average
@@ -209,6 +226,9 @@ class ConversationPipeline:
 
         # Interruption state
         self._was_interrupted: bool = False
+
+        # Confusion loop prevention
+        self._confusion_fallback_idx: int = 0
 
         # Interview state engine
         self._state = InterviewState()
@@ -340,6 +360,24 @@ class ConversationPipeline:
         else:
             return SILENCE_XLONG
 
+    def _detect_correction(self, text: str) -> tuple[str, str] | None:
+        """Returns (old_garbled_term, corrected_term) if the candidate corrects a mishearing."""
+        # "it's not X, it's Y" → old=group1, new=group2
+        m = re.search(r"(?:it'?s not|not)\s+(.+?)[,.]?\s+it'?s\s+(.+)", text, re.IGNORECASE)
+        if m:
+            return (m.group(1).strip(), m.group(2).strip())
+        # "I mean Y not X" / "I said Y not X" → old=group2, new=group1
+        m = re.search(r"(?:I mean|I said)\s+(.+?)[,.]?\s+not\s+(.+)", text, re.IGNORECASE)
+        if m:
+            return (m.group(2).strip(), m.group(1).strip())
+        return None
+
+    def _is_clarification_response(self, text: str) -> bool:
+        patterns = [
+            "tell me a bit more", "could you clarify", "can you elaborate", "what do you mean"
+        ]
+        return any(p in text.lower() for p in patterns)
+
     async def _wait_for_silence(self):
         timeout = self._adaptive_timeout(self._pending_text)
         print(f"[Pipeline] Silence timer: {timeout}s ({len(self._pending_text.split())} words so far)")
@@ -353,7 +391,36 @@ class ConversationPipeline:
         if len(text.split()) < MIN_WORDS_TO_RESPOND:
             print(f"[Pipeline] Fragment too short ({len(text.split())} words): '{text}' — ignored")
             return
-        await self._process_turn(text, speaker)
+        cleaned_text = await self._clean_transcript(text)
+        await self._process_turn(cleaned_text, speaker)
+
+    async def _clean_transcript(self, text: str) -> str:
+        """Fix obvious ASR acoustic errors before the interviewer LLM sees the text.
+        Returns original text on any error — never blocks the turn."""
+        try:
+            resp = await self._openai.chat.completions.create(
+                model=self._model,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "This is a real-time speech-to-text transcript from a software developer. "
+                        "Fix ONLY obvious acoustic errors: mangled tech names, framework names, "
+                        "acronyms (e.g. 'one stick' → 'MERN', 'management development' → 'MERN stack', "
+                        "'right level listen' → 'white-label', 'pseudo code' → 'solo project', "
+                        "'DLP' → 'raw PDF'). Do NOT change anything else. Return only the fixed text.\n\n"
+                        f"Transcript: {text}"
+                    ),
+                }],
+                max_tokens=200,
+                temperature=0.1,
+            )
+            cleaned = (resp.choices[0].message.content or text).strip()
+            if cleaned != text:
+                print(f"[Pipeline] ASR cleaned: '{text[:60]}' → '{cleaned[:60]}'")
+            return cleaned
+        except Exception as e:
+            print(f"[Pipeline] ASR cleaner error (non-fatal): {e}")
+            return text
 
     # ── Interview State Engine ─────────────────────────────────────────────────
 
@@ -475,6 +542,21 @@ class ConversationPipeline:
             f"\n[INTERVIEW STATE | phase={s.current_phase} | "
             f"turn={s.questions_asked} | {s.elapsed_minutes():.0f}min elapsed]"
         ]
+        if p.confirmed_corrections:
+            lines.append(
+                "CONFIRMED CORRECTIONS (use these terms ONLY, never the old ones): "
+                + ", ".join(
+                    f"'{old}' = actually '{new}'"
+                    for old, new in p.confirmed_corrections.items()
+                )
+            )
+        if s.consecutive_confusion_count >= CONFUSION_PIVOT_THRESHOLD:
+            lines.append(
+                "FORCE TOPIC CHANGE: You have asked for clarification too many times on this point. "
+                "Do NOT ask for clarification again. Move immediately to a completely new topic: "
+                + (s.topics_remaining[0] if s.topics_remaining else "a behavioral question")
+                + ". Acknowledge the candidate briefly and pivot."
+            )
         if s.topics_covered:
             lines.append(f"Already covered: {', '.join(s.topics_covered[-4:])}")
         if s.topics_remaining:
@@ -574,6 +656,35 @@ class ConversationPipeline:
             self._full_transcript.append({"speaker": speaker, "text": user_text})
             self._history.append({"role": "user", "content": user_text})
 
+            # Correction detection — update profile before LLM sees this turn's context
+            correction = self._detect_correction(user_text)
+            if correction:
+                old_term, new_term = correction
+                self._profile.confirmed_corrections[old_term] = new_term
+                self._profile.skills_detected = [
+                    s for s in self._profile.skills_detected
+                    if old_term.lower() not in s.lower()
+                ]
+                self._profile.technologies_detected = [
+                    t for t in self._profile.technologies_detected
+                    if old_term.lower() not in t.lower()
+                ]
+                print(f"[Pipeline] Correction: '{old_term}' → '{new_term}'")
+
+            # Forced topic pivot when confusion threshold reached — bypass LLM entirely
+            if self._state.consecutive_confusion_count >= CONFUSION_PIVOT_THRESHOLD:
+                fallback = CONFUSION_FALLBACKS[self._confusion_fallback_idx % len(CONFUSION_FALLBACKS)]
+                self._confusion_fallback_idx += 1
+                self._state.consecutive_confusion_count = 0
+                print(f"[Pipeline] Forced topic pivot: {fallback}")
+                audio = await self._tts(fallback)
+                if audio and self._on_response:
+                    await self._on_response(fallback, audio)
+                self._history.append({"role": "assistant", "content": fallback})
+                self._full_transcript.append({"speaker": "AI", "text": fallback})
+                self._eval_task = asyncio.create_task(self._evaluate_and_update(user_text))
+                return
+
             # Compress history if approaching the context limit (runs ~every 25 turns)
             await self._maybe_compress_history()
 
@@ -662,6 +773,12 @@ class ConversationPipeline:
                 self._history.append({"role": "assistant", "content": full_response})
                 self._full_transcript.append({"speaker": "AI", "text": full_response})
                 print(f"[Pipeline] AI complete: {full_response[:100]}")
+
+                if self._is_clarification_response(full_response):
+                    self._state.consecutive_confusion_count += 1
+                    print(f"[Pipeline] Clarification #{self._state.consecutive_confusion_count}")
+                else:
+                    self._state.consecutive_confusion_count = 0
 
             # Fire answer evaluation as a background task. It runs while the candidate
             # listens to the bot's response and formulates their next answer — zero

@@ -46,10 +46,17 @@ class RecallClient:
                         # Mid-sentence fragments still get accumulated by the silence
                         # timer before the LLM is called. Saves ~700ms per turn vs 1000ms.
                         "endpointing": 300,
-                        # NOTE: `keywords` is NOT supported on nova-3 — use `keyterm`
-                        # instead. However Recall.ai does not document `keyterm` as a
-                        # passthrough field, so omit it to avoid bot creation failures.
-                        # nova-3 accuracy is sufficient without keyword boosting.
+                        # keyterms: biases nova-3 beam-search toward these tokens when
+                        # acoustically plausible. No latency cost. Recall.ai passes
+                        # unknown fields through to Deepgram as-is.
+                        "keyterms": [
+                            "MERN", "React", "Node.js", "Express", "MongoDB", "Next.js",
+                            "TypeScript", "JavaScript", "Python", "Django", "FastAPI",
+                            "Supabase", "Firebase", "PostgreSQL", "MySQL", "Redis",
+                            "Docker", "Kubernetes", "AWS", "GCP", "Azure",
+                            "white-label", "Gemini", "OpenAI", "LLM", "API",
+                            "microservices", "REST", "GraphQL", "WebSocket",
+                        ],
                     },
                 }
             },
@@ -84,8 +91,8 @@ class RecallClient:
             print(f"[Recall] create_bot failed {res.status_code}: {res.text}")
             res.raise_for_status()
         print(
-            f"[Recall] Bot created — Deepgram endpointing=300ms, nova-3 multi "
-            f"(endpoint: {webhook_url or 'none'})"
+            f"[Recall] Bot created — Deepgram endpointing=300ms, nova-3 multi, "
+            f"keyterms active (endpoint: {webhook_url or 'none'})"
         )
         return res.json()
 
