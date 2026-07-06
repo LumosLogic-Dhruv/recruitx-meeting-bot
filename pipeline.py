@@ -9,21 +9,16 @@ from openai import AsyncOpenAI
 import httpx
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
-# Deepgram endpointing=500ms fires a segment after 500ms of audio silence.
-# At 500ms, natural comma-pauses and intra-list breathing no longer trigger
-# spurious mid-sentence segments (confirmed Jul 1 recording: candidate listing
-# AgroSense/PashuMitra/AryaPath was cut off at the comma pause).
-# Target: respond ~1.5-2s after the candidate stops speaking.
-# Total per turn = endpointing(500ms) + our timer + LLM(~300ms) + TTS(~75ms).
+# Deepgram endpointing=300ms fires a segment after 300ms of audio silence.
+# At 300ms, breathing pauses and mid-clause gaps also trigger segments, so our
+# timer must be long enough to accumulate all the fragments of one answer.
+# Target: respond ~1.5s after the candidate stops speaking.
+# Total per turn = endpointing(300ms) + our timer + LLM(~300ms) + TTS(~75ms).
 SILENCE_SHORT      = 0.8   # 1–5 words   → total ~1.1s after candidate stops
 SILENCE_MEDIUM     = 1.2   # 6–15 words  → total ~1.5s
 SILENCE_LONG       = 2.0   # 16–35 words → total ~2.3s
 SILENCE_XLONG      = 3.5   # 35+ words
-# 1.8s: was 4.0s which caused 4-5s delays. Indian English speakers frequently end
-# sentences with words like "basically", "okay", "yeah" — these are sentence-ENDERS
-# not mid-sentence indicators. 1.8s gives enough buffer for genuine trailing words
-# (and, but, because) without punishing normal Indian English speech patterns.
-SILENCE_INCOMPLETE = 1.8   # sentence ends mid-thought ("and", "the", "because"…)
+SILENCE_INCOMPLETE = 4.0   # sentence ends mid-thought ("and", "the", "so"…)
 SILENCE_INTERRUPTED = 0.5  # candidate spoke over bot — respond fast
 
 MIN_WORDS_TO_RESPOND = 4   # ignore stray fragments shorter than this
@@ -375,14 +370,10 @@ class ConversationPipeline:
             return SILENCE_INCOMPLETE
         words = len(text.split())
         ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
-        # Short fragments (≤4 words) without punctuation are likely mid-sentence
-        # bursts from 300ms endpointing — give more buffer to accumulate the rest.
-        # Medium utterances (5-15 words) without punctuation are usually complete
-        # thoughts; nova-3 smart_format just omitted the period. Minimal extra needed.
-        if not ends_complete:
-            extra = 0.5 if words <= 4 else 0.2
-        else:
-            extra = 0.0
+        # With endpointing=300ms, breathing pauses fire mid-sentence segments that
+        # have no terminal punctuation. Add extra time so the next chunk arrives
+        # before the timer fires and we respond to an incomplete thought.
+        extra = 0.0 if ends_complete else 0.8
         if words <= 5:
             return SILENCE_SHORT + extra
         elif words <= 15:

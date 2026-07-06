@@ -42,13 +42,10 @@ class RecallClient:
                         # smart_format=true supersedes punctuate — handles punctuation,
                         # dates, currency, phones, URLs. Do NOT add punctuate=true.
                         "smart_format": True,
-                        # 500ms: raised from 300ms after Jul 1 recording showed the bot
-                        # cutting candidates off mid-enumeration (AgroSense → PashuMitra pause
-                        # triggered a segment). 500ms absorbs natural comma-pauses and
-                        # intra-list breathing without firing a spurious segment.
-                        # Trade-off: +200ms to first-word pipeline delivery — still invisible
-                        # since the silence timer adds 0.8-2.0s on top anyway.
-                        "endpointing": 500,
+                        # 300ms: fires fast so the pipeline receives text sooner.
+                        # Mid-sentence fragments still get accumulated by the silence
+                        # timer before the LLM is called. Saves ~700ms per turn vs 1000ms.
+                        "endpointing": 300,
                         # keyterms: biases nova-3 beam-search toward these tokens when
                         # acoustically plausible. No latency cost. Recall.ai passes
                         # unknown fields through to Deepgram as-is.
@@ -94,7 +91,7 @@ class RecallClient:
             print(f"[Recall] create_bot failed {res.status_code}: {res.text}")
             res.raise_for_status()
         print(
-            f"[Recall] Bot created — Deepgram endpointing=500ms, nova-3 multi, "
+            f"[Recall] Bot created — Deepgram endpointing=300ms, nova-3 multi, "
             f"keyterms active (endpoint: {webhook_url or 'none'})"
         )
         return res.json()
