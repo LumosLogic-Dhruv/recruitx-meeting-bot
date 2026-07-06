@@ -88,6 +88,11 @@ the same opener twice in a row: \
 "That makes sense.", "Right, okay.", "I see, okay.", "Sure, good.", "Noted." \
 — short, natural, varied every single turn.
 
+3b. TONE RULE — Keep the SAME calm, steady professional tone in every single response. \
+Do NOT mirror the candidate's excitement. Do NOT become flat or robotic when they give \
+a short answer. Stay consistently measured and neutral — like a professional recruiter \
+who has done hundreds of interviews and is genuinely interested but never shows extremes.
+
 4. Structure every response as: [reaction from rule 3] + [one question]. \
 Example: "Got it — so what stack did you use for that?" \
 Example: "Interesting — how large was the team?" \
@@ -106,10 +111,11 @@ A real interviewer covers breadth, not just depth on one thing.
 7. Only ask about what the candidate JUST said. Never invent facts or assume anything.
 
 8. STT NOISE RULE — this is a real-time voice call and speech-to-text makes mistakes. \
-If the candidate's answer is short or garbled, ask ONE gentle follow-up: \
-"Could you tell me a bit more about that?" \
-Then move on to a new topic regardless. \
-NEVER ask for clarification on the same point twice.
+Background noise, accents, and fast speech all cause garbling. \
+If the transcript looks garbled or is very short (under 5 words), ask: \
+"Could you say that again?" or "Sorry, I didn't catch that — could you repeat?" \
+NEVER pretend you understood something you did not. \
+NEVER ask for clarification on the same point twice — after two attempts, move on.
 
 8b. CORRECTION RULE — If the candidate says "it's not X" or "I mean Y": \
 (a) Immediately acknowledge the corrected term: "Got it, MERN stack." \
@@ -117,9 +123,11 @@ NEVER ask for clarification on the same point twice.
 (c) Ask your next question using the corrected term only.
 
 9. VOICE CALL — STT artifacts: text may have odd spellings or fragments. \
-Infer meaning charitably from context. NEVER repeat an unusual or garbled-sounding \
-term back to the candidate verbatim. If unsure what was said, use a generic \
-follow-up: "Could you tell me a bit more about that?" — never echo the garbled word.
+Infer meaning charitably from context — "one stick" is likely "MERN", \
+"right level" is likely "white-label", etc. \
+If you can infer the meaning, proceed without asking the candidate to repeat. \
+Only ask for clarification if the meaning is completely lost. \
+NEVER repeat an unusual or garbled-sounding term back to the candidate verbatim.
 
 """
 
@@ -338,6 +346,8 @@ class ConversationPipeline:
             )
             self._pending_text = ""
             self._was_interrupted = False
+            # Schedule a re-prompt so the bot doesn't freeze if no new speech arrives.
+            asyncio.create_task(self._reprompt_if_silent(delay=5.0))
             return
         print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
         # Reset interruption flag BEFORE starting the timer so _adaptive_timeout uses
@@ -345,6 +355,18 @@ class ConversationPipeline:
         # that causes rapid LLM re-triggers with the same clarification response.
         self._was_interrupted = False
         self._reset_silence_timer()
+
+    async def _reprompt_if_silent(self, delay: float):
+        """After discarding a short post-speech fragment, wait `delay` seconds.
+        If the candidate still hasn't spoken and the bot hasn't spoken, emit a
+        gentle nudge so the interview doesn't freeze in dead silence."""
+        await asyncio.sleep(delay)
+        if not self._speaking and not self._pending_text and not self._silence_task:
+            print("[Pipeline] Dead silence after discarded fragment — emitting re-prompt")
+            nudge = "Please go ahead."
+            audio = await self._tts(nudge)
+            if audio and self._on_response and not self._speaking:
+                await self._on_response(nudge, audio)
 
     def _is_incomplete(self, text: str) -> bool:
         words = text.strip().split()
@@ -414,8 +436,7 @@ class ConversationPipeline:
         if len(text.split()) < MIN_WORDS_TO_RESPOND:
             print(f"[Pipeline] Fragment too short ({len(text.split())} words): '{text}' — ignored")
             return
-        cleaned_text = await self._clean_transcript(text)
-        await self._process_turn(cleaned_text, speaker)
+        await self._process_turn(text, speaker)
 
     async def _clean_transcript(self, text: str) -> str:
         """Fix obvious ASR acoustic errors before the interviewer LLM sees the text.
@@ -657,12 +678,12 @@ class ConversationPipeline:
     # ── Core turn: streaming LLM → sentence-level TTS → Recall.ai ─────────────
 
     async def _process_turn(self, user_text: str, speaker: str = "Candidate"):
-        # Wait for the previous answer evaluation to finish (usually already done —
-        # the candidate's response takes 10-30s which is far longer than the ~200ms
-        # eval call). 1.5s timeout ensures we never stall if eval is somehow slow.
+        # Wait briefly for the previous answer evaluation to finish — it's usually
+        # already done since the candidate's response takes 10-30s. Cap at 0.2s so
+        # a slow eval call never adds visible latency to the next turn.
         if self._eval_task and not self._eval_task.done():
             try:
-                await asyncio.wait_for(asyncio.shield(self._eval_task), timeout=1.5)
+                await asyncio.wait_for(asyncio.shield(self._eval_task), timeout=0.2)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
 
@@ -728,7 +749,7 @@ class ConversationPipeline:
                 stream = await self._openai.chat.completions.create(
                     model=self._model,
                     messages=messages,
-                    temperature=0.85,
+                    temperature=0.5,
                     max_tokens=120,
                     stream=True,
                 )
@@ -802,6 +823,16 @@ class ConversationPipeline:
                     print(f"[Pipeline] Clarification #{self._state.consecutive_confusion_count}")
                 else:
                     self._state.consecutive_confusion_count = 0
+            elif not self._was_interrupted:
+                # LLM returned nothing and we weren't interrupted — emit a safe fallback
+                # so the bot doesn't silently freeze mid-interview.
+                fallback = "Sorry, could you say that again?"
+                print("[Pipeline] Empty LLM response — emitting fallback prompt")
+                audio = await self._tts(fallback)
+                if audio and self._on_response:
+                    await self._on_response(fallback, audio)
+                self._history.append({"role": "assistant", "content": fallback})
+                self._full_transcript.append({"speaker": "AI", "text": fallback})
 
             # Fire answer evaluation as a background task. It runs while the candidate
             # listens to the bot's response and formulates their next answer — zero
@@ -837,10 +868,10 @@ class ConversationPipeline:
             # eleven_flash_v2_5: ~75ms TTFA, optimized for low latency.
             "model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
             "voice_settings": {
-                # stability 0.52: slightly above middle keeps the voice consistent
-                # across turns while allowing natural pitch variation within a sentence.
-                # Lower values (we tried 0.42) make short interview phrases sound erratic.
-                "stability": 0.52,
+                # stability 0.65: higher stability locks the voice tone more tightly
+                # so the bot sounds the same whether the answer was good or short.
+                # 0.52 allowed too much turn-to-turn drift (excited vs flat).
+                "stability": 0.65,
                 # similarity_boost 0.85: with eleven_multilingual_v2, higher values
                 # lock the model closer to the original voice's accent characteristics.
                 # Critical for Indian voices — lower values let the model drift neutral.
