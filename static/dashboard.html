@@ -912,6 +912,40 @@ HARD RULES:
             <span style="font-size:13px;color:#92400e;font-weight:500;">⚠ Google account not connected — required for creating Meet links and sending emails.</span>
             <button onclick="connectGoogle()" style="padding:9px 18px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Connect Google Account</button>
           </div>
+
+          <!-- SMTP settings card -->
+          <div class="card" style="margin-top:4px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+              <div>
+                <h4 style="font-size:15px;font-weight:700;color:var(--text);margin:0 0 3px;">Email (SMTP) Settings</h4>
+                <p style="font-size:12px;color:var(--text-muted);margin:0;">Used to send interview invite emails to candidates.</p>
+              </div>
+              <div id="smtp-status-badge" style="font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;background:#f1f5f9;color:#64748b;">Checking...</div>
+            </div>
+
+            <div id="smtp-form" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:12px;">SMTP Host</label>
+                <input id="smtp-host" type="text" placeholder="smtp.gmail.com" value="smtp.gmail.com" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:12px;">Port</label>
+                <input id="smtp-port" type="number" placeholder="587" value="587" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:12px;">Sender Email</label>
+                <input id="smtp-user" type="email" placeholder="recruitx@gmail.com" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:12px;">App Password</label>
+                <input id="smtp-pass" type="password" placeholder="Gmail App Password" />
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="saveSmtpSettings()" id="btn-save-smtp" style="padding:9px 22px;font-size:13px;">Save SMTP Settings</button>
+              <div id="smtp-save-status" style="font-size:12px;color:var(--text-muted);"></div>
+            </div>
+          </div>
         </div>
 
         <div class="grid-2col" style="gap:24px;">
@@ -2371,6 +2405,70 @@ HARD RULES:
       }
     }
 
+    async function checkSmtpStatus() {
+      const badge = document.getElementById('smtp-status-badge');
+      try {
+        const res = await fetch(`${API}/api/settings/smtp`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.configured) {
+          badge.style.background = '#f0fdf4';
+          badge.style.color = '#166534';
+          badge.textContent = `Configured (${data.user})`;
+          document.getElementById('smtp-host').value = data.host || 'smtp.gmail.com';
+          document.getElementById('smtp-port').value = data.port || 587;
+          document.getElementById('smtp-user').value = data.user || '';
+        } else {
+          badge.style.background = '#fff7ed';
+          badge.style.color = '#c2410c';
+          badge.textContent = 'Not configured';
+        }
+      } catch (_) {
+        badge.textContent = 'Error loading';
+      }
+    }
+
+    async function saveSmtpSettings() {
+      const btn = document.getElementById('btn-save-smtp');
+      const statusEl = document.getElementById('smtp-save-status');
+      const host = document.getElementById('smtp-host').value.trim();
+      const port = parseInt(document.getElementById('smtp-port').value) || 587;
+      const user = document.getElementById('smtp-user').value.trim();
+      const password = document.getElementById('smtp-pass').value;
+
+      if (!user || !password) {
+        statusEl.style.color = '#dc2626';
+        statusEl.textContent = 'Email and password are required.';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      statusEl.textContent = '';
+
+      try {
+        const res = await fetch(`${API}/api/settings/smtp`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, port, user, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Save failed');
+        statusEl.style.color = '#16a34a';
+        statusEl.textContent = 'Saved successfully!';
+        document.getElementById('smtp-pass').value = '';
+        await checkSmtpStatus();
+      } catch (err) {
+        statusEl.style.color = '#dc2626';
+        statusEl.textContent = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save SMTP Settings';
+      }
+    }
+
     async function addCandidate() {
       const name = document.getElementById('cand-name').value.trim();
       const email = document.getElementById('cand-email').value.trim();
@@ -2584,7 +2682,7 @@ HARD RULES:
         if (!res.ok) throw new Error(data.detail || 'Scheduling failed');
 
         showSchedStatus(
-          `Interview scheduled! Meeting link: ${data.meeting_url}${data.email_sent ? ' · Email sent to candidate.' : ' · Email could not be sent — check GOOGLE_SENDER_EMAIL env var.'}`,
+          `Interview scheduled! Meeting link: ${data.meeting_url}${data.email_sent ? ' · Email sent to candidate.' : ' · Email not sent — configure SMTP settings above.'}`,
           'success'
         );
         loadScheduledInterviews();
@@ -2606,6 +2704,7 @@ HARD RULES:
       _origShowView(viewId);
       if (viewId === 'schedule') {
         checkGoogleStatus();
+        checkSmtpStatus();
         loadCandidates();
         loadScheduledInterviews();
         loadSchedPromptsDropdown();

@@ -956,6 +956,59 @@ def google_auth_debug(user: dict = Depends(get_current_user)):
         return {"stored": False, "error": str(e)}
 
 
+# ── SMTP settings endpoints ───────────────────────────────────────────────────
+
+class SmtpConfigRequest(BaseModel):
+    host: str = "smtp.gmail.com"
+    port: int = 587
+    user: str
+    password: str
+
+
+@app.get("/api/settings/smtp")
+def get_smtp_settings(user: dict = Depends(get_current_user)):
+    try:
+        config = convex_client.query("settings:get", {"key": "smtp_config"})
+        if not config:
+            # Fall back to env vars so existing setup still shows as configured
+            env_user = os.getenv("SMTP_USER", "")
+            return {
+                "configured": bool(env_user),
+                "host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
+                "port": int(os.getenv("SMTP_PORT", "587")),
+                "user": env_user,
+                "source": "env",
+            }
+        return {
+            "configured": bool(config.get("user") and config.get("password")),
+            "host": config.get("host", "smtp.gmail.com"),
+            "port": config.get("port", 587),
+            "user": config.get("user", ""),
+            "source": "convex",
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/settings/smtp")
+def save_smtp_settings(req: SmtpConfigRequest, user: dict = Depends(get_current_user)):
+    if not req.user or not req.password:
+        raise HTTPException(400, "Email and password are required")
+    try:
+        convex_client.mutation("settings:set", {
+            "key": "smtp_config",
+            "value": {
+                "host": req.host.strip(),
+                "port": req.port,
+                "user": req.user.strip(),
+                "password": req.password,
+            },
+        })
+        return {"status": "saved", "user": req.user.strip()}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 # ── Candidate management endpoints ────────────────────────────────────────────
 
 class CandidateCreateRequest(BaseModel):
@@ -1057,10 +1110,17 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     else:
         raise HTTPException(400, f"Unknown platform: {req.platform}")
 
-    # Send email invite — prefer SMTP if credentials are set, fall back to Gmail API
+    # Send email invite — load SMTP config from Convex (fall back to env vars)
     email_sent = False
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASS", "")
+    smtp_config = {}
+    try:
+        smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
+    except Exception:
+        pass
+
+    smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
+    smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
+
     if smtp_user and smtp_pass:
         try:
             email_sent = await gauth.send_interview_email_smtp(
@@ -1070,6 +1130,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 scheduled_at=scheduled_dt,
                 role_name=req.role_name,
                 duration_minutes=req.duration_minutes,
+                smtp_config=smtp_config,
             )
         except Exception as e:
             print(f"[Schedule] SMTP email error (non-fatal): {e}")

@@ -228,14 +228,15 @@ async def send_interview_email(token_dict: dict, candidate_name: str, candidate_
 
 
 def _send_email_smtp_sync(candidate_name: str, candidate_email: str, meet_url: str,
-                           scheduled_at: datetime, role_name: str, duration_minutes: int) -> bool:
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASS", "")
+                           scheduled_at: datetime, role_name: str, duration_minutes: int,
+                           smtp_config: dict) -> bool:
+    smtp_host = smtp_config.get("host") or os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(smtp_config.get("port") or os.getenv("SMTP_PORT", "587"))
+    smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
+    smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
 
     if not smtp_user or not smtp_pass:
-        print("[SMTP] SMTP_USER or SMTP_PASS not set — skipping")
+        print("[SMTP] No SMTP credentials configured — skipping")
         return False
 
     html = _build_email_html(candidate_name, meet_url, scheduled_at, role_name, smtp_user, duration_minutes)
@@ -260,10 +261,11 @@ def _send_email_smtp_sync(candidate_name: str, candidate_email: str, meet_url: s
 
 async def send_interview_email_smtp(candidate_name: str, candidate_email: str, meet_url: str,
                                      scheduled_at: datetime, role_name: str,
-                                     duration_minutes: int = 30) -> bool:
+                                     duration_minutes: int = 30, smtp_config: dict = None) -> bool:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         None,
         lambda: _send_email_smtp_sync(candidate_name, candidate_email, meet_url,
-                                       scheduled_at, role_name, duration_minutes),
+                                       scheduled_at, role_name, duration_minutes,
+                                       smtp_config or {}),
     )
