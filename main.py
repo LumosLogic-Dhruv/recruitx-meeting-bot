@@ -900,7 +900,7 @@ def google_auth_start(user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/auth/google/callback")
-async def google_auth_callback(code: str = None, error: str = None):
+async def google_auth_callback(code: str = None, error: str = None, state: str = ""):
     """Exchange OAuth code for tokens. No JWT required — called by Google redirect."""
     if error:
         print(f"[Google OAuth] Google returned error: {error}")
@@ -908,8 +908,9 @@ async def google_auth_callback(code: str = None, error: str = None):
     if not code:
         return RedirectResponse(url="/dashboard?google_error=missing_code")
     try:
+        import urllib.parse
         loop = asyncio.get_event_loop()
-        tokens = await loop.run_in_executor(None, lambda: gauth.exchange_code(code))
+        tokens = await loop.run_in_executor(None, lambda: gauth.exchange_code(code, state))
         convex_client.mutation("settings:set", {"key": "google_tokens", "value": tokens})
         print("[Google OAuth] Tokens saved to Convex successfully")
         return RedirectResponse(url="/dashboard?google_connected=1")
@@ -924,10 +925,35 @@ def google_auth_status(user: dict = Depends(get_current_user)):
     """Check whether Google account is connected."""
     try:
         tokens = convex_client.query("settings:get", {"key": "google_tokens"})
-        connected = bool(tokens and tokens.get("refresh_token"))
-        return {"connected": connected}
-    except Exception:
-        return {"connected": False}
+        print(f"[Google Status] tokens={type(tokens).__name__}, keys={list(tokens.keys()) if isinstance(tokens, dict) else 'N/A'}")
+        connected = bool(tokens and isinstance(tokens, dict) and tokens.get("refresh_token"))
+        return {"connected": connected, "debug_type": type(tokens).__name__}
+    except Exception as e:
+        print(f"[Google Status] Error: {e}")
+        return {"connected": False, "error": str(e)}
+
+
+@app.get("/api/auth/google/debug")
+def google_auth_debug(user: dict = Depends(get_current_user)):
+    """Debug endpoint — shows what's stored in Convex settings."""
+    try:
+        tokens = convex_client.query("settings:get", {"key": "google_tokens"})
+        if not tokens:
+            return {"stored": False, "message": "No tokens in Convex — OAuth callback never completed successfully"}
+        if not isinstance(tokens, dict):
+            return {"stored": True, "type": type(tokens).__name__, "message": "Tokens stored but wrong type"}
+        has_refresh = bool(tokens.get("refresh_token"))
+        has_access = bool(tokens.get("token"))
+        return {
+            "stored": True,
+            "has_refresh_token": has_refresh,
+            "has_access_token": has_access,
+            "scopes": tokens.get("scopes", []),
+            "client_id_present": bool(tokens.get("client_id")),
+            "message": "Connected ✓" if has_refresh else "Tokens stored but refresh_token missing — re-authorize",
+        }
+    except Exception as e:
+        return {"stored": False, "error": str(e)}
 
 
 # ── Candidate management endpoints ────────────────────────────────────────────

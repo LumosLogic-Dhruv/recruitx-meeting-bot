@@ -19,6 +19,10 @@ SCOPES = [
 
 COMPANY_NAME = os.getenv("COMPANY_NAME", "LumosLogic")
 
+# Store Flow objects between auth URL generation and callback so the
+# code_verifier (PKCE) is preserved. Keyed by the OAuth state parameter.
+_pending_flows: dict = {}
+
 
 def _redirect_uri() -> str:
     # GOOGLE_REDIRECT_URI takes priority; fall back to RENDER_URL; finally hardcoded prod URL
@@ -44,15 +48,30 @@ def _client_config() -> dict:
 
 
 def get_auth_url() -> str:
+    """Generate OAuth URL and store the Flow (with PKCE code_verifier) by state."""
     flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=_redirect_uri())
-    url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+    url, state = flow.authorization_url(access_type="offline", prompt="consent")
+    # Keep the flow alive so the code_verifier survives until the callback
+    _pending_flows[state] = flow
+    # Clean up old states (keep last 20 to prevent unbounded growth)
+    if len(_pending_flows) > 20:
+        oldest = next(iter(_pending_flows))
+        _pending_flows.pop(oldest, None)
+    print(f"[Google OAuth] Auth URL generated, state={state[:8]}...")
     return url
 
 
-def exchange_code(code: str) -> dict:
-    redirect_uri = _redirect_uri()
-    print(f"[Google OAuth] Exchanging code, redirect_uri={redirect_uri}")
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=redirect_uri)
+def exchange_code(code: str, state: str = "") -> dict:
+    """Exchange auth code for tokens. Re-uses the stored Flow to preserve PKCE verifier."""
+    # Look up the original Flow that has the code_verifier
+    flow = _pending_flows.pop(state, None)
+    if flow:
+        print(f"[Google OAuth] Reusing stored flow for state={state[:8]}...")
+    else:
+        print(f"[Google OAuth] No stored flow for state — creating new (no PKCE)")
+        flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=_redirect_uri())
+
+    print(f"[Google OAuth] Exchanging code, redirect_uri={flow.redirect_uri}")
     flow.fetch_token(code=code)
     c = flow.credentials
     print(f"[Google OAuth] Tokens obtained, refresh_token present: {bool(c.refresh_token)}")
