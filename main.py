@@ -903,16 +903,20 @@ def google_auth_start(user: dict = Depends(get_current_user)):
 async def google_auth_callback(code: str = None, error: str = None):
     """Exchange OAuth code for tokens. No JWT required — called by Google redirect."""
     if error:
-        return RedirectResponse(url="/dashboard?google_error=1")
+        print(f"[Google OAuth] Google returned error: {error}")
+        return RedirectResponse(url=f"/dashboard?google_error={error}")
     if not code:
-        raise HTTPException(400, "Missing code parameter")
+        return RedirectResponse(url="/dashboard?google_error=missing_code")
     try:
-        tokens = gauth.exchange_code(code)
+        loop = asyncio.get_event_loop()
+        tokens = await loop.run_in_executor(None, lambda: gauth.exchange_code(code))
         convex_client.mutation("settings:set", {"key": "google_tokens", "value": tokens})
+        print("[Google OAuth] Tokens saved to Convex successfully")
         return RedirectResponse(url="/dashboard?google_connected=1")
     except Exception as e:
-        print(f"[Google OAuth] Callback error: {e}")
-        return RedirectResponse(url="/dashboard?google_error=1")
+        print(f"[Google OAuth] Callback exception: {type(e).__name__}: {e}")
+        import urllib.parse
+        return RedirectResponse(url=f"/dashboard?google_error={urllib.parse.quote(str(e)[:80])}")
 
 
 @app.get("/api/auth/google/status")

@@ -2357,10 +2357,15 @@ HARD RULES:
         const res = await fetch(`${API}/api/auth/google`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error('Failed to get auth URL');
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.detail || 'Failed to get auth URL');
+        }
         const data = await res.json();
-        window.open(data.auth_url, '_blank', 'width=500,height=650,left=400,top=100');
-        setTimeout(checkGoogleStatus, 5000);
+        // Store token so we can restore session after redirect
+        localStorage.setItem('token', token);
+        // Navigate current page to Google auth (most reliable OAuth flow)
+        window.location.href = data.auth_url;
       } catch (err) {
         alert('Error: ' + err.message);
       }
@@ -2625,10 +2630,38 @@ HARD RULES:
       } catch (_) {}
     }
 
-    // Check for google_connected query param on load
-    if (new URLSearchParams(window.location.search).get('google_connected') === '1') {
+    // Handle Google OAuth return params
+    const _oauthParams = new URLSearchParams(window.location.search);
+    if (_oauthParams.get('google_connected') === '1') {
       history.replaceState({}, '', '/dashboard');
       showView('schedule');
+      setTimeout(() => {
+        const b = document.getElementById('google-status-badge');
+        if (b) {
+          b.style.background = '#f0fdf4';
+          b.style.borderColor = '#86efac';
+          b.innerHTML = `<div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;background:#16a34a;border-radius:50%;flex-shrink:0;"></span><span style="font-size:13px;font-weight:600;color:#166534;">Google account connected successfully!</span></div>`;
+        }
+        checkGoogleStatus();
+      }, 500);
+    } else if (_oauthParams.get('google_error')) {
+      const errMsg = decodeURIComponent(_oauthParams.get('google_error') || 'unknown');
+      history.replaceState({}, '', '/dashboard');
+      showView('schedule');
+      setTimeout(() => {
+        const b = document.getElementById('google-status-badge');
+        if (b) {
+          b.style.background = '#fef2f2';
+          b.style.borderColor = '#fca5a5';
+          b.innerHTML = `
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:4px;">Google connection failed</div>
+              <div style="font-size:12px;color:#991b1b;">Error: ${escapeHtml(errMsg)}</div>
+              <div style="font-size:12px;color:#991b1b;margin-top:4px;">Check the Render logs for details, then try again.</div>
+            </div>
+            <button onclick="connectGoogle()" style="padding:9px 18px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Try Again</button>`;
+        }
+      }, 500);
     }
   </script>
 </body>

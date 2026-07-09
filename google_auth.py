@@ -21,8 +21,14 @@ COMPANY_NAME = os.getenv("COMPANY_NAME", "LumosLogic")
 
 
 def _redirect_uri() -> str:
-    base = os.getenv("RENDER_URL", "http://localhost:8000").rstrip("/")
-    return f"{base}/api/auth/google/callback"
+    # GOOGLE_REDIRECT_URI takes priority; fall back to RENDER_URL; finally hardcoded prod URL
+    explicit = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    if explicit:
+        return explicit
+    base = os.getenv("RENDER_URL", "").strip().rstrip("/")
+    if base:
+        return f"{base}/api/auth/google/callback"
+    return "https://recruitx-meeting-bot.onrender.com/api/auth/google/callback"
 
 
 def _client_config() -> dict:
@@ -44,9 +50,12 @@ def get_auth_url() -> str:
 
 
 def exchange_code(code: str) -> dict:
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=_redirect_uri())
+    redirect_uri = _redirect_uri()
+    print(f"[Google OAuth] Exchanging code, redirect_uri={redirect_uri}")
+    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=redirect_uri)
     flow.fetch_token(code=code)
     c = flow.credentials
+    print(f"[Google OAuth] Tokens obtained, refresh_token present: {bool(c.refresh_token)}")
     return {
         "token": c.token,
         "refresh_token": c.refresh_token,
