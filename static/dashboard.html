@@ -900,12 +900,18 @@ HARD RULES:
 
       <!-- VIEW 3: SCHEDULE INTERVIEW -->
       <div class="dashboard-view" id="view-schedule">
-        <div style="margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-          <div>
-            <h3 style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:6px;">Schedule Interview</h3>
-            <p style="color:var(--text-muted);font-size:14px;">Add candidates, generate meeting links, and send email invitations automatically.</p>
+        <div style="margin-bottom:24px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+            <div>
+              <h3 style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:6px;">Schedule Interview</h3>
+              <p style="color:var(--text-muted);font-size:14px;">Add candidates, generate meeting links, and send email invitations automatically.</p>
+            </div>
           </div>
-          <div id="google-status-badge" style="display:none;"></div>
+          <!-- Google connection status — always visible -->
+          <div id="google-status-badge" style="padding:12px 18px;background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:#92400e;font-weight:500;">⚠ Google account not connected — required for creating Meet links and sending emails.</span>
+            <button onclick="connectGoogle()" style="padding:9px 18px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Connect Google Account</button>
+          </div>
         </div>
 
         <div class="grid-2col" style="gap:24px;">
@@ -2320,22 +2326,28 @@ HARD RULES:
     // ── SCHEDULE VIEW ──────────────────────────────────────────────────────────
 
     async function checkGoogleStatus() {
+      const badge = document.getElementById('google-status-badge');
       try {
         const res = await fetch(`${API}/api/auth/google/status`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) return;
         const data = await res.json();
-        const badge = document.getElementById('google-status-badge');
         if (data.connected) {
-          badge.style.display = 'flex';
-          badge.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:13px;font-weight:600;color:#166534;"><span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block;"></span>Google Connected</div>`;
+          badge.style.background = '#f0fdf4';
+          badge.style.borderColor = '#86efac';
+          badge.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:10px;height:10px;background:#16a34a;border-radius:50%;display:inline-block;flex-shrink:0;"></span>
+              <span style="font-size:13px;font-weight:600;color:#166534;">Google account connected — ready to create meetings and send emails.</span>
+            </div>
+            <button onclick="connectGoogle()" style="padding:7px 14px;background:transparent;color:#166534;border:1px solid #16a34a;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Reconnect</button>`;
         } else {
-          badge.style.display = 'flex';
-          badge.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span style="font-size:13px;color:var(--text-muted);">Google not connected yet</span>
-            <button onclick="connectGoogle()" style="padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Connect Google</button>
-          </div>`;
+          badge.style.background = '#fffbeb';
+          badge.style.borderColor = '#fcd34d';
+          badge.innerHTML = `
+            <span style="font-size:13px;color:#92400e;font-weight:500;">⚠ Google account not connected — required for creating Meet links and sending emails.</span>
+            <button onclick="connectGoogle()" style="padding:9px 18px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Connect Google Account</button>`;
         }
       } catch (_) {}
     }
