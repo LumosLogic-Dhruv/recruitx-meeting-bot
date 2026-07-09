@@ -1057,10 +1057,24 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     else:
         raise HTTPException(400, f"Unknown platform: {req.platform}")
 
-    # Send email invite
-    sender = os.getenv("GOOGLE_SENDER_EMAIL", "")
+    # Send email invite — prefer SMTP if credentials are set, fall back to Gmail API
     email_sent = False
-    if req.platform == "google_meet" and tokens and sender:
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    if smtp_user and smtp_pass:
+        try:
+            email_sent = await gauth.send_interview_email_smtp(
+                candidate_name=candidate["name"],
+                candidate_email=candidate["email"],
+                meet_url=meeting_url,
+                scheduled_at=scheduled_dt,
+                role_name=req.role_name,
+                duration_minutes=req.duration_minutes,
+            )
+        except Exception as e:
+            print(f"[Schedule] SMTP email error (non-fatal): {e}")
+    elif req.platform == "google_meet" and tokens and os.getenv("GOOGLE_SENDER_EMAIL", ""):
+        sender = os.getenv("GOOGLE_SENDER_EMAIL", "")
         try:
             email_sent = await gauth.send_interview_email(
                 token_dict=tokens,
@@ -1073,7 +1087,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 duration_minutes=req.duration_minutes,
             )
         except Exception as e:
-            print(f"[Schedule] Email error (non-fatal): {e}")
+            print(f"[Schedule] Gmail API email error (non-fatal): {e}")
 
     # Save to Convex
     try:

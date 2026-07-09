@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import smtplib
 import uuid
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -223,4 +224,46 @@ async def send_interview_email(token_dict: dict, candidate_name: str, candidate_
         None,
         lambda: _send_email_sync(token_dict, candidate_name, candidate_email,
                                   meet_url, scheduled_at, role_name, sender, duration_minutes),
+    )
+
+
+def _send_email_smtp_sync(candidate_name: str, candidate_email: str, meet_url: str,
+                           scheduled_at: datetime, role_name: str, duration_minutes: int) -> bool:
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+
+    if not smtp_user or not smtp_pass:
+        print("[SMTP] SMTP_USER or SMTP_PASS not set — skipping")
+        return False
+
+    html = _build_email_html(candidate_name, meet_url, scheduled_at, role_name, smtp_user, duration_minutes)
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"Interview Invitation — {role_name} at {COMPANY_NAME}"
+    msg["From"] = f"{COMPANY_NAME} Interviews <{smtp_user}>"
+    msg["To"] = f"{candidate_name} <{candidate_email}>"
+    msg.attach(MIMEText(html, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [candidate_email], msg.as_string())
+        print(f"[SMTP] Email sent to {candidate_email}")
+        return True
+    except Exception as e:
+        print(f"[SMTP] Send error: {e}")
+        return False
+
+
+async def send_interview_email_smtp(candidate_name: str, candidate_email: str, meet_url: str,
+                                     scheduled_at: datetime, role_name: str,
+                                     duration_minutes: int = 30) -> bool:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: _send_email_smtp_sync(candidate_name, candidate_email, meet_url,
+                                       scheduled_at, role_name, duration_minutes),
     )
