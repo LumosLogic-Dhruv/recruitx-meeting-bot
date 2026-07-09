@@ -1110,7 +1110,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     else:
         raise HTTPException(400, f"Unknown platform: {req.platform}")
 
-    # Send email invite — load SMTP config from Convex (fall back to env vars)
+    # Send email invite — try SMTP first, fall back to Gmail API
     email_sent = False
     smtp_config = {}
     try:
@@ -1134,21 +1134,26 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
             )
         except Exception as e:
             print(f"[Schedule] SMTP email error (non-fatal): {e}")
-    elif req.platform == "google_meet" and tokens and os.getenv("GOOGLE_SENDER_EMAIL", ""):
-        sender = os.getenv("GOOGLE_SENDER_EMAIL", "")
-        try:
-            email_sent = await gauth.send_interview_email(
-                token_dict=tokens,
-                candidate_name=candidate["name"],
-                candidate_email=candidate["email"],
-                meet_url=meeting_url,
-                scheduled_at=scheduled_dt,
-                role_name=req.role_name,
-                sender=sender,
-                duration_minutes=req.duration_minutes,
-            )
-        except Exception as e:
-            print(f"[Schedule] Gmail API email error (non-fatal): {e}")
+
+    # Fall back to Gmail API if SMTP didn't send
+    if not email_sent and req.platform == "google_meet" and tokens:
+        sender = smtp_config.get("user") or os.getenv("SMTP_USER", os.getenv("GOOGLE_SENDER_EMAIL", ""))
+        if sender:
+            try:
+                email_sent = await gauth.send_interview_email(
+                    token_dict=tokens,
+                    candidate_name=candidate["name"],
+                    candidate_email=candidate["email"],
+                    meet_url=meeting_url,
+                    scheduled_at=scheduled_dt,
+                    role_name=req.role_name,
+                    sender=sender,
+                    duration_minutes=req.duration_minutes,
+                )
+                if email_sent:
+                    print("[Schedule] Email sent via Gmail API fallback")
+            except Exception as e:
+                print(f"[Schedule] Gmail API email error (non-fatal): {e}")
 
     # Save to Convex
     try:
