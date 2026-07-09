@@ -759,6 +759,7 @@
         <!-- Centered Nav Menu on desktop -->
         <div class="nav-menu flex flex-col md:flex-row gap-2 bg-[#f1f5f9] border border-solid border-[#e2e8f0] p-1 rounded-xl w-full md:w-auto md:absolute md:left-1/2 md:transform md:-translate-x-1/2">
           <div class="nav-item active text-center cursor-pointer" id="nav-interview" onclick="showView('interview')">Interview Room</div>
+          <div class="nav-item text-center cursor-pointer" id="nav-schedule" onclick="showView('schedule')">Schedule</div>
           <div class="nav-item text-center cursor-pointer" id="nav-history" onclick="showView('history')">Past Transcripts</div>
           <div class="nav-item text-center cursor-pointer" id="nav-prompts" onclick="showView('prompts')">Prompt Generator</div>
         </div>
@@ -897,7 +898,134 @@ HARD RULES:
         </div>
       </div>
 
-      <!-- VIEW 3: PROMPT GENERATOR -->
+      <!-- VIEW 3: SCHEDULE INTERVIEW -->
+      <div class="dashboard-view" id="view-schedule">
+        <div style="margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+          <div>
+            <h3 style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:6px;">Schedule Interview</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Add candidates, generate meeting links, and send email invitations automatically.</p>
+          </div>
+          <div id="google-status-badge" style="display:none;"></div>
+        </div>
+
+        <div class="grid-2col" style="gap:24px;">
+
+          <!-- Left: Add Candidate + Candidate List -->
+          <div style="display:flex;flex-direction:column;gap:20px;">
+            <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+              <h4 style="font-size:16px;font-weight:700;color:var(--text);margin:0;">Add Candidate</h4>
+              <div class="form-group" style="margin:0;">
+                <label>Full Name</label>
+                <input id="cand-name" type="text" placeholder="e.g. Priya Sharma" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>Email Address</label>
+                <input id="cand-email" type="email" placeholder="priya@example.com" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>Phone (optional)</label>
+                <input id="cand-phone" type="text" placeholder="+91 98765 43210" />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>Notes (optional)</label>
+                <input id="cand-notes" type="text" placeholder="Applied for Senior React Engineer" />
+              </div>
+              <button class="btn btn-primary" onclick="addCandidate()" id="btn-add-candidate">Add Candidate</button>
+              <div id="cand-status" class="status-alert"></div>
+            </div>
+
+            <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <h4 style="font-size:16px;font-weight:700;color:var(--text);margin:0;">Candidates</h4>
+                <button onclick="loadCandidates()" style="font-size:12px;color:var(--primary);background:none;border:none;cursor:pointer;font-weight:600;">↻ Refresh</button>
+              </div>
+              <div id="candidates-list" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+                <div class="empty-state">Loading candidates...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Schedule Form + Scheduled Interviews -->
+          <div style="display:flex;flex-direction:column;gap:20px;">
+            <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+              <h4 style="font-size:16px;font-weight:700;color:var(--text);margin:0;">Schedule Interview</h4>
+
+              <div class="form-group" style="margin:0;">
+                <label>Select Candidate</label>
+                <select id="sched-candidate-select">
+                  <option value="">-- Select a candidate --</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin:0;">
+                <label>Role / Position</label>
+                <input id="sched-role" type="text" placeholder="e.g. Senior Frontend Engineer" />
+              </div>
+
+              <div class="form-group" style="margin:0;">
+                <label>Select System Prompt</label>
+                <select id="sched-prompt-select" onchange="onSchedPromptChange()">
+                  <option value="">-- Choose a saved prompt --</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>System Prompt (preview / edit)</label>
+                <textarea id="sched-prompt" style="min-height:100px;font-size:12px;" placeholder="Select a prompt above or type one here..."></textarea>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-group" style="margin:0;">
+                  <label>Date</label>
+                  <input id="sched-date" type="date" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label>Time (24h UTC)</label>
+                  <input id="sched-time" type="time" />
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div class="form-group" style="margin:0;">
+                  <label>Duration</label>
+                  <select id="sched-duration">
+                    <option value="15">15 minutes</option>
+                    <option value="30" selected>30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">60 minutes</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label>Platform</label>
+                  <select id="sched-platform">
+                    <option value="google_meet">Google Meet</option>
+                    <option value="zoom" disabled>Zoom (coming soon)</option>
+                    <option value="teams" disabled>Microsoft Teams (coming soon)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button class="btn btn-primary" onclick="scheduleInterview()" id="btn-schedule-interview">
+                Create Meeting & Send Invite
+              </button>
+              <div id="sched-status" class="status-alert"></div>
+            </div>
+
+            <!-- Scheduled interviews list -->
+            <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <h4 style="font-size:16px;font-weight:700;color:var(--text);margin:0;">Scheduled Interviews</h4>
+                <button onclick="loadScheduledInterviews()" style="font-size:12px;color:var(--primary);background:none;border:none;cursor:pointer;font-weight:600;">↻ Refresh</button>
+              </div>
+              <div id="scheduled-list" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
+                <div class="empty-state">No scheduled interviews yet.</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW 4: PROMPT GENERATOR -->
       <div class="dashboard-view" id="view-prompts">
         <div class="grid-2col">
           <!-- Prompt Creator -->
@@ -1014,8 +1142,9 @@ HARD RULES:
       </div>
 
       <!-- Recording still processing -->
-      <div id="modal-recording-processing" style="display:none; padding:10px 32px; border-bottom:1px solid var(--border); background:#fffbeb;">
+      <div id="modal-recording-processing" style="display:none; padding:10px 32px; border-bottom:1px solid var(--border); background:#fffbeb; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
         <span style="font-size:12px; color:#92400e;">⏳ Recording is being processed by Recall.ai — check back in 2–5 minutes after the interview ended.</span>
+        <button id="modal-refresh-recording-btn" onclick="refreshRecording()" style="padding:5px 12px; font-size:12px; font-weight:600; color:#92400e; background:transparent; border:1px solid #d97706; border-radius:6px; cursor:pointer;">↻ Refresh</button>
       </div>
 
       <div class="modal-body">
@@ -1239,7 +1368,7 @@ HARD RULES:
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName, voice_id: voiceId }),
+          body: JSON.stringify({ meeting_url: meetingUrl, system_prompt: prompt, bot_name: botName, voice_id: voiceId, candidate_name: document.getElementById('candidate-name').value.trim() || 'Candidate' }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
@@ -1310,42 +1439,296 @@ HARD RULES:
       }
     }
 
+    function drawRadarChart(canvas, dims) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height;
+      const cx = w / 2, cy = h / 2;
+      const R = Math.min(cx, cy) - 46;
+      const n = dims.length;
+      if (!n) return;
+      ctx.clearRect(0, 0, w, h);
+
+      // Grid rings
+      [2, 4, 6, 8, 10].forEach(lvl => {
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const a = (2 * Math.PI * i / n) - Math.PI / 2;
+          const r = (lvl / 10) * R;
+          i === 0 ? ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a))
+                  : ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+        }
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(139,92,246,0.12)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+
+      // Axis lines
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * i / n) - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + R * Math.cos(a), cy + R * Math.sin(a));
+        ctx.strokeStyle = 'rgba(139,92,246,0.18)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // Data polygon
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * i / n) - Math.PI / 2;
+        const r = (dims[i].score / 10) * R;
+        i === 0 ? ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a))
+                : ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(139,92,246,0.18)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(139,92,246,0.75)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Data point dots
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * i / n) - Math.PI / 2;
+        const r = (dims[i].score / 10) * R;
+        ctx.beginPath();
+        ctx.arc(cx + r * Math.cos(a), cy + r * Math.sin(a), 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fill();
+      }
+
+      // Labels
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i < n; i++) {
+        const a = (2 * Math.PI * i / n) - Math.PI / 2;
+        const lr = R + 34;
+        const lx = cx + lr * Math.cos(a);
+        const ly = cy + lr * Math.sin(a);
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(dims[i].name, lx, ly - 8);
+        ctx.font = 'bold 11px Outfit, sans-serif';
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fillText(dims[i].score, lx, ly + 8);
+      }
+    }
+
     function renderScorecard(sc, targetContainerId) {
       const area = document.getElementById(targetContainerId);
       if (!sc || !sc.overall_score) { area.innerHTML = ''; return; }
 
+      const esc = s => (s || '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const recColor =
-        sc.recommendation?.includes('STRONG') ? 'var(--success)' :
-        sc.recommendation?.includes('NO')     ? 'var(--error)' : 'var(--warning)';
+        (sc.recommendation || '').includes('STRONG') ? '#10b981' :
+        (sc.recommendation || '').includes('NO')     ? '#ef4444' : '#f59e0b';
+      const circ = Math.round((sc.overall_score / 10) * 201);
 
-      let html = `<div class="scorecard-box">
-        <div class="sc-header">Evaluation Summary — ${escapeHtml(sc.candidate_name || 'Candidate')}</div>
-        <div class="sc-score-row">
-          <div class="sc-score">${sc.overall_score}<span>/10</span></div>
-          <div class="sc-badge" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${escapeHtml(sc.recommendation || '')}</div>
-        </div>
-        <div class="sc-summary">${escapeHtml(sc.summary || '')}</div>`;
+      // Score gauge + header
+      let html = `<div style="font-family:'Outfit',sans-serif;">
+        <div style="display:flex;align-items:center;gap:18px;margin-bottom:18px;flex-wrap:wrap;">
+          <div style="position:relative;width:80px;height:80px;flex-shrink:0;">
+            <svg width="80" height="80" style="transform:rotate(-90deg);">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="#e2e8f0" stroke-width="8"/>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="#8b5cf6" stroke-width="8"
+                stroke-dasharray="${circ} 201" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;">
+              <span style="font-size:22px;font-weight:800;color:#0f172a;line-height:1.1;">${sc.overall_score}</span>
+              <span style="font-size:10px;color:#94a3b8;">/10</span>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+              <span style="font-size:16px;font-weight:700;color:#0f172a;">${esc(sc.candidate_name || 'Candidate')}</span>
+              <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${recColor}22;color:${recColor};border:1px solid ${recColor};">${esc(sc.recommendation || '')}</span>
+            </div>
+            <p style="font-size:13px;color:#64748b;line-height:1.6;margin:0;">${esc(sc.summary || '')}</p>
+          </div>
+        </div>`;
 
-      if (sc.dimensions?.length) {
-        for (const d of sc.dimensions) {
-          const pct = (d.score / 10) * 100;
-          html += `<div class="sc-dim">
-            <div class="sc-dim-row"><span class="sc-dim-name">${escapeHtml(d.name)}</span><span class="sc-dim-score">${d.score}/10</span></div>
-            <div class="sc-bar-bg"><div class="sc-bar" style="width:${pct}%"></div></div>
-            <div class="sc-dim-comment">${escapeHtml(d.comment || '')}</div>
-          </div>`;
+      // Top Strengths vs Top Gaps
+      const topStrengths = sc.top_strengths || [];
+      const topGaps = sc.top_gaps || [];
+      if (topStrengths.length || topGaps.length) {
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">`;
+        if (topStrengths.length) {
+          html += `<div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#10b981;margin-bottom:10px;">Top Strengths</div>`;
+          topStrengths.forEach(s => {
+            const name = typeof s === 'string' ? s : s.name;
+            const score = typeof s === 'object' && s.score ? s.score : '';
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:13px;color:#0f172a;">${esc(name)}</span>${score ? `<span style="font-size:12px;font-weight:700;color:#10b981;">${score}</span>` : ''}</div>`;
+          });
+          html += `</div>`;
         }
+        if (topGaps.length) {
+          html += `<div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#ef4444;margin-bottom:10px;">Top Gaps</div>`;
+          topGaps.forEach(g => {
+            const name = typeof g === 'string' ? g : g.name;
+            const score = typeof g === 'object' && g.score ? g.score : '';
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:13px;color:#0f172a;">${esc(name)}</span>${score ? `<span style="font-size:12px;font-weight:700;color:#ef4444;">${score}</span>` : ''}</div>`;
+          });
+          html += `</div>`;
+        }
+        html += `</div>`;
       }
 
-      if (sc.strengths?.length)
-        html += `<div class="sc-tags good">✓ ${sc.strengths.map(escapeHtml).join(' · ')}</div>`;
-      if (sc.concerns?.length)
-        html += `<div class="sc-tags bad">✗ ${sc.concerns.map(escapeHtml).join(' · ')}</div>`;
-      if (sc.suggested_next_steps)
-        html += `<div class="sc-next"><strong>Next Steps:</strong> ${escapeHtml(sc.suggested_next_steps)}</div>`;
+      // Competency Radar
+      const radarId = 'radar-' + targetContainerId + '-' + Date.now();
+      if (sc.dimensions?.length >= 3) {
+        html += `<div style="margin-bottom:20px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:10px;">
+            Competency Radar <span style="font-weight:400;color:#a1a1aa;font-size:10px;">Pass line at 6/10</span>
+          </div>
+          <canvas id="${radarId}" width="320" height="260" style="display:block;margin:0 auto;max-width:100%;"></canvas>
+        </div>`;
+      }
 
-      html += '</div>';
+      // Green / Red Flags
+      if (sc.green_flags?.length || sc.red_flags?.length) {
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">`;
+        if (sc.green_flags?.length) {
+          html += `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:16px;">
+            <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Green Flags</div>`;
+          sc.green_flags.forEach(f => {
+            html += `<div style="display:flex;gap:8px;margin-bottom:8px;font-size:12px;color:#166534;line-height:1.5;"><span style="color:#16a34a;flex-shrink:0;font-weight:700;">+</span><span>${esc(f)}</span></div>`;
+          });
+          html += `</div>`;
+        }
+        if (sc.red_flags?.length) {
+          html += `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:16px;">
+            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Red Flags</div>`;
+          sc.red_flags.forEach(f => {
+            html += `<div style="display:flex;gap:8px;margin-bottom:8px;font-size:12px;color:#991b1b;line-height:1.5;"><span style="color:#dc2626;flex-shrink:0;font-weight:700;">-</span><span>${esc(f)}</span></div>`;
+          });
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+
+      // Skill Breakdown
+      const skills = sc.skill_breakdown?.length ? sc.skill_breakdown
+        : sc.dimensions?.map(d => ({ name: d.name, score: d.score, description: d.comment || '' })) || [];
+      if (skills.length) {
+        html += `<div style="margin-bottom:20px;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px;">Skill Breakdown</div>`;
+        skills.forEach(sk => {
+          const barColor = sk.score >= 7 ? '#10b981' : sk.score >= 5 ? '#8b5cf6' : '#f59e0b';
+          html += `<div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:13px;font-weight:600;color:#0f172a;">${esc(sk.name)}</span>
+              <span style="font-size:12px;font-weight:700;color:${barColor};">${sk.score}</span>
+            </div>
+            <div style="height:6px;background:#e2e8f0;border-radius:3px;margin-bottom:8px;">
+              <div style="height:6px;background:${barColor};border-radius:3px;width:${(sk.score/10)*100}%;"></div>
+            </div>
+            <p style="font-size:12px;color:#64748b;line-height:1.55;margin:0;">${esc(sk.description || '')}</p>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+
+      // Areas for Improvement
+      if (sc.areas_for_improvement?.length) {
+        html += `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:16px;margin-bottom:20px;">
+          <div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Areas for Improvement</div>`;
+        sc.areas_for_improvement.forEach((a, i) => {
+          html += `<div style="display:flex;gap:10px;margin-bottom:8px;font-size:13px;color:#92400e;line-height:1.5;"><span style="font-weight:700;color:#d97706;flex-shrink:0;">${i+1}.</span><span>${esc(a)}</span></div>`;
+        });
+        html += `</div>`;
+      }
+
+      // AI Report (collapsible)
+      const rep = sc.ai_report;
+      if (rep) {
+        const repId = 'airep-' + targetContainerId;
+        let repBody = '';
+
+        // Candidate Overview
+        const ovFields = [
+          ['Candidate Name', sc.candidate_name],
+          ['Position Applied For', rep.position_applied],
+          ['Expected Salary', rep.expected_salary],
+          ['Years of Experience', rep.years_of_experience],
+          ['Why Interested', rep.why_interested],
+        ].filter(([,v]) => v && v !== 'null' && v !== 'undefined');
+        if (ovFields.length) {
+          repBody += `<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:10px;">Candidate Overview</div>`;
+          ovFields.forEach(([k, v]) => {
+            repBody += `<div style="display:flex;gap:8px;margin-bottom:6px;font-size:13px;"><span style="font-weight:600;color:#475569;min-width:160px;flex-shrink:0;">${esc(k)}:</span><span style="color:#64748b;">${esc(v)}</span></div>`;
+          });
+          repBody += `</div>`;
+        }
+
+        // Past Experience
+        if (rep.past_experience?.length) {
+          repBody += `<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:12px;">Past Experience Match</div>`;
+          rep.past_experience.forEach(exp => {
+            repBody += `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f1f5f9;">
+              <div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:6px;">${esc(exp.title || '')}</div>`;
+            if (exp.objectives?.length) {
+              repBody += `<div style="font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Key Objectives and Missions</div>`;
+              exp.objectives.forEach(o => { repBody += `<div style="font-size:12px;color:#64748b;padding-left:12px;margin-bottom:3px;line-height:1.5;">• ${esc(o)}</div>`; });
+            }
+            if (exp.achievements?.length) {
+              repBody += `<div style="font-size:11px;font-weight:600;color:#94a3b8;margin:8px 0 4px;text-transform:uppercase;letter-spacing:.04em;">Key Goals and Achievements</div>`;
+              exp.achievements.forEach(a => { repBody += `<div style="font-size:12px;color:#64748b;padding-left:12px;margin-bottom:3px;line-height:1.5;">• ${esc(a)}</div>`; });
+            }
+            repBody += `</div>`;
+          });
+          repBody += `</div>`;
+        }
+
+        // Technical + Soft Skills
+        const renderSkillList = (title, list) => {
+          if (!list?.length) return '';
+          let s = `<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:12px;">${title}</div>`;
+          list.forEach(sk => {
+            const verifiedColor = sk.verified ? '#16a34a' : '#ca8a04';
+            const verifiedBg = sk.verified ? '#dcfce7' : '#fef9c3';
+            const tick = sk.verified ? '✓' : '~';
+            s += `<div style="display:flex;gap:10px;margin-bottom:10px;font-size:12px;line-height:1.5;">
+              <span style="width:18px;height:18px;border-radius:50%;flex-shrink:0;margin-top:1px;background:${verifiedBg};border:1.5px solid ${verifiedColor};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${verifiedColor};">${tick}</span>
+              <div><span style="font-weight:600;color:#0f172a;">${esc(sk.name)}</span>${sk.time ? `<span style="color:#a1a1aa;font-size:11px;margin-left:8px;">${esc(sk.time)}</span>` : ''}<span style="display:block;color:#64748b;margin-top:2px;">${esc(sk.description || '')}</span></div>
+            </div>`;
+          });
+          return s + `</div>`;
+        };
+        repBody += renderSkillList('Technical Assessment and Soft Skills — Technical Skills', rep.technical_skills);
+        repBody += renderSkillList('Soft Skills', rep.soft_skills);
+
+        // Next Steps
+        if (rep.next_steps?.length) {
+          repBody += `<div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:12px;">Next Steps</div>`;
+          rep.next_steps.forEach(ns => {
+            repBody += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px;">
+              <div style="font-size:13px;color:#0f172a;margin-bottom:4px;">${esc(ns.action || '')}</div>
+              ${ns.owner ? `<div style="font-size:11px;color:#64748b;">Owner: ${esc(ns.owner)}</div>` : ''}
+              ${ns.timeline ? `<div style="font-size:11px;color:#64748b;">Timeline: ${esc(ns.timeline)}</div>` : ''}
+            </div>`;
+          });
+          repBody += `</div>`;
+        }
+
+        html += `<div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+          <div style="padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;"
+            onclick="const b=document.getElementById('${repId}');b.style.display=b.style.display==='none'?'block':'none';">
+            <span style="font-size:13px;font-weight:700;color:#0f172a;">AI Report</span>
+            <button style="padding:4px 10px;font-size:12px;font-weight:600;color:#fff;background:var(--primary);border:none;border-radius:6px;cursor:pointer;">Regenerate</button>
+          </div>
+          <div id="${repId}" style="padding:16px;">${repBody}</div>
+        </div>`;
+      }
+
+      html += `</div>`;
       area.innerHTML = html;
+
+      // Draw radar after DOM insertion
+      if (sc.dimensions?.length >= 3) {
+        const canvas = document.getElementById(radarId);
+        if (canvas) drawRadarChart(canvas, sc.dimensions);
+      }
     }
 
     // --- VIEW 2: PAST MEETINGS HISTORY ---
@@ -1508,6 +1891,48 @@ HARD RULES:
       document.getElementById('meeting-modal').classList.remove('show');
       document.getElementById('modal-download-btn').style.display = 'none';
       currentModalMeeting = null;
+    }
+
+    async function refreshRecording() {
+      if (!currentModalMeeting) return;
+      const meetingId = currentModalMeeting._id;
+      const btn = document.getElementById('modal-refresh-recording-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '↻ Checking...'; }
+      try {
+        // First trigger a re-fetch from Recall.ai if botId is present
+        if (currentModalMeeting.botId) {
+          await fetch(`${API}/api/meetings/${meetingId}/fetch-recording`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+        }
+        // Then check current recording status
+        const res = await fetch(`${API}/api/meetings/${meetingId}/recording`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to check recording');
+        const rec = await res.json();
+        if (rec.ready) {
+          document.getElementById('modal-recording-processing').style.display = 'none';
+          const bar = document.getElementById('modal-recording-bar');
+          bar.style.display = 'flex';
+          if (rec.bot_audio_url) {
+            document.getElementById('modal-bot-audio').src = rec.bot_audio_url;
+            document.getElementById('modal-bot-audio-wrap').style.display = 'flex';
+          }
+          if (rec.candidate_audio_url) {
+            document.getElementById('modal-candidate-audio').src = rec.candidate_audio_url;
+            document.getElementById('modal-candidate-audio-wrap').style.display = 'flex';
+          }
+          const fullLink = document.getElementById('modal-full-recording-link');
+          if (rec.recording_url) { fullLink.href = rec.recording_url; fullLink.style.display = 'inline-flex'; }
+          else { fullLink.style.display = 'none'; }
+        } else {
+          if (btn) { btn.disabled = false; btn.textContent = '↻ Not ready yet — try again later'; }
+        }
+      } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+      }
     }
 
     // --- PDF DOWNLOAD ---
@@ -1890,6 +2315,308 @@ HARD RULES:
           document.getElementById('prompt').value = text;
         }
       }
+    }
+
+    // ── SCHEDULE VIEW ──────────────────────────────────────────────────────────
+
+    async function checkGoogleStatus() {
+      try {
+        const res = await fetch(`${API}/api/auth/google/status`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('google-status-badge');
+        if (data.connected) {
+          badge.style.display = 'flex';
+          badge.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:13px;font-weight:600;color:#166534;"><span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block;"></span>Google Connected</div>`;
+        } else {
+          badge.style.display = 'flex';
+          badge.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:var(--text-muted);">Google not connected yet</span>
+            <button onclick="connectGoogle()" style="padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Connect Google</button>
+          </div>`;
+        }
+      } catch (_) {}
+    }
+
+    async function connectGoogle() {
+      try {
+        const res = await fetch(`${API}/api/auth/google`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to get auth URL');
+        const data = await res.json();
+        window.open(data.auth_url, '_blank', 'width=500,height=650,left=400,top=100');
+        setTimeout(checkGoogleStatus, 5000);
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async function addCandidate() {
+      const name = document.getElementById('cand-name').value.trim();
+      const email = document.getElementById('cand-email').value.trim();
+      const phone = document.getElementById('cand-phone').value.trim();
+      const notes = document.getElementById('cand-notes').value.trim();
+      const statusEl = document.getElementById('cand-status');
+      const btn = document.getElementById('btn-add-candidate');
+
+      if (!name || !email) {
+        statusEl.textContent = 'Name and email are required.';
+        statusEl.className = 'status-alert show error';
+        return;
+      }
+
+      btn.disabled = true;
+      statusEl.textContent = 'Adding candidate...';
+      statusEl.className = 'status-alert show info';
+
+      try {
+        const res = await fetch(`${API}/api/candidates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ name, email, phone, notes })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to add candidate');
+
+        statusEl.textContent = `${name} added successfully.`;
+        statusEl.className = 'status-alert show success';
+        document.getElementById('cand-name').value = '';
+        document.getElementById('cand-email').value = '';
+        document.getElementById('cand-phone').value = '';
+        document.getElementById('cand-notes').value = '';
+        loadCandidates();
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.className = 'status-alert show error';
+      }
+      btn.disabled = false;
+    }
+
+    async function loadCandidates() {
+      const container = document.getElementById('candidates-list');
+      const select = document.getElementById('sched-candidate-select');
+      try {
+        const res = await fetch(`${API}/api/candidates`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+        const candidates = data.candidates || [];
+
+        // Update dropdown
+        const current = select.value;
+        select.innerHTML = '<option value="">-- Select a candidate --</option>';
+        candidates.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c._id;
+          opt.textContent = `${c.name} (${c.email})`;
+          select.appendChild(opt);
+          window[`_cand_${c._id}`] = c;
+        });
+        if (current) select.value = current;
+
+        // Update list
+        if (!candidates.length) {
+          container.innerHTML = '<div class="empty-state" style="padding:20px 0;">No candidates yet. Add one above.</div>';
+          return;
+        }
+        container.innerHTML = '';
+        candidates.forEach(c => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;gap:10px;';
+          row.innerHTML = `
+            <div>
+              <div style="font-size:14px;font-weight:600;color:var(--text);">${escapeHtml(c.name)}</div>
+              <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(c.email)}${c.phone ? ' · ' + escapeHtml(c.phone) : ''}</div>
+              ${c.notes ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${escapeHtml(c.notes)}</div>` : ''}
+            </div>
+            <button onclick="deleteCandidate('${c._id}','${escapeHtml(c.name)}')" style="font-size:11px;color:var(--error);background:none;border:1px solid var(--error);border-radius:6px;padding:4px 8px;cursor:pointer;flex-shrink:0;">Remove</button>
+          `;
+          container.appendChild(row);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state" style="color:var(--error)">Error: ${err.message}</div>`;
+      }
+    }
+
+    async function deleteCandidate(id, name) {
+      if (!confirm(`Remove candidate "${name}"?`)) return;
+      try {
+        const res = await fetch(`${API}/api/candidates/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Delete failed');
+        loadCandidates();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async function loadScheduledInterviews() {
+      const container = document.getElementById('scheduled-list');
+      try {
+        const res = await fetch(`${API}/api/interviews/scheduled`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+        const interviews = data.interviews || [];
+
+        if (!interviews.length) {
+          container.innerHTML = '<div class="empty-state" style="padding:20px 0;">No scheduled interviews yet.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        interviews.forEach(iv => {
+          const dt = new Date(iv.scheduledAt);
+          const dateStr = dt.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+          const timeStr = dt.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+          const statusColor = {
+            pending: '#f59e0b', active: '#10b981', completed: '#8b5cf6', cancelled: '#ef4444'
+          }[iv.status] || '#64748b';
+
+          const card = document.createElement('div');
+          card.style.cssText = 'padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;';
+          card.innerHTML = `
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;">
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--text);">${escapeHtml(iv.candidateName)}</div>
+                <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(iv.candidateEmail)} · ${escapeHtml(iv.roleName)}</div>
+              </div>
+              <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor};flex-shrink:0;">${iv.status}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+              📅 ${dateStr} at ${timeStr} UTC · ⏱ ${iv.durationMinutes} min ·
+              ${iv.platform === 'google_meet' ? '🎥 Google Meet' : escapeHtml(iv.platform)}
+              ${iv.emailSent ? ' · ✉ Email sent' : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <a href="${escapeHtml(iv.meetingUrl)}" target="_blank" style="font-size:12px;color:var(--primary);font-weight:600;text-decoration:none;">${escapeHtml(iv.meetingUrl)}</a>
+              ${iv.status === 'pending' ? `<button onclick="cancelScheduled('${iv._id}')" style="font-size:11px;color:var(--error);background:none;border:1px solid var(--error);border-radius:6px;padding:3px 8px;cursor:pointer;margin-left:auto;">Cancel</button>` : ''}
+            </div>`;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div class="empty-state" style="color:var(--error)">Error: ${err.message}</div>`;
+      }
+    }
+
+    async function cancelScheduled(id) {
+      if (!confirm('Cancel this scheduled interview?')) return;
+      try {
+        const res = await fetch(`${API}/api/interviews/${id}/cancel`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Cancel failed');
+        loadScheduledInterviews();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    function onSchedPromptChange() {
+      const sel = document.getElementById('sched-prompt-select');
+      const text = window[`_prompt_${sel.value}`];
+      if (text) document.getElementById('sched-prompt').value = text;
+    }
+
+    async function scheduleInterview() {
+      const candidateId = document.getElementById('sched-candidate-select').value;
+      const roleName = document.getElementById('sched-role').value.trim();
+      const systemPrompt = document.getElementById('sched-prompt').value.trim();
+      const date = document.getElementById('sched-date').value;
+      const time = document.getElementById('sched-time').value;
+      const duration = parseInt(document.getElementById('sched-duration').value) || 30;
+      const platform = document.getElementById('sched-platform').value;
+      const statusEl = document.getElementById('sched-status');
+      const btn = document.getElementById('btn-schedule-interview');
+
+      if (!candidateId) return showSchedStatus('Please select a candidate.', 'error');
+      if (!roleName) return showSchedStatus('Please enter a role / position name.', 'error');
+      if (!systemPrompt) return showSchedStatus('Please select or enter a system prompt.', 'error');
+      if (!date || !time) return showSchedStatus('Please select a date and time.', 'error');
+
+      const scheduledAtIso = `${date}T${time}:00Z`;
+      if (new Date(scheduledAtIso) <= new Date()) {
+        return showSchedStatus('Scheduled time must be in the future.', 'error');
+      }
+
+      btn.disabled = true;
+      showSchedStatus('Creating meeting and sending invitation...', 'info');
+
+      try {
+        const res = await fetch(`${API}/api/interviews/schedule`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            candidate_id: candidateId,
+            platform,
+            scheduled_at_iso: scheduledAtIso,
+            duration_minutes: duration,
+            role_name: roleName,
+            system_prompt: systemPrompt,
+            bot_name: 'RecruitX AI Interviewer',
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Scheduling failed');
+
+        showSchedStatus(
+          `Interview scheduled! Meeting link: ${data.meeting_url}${data.email_sent ? ' · Email sent to candidate.' : ' · Email could not be sent — check GOOGLE_SENDER_EMAIL env var.'}`,
+          'success'
+        );
+        loadScheduledInterviews();
+      } catch (err) {
+        showSchedStatus('Error: ' + err.message, 'error');
+      }
+      btn.disabled = false;
+    }
+
+    function showSchedStatus(msg, type) {
+      const el = document.getElementById('sched-status');
+      el.textContent = msg;
+      el.className = 'status-alert show ' + type;
+    }
+
+    // extend showView to load schedule data
+    const _origShowView = showView;
+    showView = function(viewId) {
+      _origShowView(viewId);
+      if (viewId === 'schedule') {
+        checkGoogleStatus();
+        loadCandidates();
+        loadScheduledInterviews();
+        loadSchedPromptsDropdown();
+      }
+    };
+
+    async function loadSchedPromptsDropdown() {
+      const select = document.getElementById('sched-prompt-select');
+      if (!select) return;
+      try {
+        const res = await fetch(`${API}/api/prompts`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        select.innerHTML = '<option value="">-- Choose a saved prompt --</option>';
+        (data.prompts || []).forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p._id;
+          opt.textContent = p.roleName;
+          select.appendChild(opt);
+          window[`_prompt_${p._id}`] = p.promptText;
+        });
+      } catch (_) {}
+    }
+
+    // Check for google_connected query param on load
+    if (new URLSearchParams(window.location.search).get('google_connected') === '1') {
+      history.replaceState({}, '', '/dashboard');
+      showView('schedule');
     }
   </script>
 </body>

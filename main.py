@@ -2,9 +2,10 @@ import asyncio
 import io
 import os
 import datetime
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Header, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -15,6 +16,8 @@ import pypdf
 
 from recall_client import RecallClient
 from pipeline import ConversationPipeline
+import google_auth as gauth
+import scheduler as sched
 
 load_dotenv()
 
@@ -43,7 +46,21 @@ def get_current_user(authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(401, f"Authentication error: {str(e)}")
 
-app = FastAPI(title="RecruitX AI Interviewer Bot Server")
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    # Startup: initialise scheduler and reload pending interviews
+    sched.init(
+        create_session_fn=_scheduled_create_session,
+        convex_client=convex_client,
+    )
+    sched.scheduler.start()
+    await sched.reload_pending(convex_client)
+    yield
+    # Shutdown
+    sched.scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="RecruitX AI Interviewer Bot Server", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -62,6 +79,7 @@ class StartInterviewRequest(BaseModel):
     system_prompt: str
     bot_name: str = "RecruitX AI Interviewer"
     voice_id: str = ""
+    candidate_name: str = "Candidate"
 
 
 class EndInterviewRequest(BaseModel):
@@ -147,6 +165,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         "bot_id": bot_id,
         "meeting_url": req.meeting_url,
         "bot_name": req.bot_name,
+        "candidate_name": req.candidate_name,
         "stop_event": stop_event,
         "recall": recall,
         "pipeline": pipeline,
@@ -229,6 +248,18 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             session["greeted"] = True
             background_tasks.add_task(_webhook_greeting, bot_id)
 
+    # Meeting ended naturally — auto-end the session, generate scorecard, save recording
+    if event in ("bot.done", "bot.call_ended", "bot.fatal"):
+        bot_id = data.get("bot", {}).get("id", "")
+        session = _sessions.pop(bot_id, None)
+        if session:
+            meeting_url = session.get("meeting_url", "")
+            _url_to_bot.pop(meeting_url, None)
+            _seen_segments.pop(bot_id, None)
+            candidate_name = session.get("candidate_name", "Candidate")
+            print(f"[Webhook] {event} — auto-ending session {bot_id} for {candidate_name}")
+            background_tasks.add_task(_auto_end_session, bot_id, session, candidate_name)
+
     # Real-time transcript events from Recall.ai realtime_endpoints
     # transcript.partial_data = interim words (candidate is mid-sentence)
     # transcript.data         = finalized utterance (Deepgram endpointing fired)
@@ -290,6 +321,79 @@ async def _webhook_greeting(bot_id: str):
         await recall.speak(bot_id, audio)
     except Exception as e:
         print(f"[Webhook] Greeting error: {e}")
+
+
+async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
+    """Called when Recall.ai fires bot.done — auto-generates scorecard and saves everything."""
+    # Stop the polling task
+    stop_event = session.get("stop_event")
+    if stop_event:
+        stop_event.set()
+    task = session.get("task")
+    if task:
+        task.cancel()
+
+    recall: RecallClient = session.get("recall") or _make_recall()
+    try:
+        await recall.stop_bot(bot_id)
+    except Exception as e:
+        print(f"[AutoEnd] stop_bot error (non-fatal): {e}")
+    finally:
+        try:
+            await recall.aclose()
+        except Exception:
+            pass
+
+    pipeline: ConversationPipeline = session.get("pipeline")
+    transcript_list = pipeline.get_transcript_list() if pipeline else []
+    transcript_text = pipeline.get_transcript_text() if pipeline else ""
+
+    scorecard = {}
+    if pipeline and transcript_text:
+        print(f"[AutoEnd] Generating scorecard for {candidate_name}...")
+        try:
+            scorecard = await pipeline.generate_scorecard(candidate_name)
+            print("[AutoEnd] Scorecard done.")
+        except Exception as e:
+            print(f"[AutoEnd] Scorecard error: {e}")
+
+    if pipeline:
+        try:
+            await pipeline.aclose()
+        except Exception:
+            pass
+
+    meeting_id = None
+    try:
+        meeting_id = convex_client.mutation(
+            "meetings:create",
+            {
+                "meetingUrl": session.get("meeting_url", ""),
+                "candidateName": candidate_name,
+                "botName": session.get("bot_name") or "RecruitX AI Interviewer",
+                "transcript": transcript_list,
+                "scorecard": scorecard,
+                "botId": bot_id,
+            },
+        )
+        print(f"[AutoEnd] Meeting stored: {meeting_id}")
+    except Exception as e:
+        print(f"[AutoEnd] Convex save error: {e}")
+
+    if meeting_id:
+        asyncio.create_task(_fetch_and_store_recording(bot_id, str(meeting_id)))
+
+    # If this was a scheduled session, mark it completed
+    scheduled_id = session.get("scheduled_interview_id")
+    if scheduled_id:
+        try:
+            convex_client.mutation("scheduledInterviews:updateStatus", {
+                "id": scheduled_id,
+                "status": "completed",
+                **({"meetingId": str(meeting_id)} if meeting_id else {}),
+            })
+        except Exception as e:
+            print(f"[AutoEnd] Failed to update scheduledInterview {scheduled_id}: {e}")
 
 
 async def _fetch_and_store_recording(bot_id: str, meeting_id: str):
@@ -719,3 +823,285 @@ async def generate_prompt_from_docs(
         raise
     except Exception as e:
         raise HTTPException(500, f"Generation error: {str(e)}")
+
+
+# ── Scheduled interview: create a live session at the scheduled time ───────────
+
+async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_name: str,
+                                     candidate_name: str, scheduled_interview_id: str):
+    """Called by the scheduler at interview time — mirrors /start-interview logic."""
+    if meeting_url in _url_to_bot:
+        print(f"[Scheduler] Session already active for {meeting_url} — skipping")
+        return
+
+    recall = _make_recall()
+    pipeline = ConversationPipeline(
+        system_prompt=system_prompt,
+        openai_key=os.getenv("OPENAI_API_KEY", ""),
+        elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
+        voice_id=VOICE_OPTIONS["custom"],
+    )
+
+    bot_id_holder: list[str] = []
+
+    async def on_ai_response(text: str, audio_bytes: bytes):
+        if bot_id_holder:
+            try:
+                await recall.speak(bot_id_holder[0], audio_bytes)
+            except Exception as e:
+                print(f"[Scheduler] Speak error: {e}")
+
+    pipeline.set_response_callback(on_ai_response)
+
+    try:
+        bot_data = await recall.create_bot(
+            meeting_url,
+            bot_name,
+            webhook_url=_webhook_url(),
+            deepgram_api_key=_deepgram_key(),
+        )
+    except Exception as e:
+        print(f"[Scheduler] create_bot error: {e}")
+        await recall.aclose()
+        return
+
+    bot_id = bot_data["id"]
+    bot_id_holder.append(bot_id)
+    print(f"[Scheduler] Bot created for scheduled interview {scheduled_interview_id}: {bot_id}")
+
+    stop_event = asyncio.Event()
+    _sessions[bot_id] = {
+        "bot_id": bot_id,
+        "meeting_url": meeting_url,
+        "bot_name": bot_name,
+        "candidate_name": candidate_name,
+        "stop_event": stop_event,
+        "recall": recall,
+        "pipeline": pipeline,
+        "seen_transcript_count": 0,
+        "greeted": False,
+        "scheduled_interview_id": scheduled_interview_id,
+    }
+    _url_to_bot[meeting_url] = bot_id
+
+    task = asyncio.create_task(_poll_and_greet(bot_id))
+    _sessions[bot_id]["task"] = task
+
+
+# ── Google OAuth endpoints ─────────────────────────────────────────────────────
+
+@app.get("/api/auth/google")
+def google_auth_start(user: dict = Depends(get_current_user)):
+    """Return the Google OAuth URL for the admin to authorize."""
+    if not os.getenv("GOOGLE_CLIENT_ID"):
+        raise HTTPException(400, "GOOGLE_CLIENT_ID env var not set")
+    url = gauth.get_auth_url()
+    return {"auth_url": url}
+
+
+@app.get("/api/auth/google/callback")
+async def google_auth_callback(code: str = None, error: str = None):
+    """Exchange OAuth code for tokens. No JWT required — called by Google redirect."""
+    if error:
+        return RedirectResponse(url="/dashboard?google_error=1")
+    if not code:
+        raise HTTPException(400, "Missing code parameter")
+    try:
+        tokens = gauth.exchange_code(code)
+        convex_client.mutation("settings:set", {"key": "google_tokens", "value": tokens})
+        return RedirectResponse(url="/dashboard?google_connected=1")
+    except Exception as e:
+        print(f"[Google OAuth] Callback error: {e}")
+        return RedirectResponse(url="/dashboard?google_error=1")
+
+
+@app.get("/api/auth/google/status")
+def google_auth_status(user: dict = Depends(get_current_user)):
+    """Check whether Google account is connected."""
+    try:
+        tokens = convex_client.query("settings:get", {"key": "google_tokens"})
+        connected = bool(tokens and tokens.get("refresh_token"))
+        return {"connected": connected}
+    except Exception:
+        return {"connected": False}
+
+
+# ── Candidate management endpoints ────────────────────────────────────────────
+
+class CandidateCreateRequest(BaseModel):
+    name: str
+    email: str
+    phone: str = ""
+    notes: str = ""
+
+
+@app.post("/api/candidates")
+def create_candidate(req: CandidateCreateRequest, user: dict = Depends(get_current_user)):
+    if not req.name or not req.email:
+        raise HTTPException(400, "Name and email are required")
+    try:
+        cid = convex_client.mutation("candidates:create", {
+            "name": req.name,
+            "email": req.email.lower().strip(),
+            **({"phone": req.phone} if req.phone else {}),
+            **({"notes": req.notes} if req.notes else {}),
+        })
+        return {"id": cid, "name": req.name, "email": req.email}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/candidates")
+def list_candidates(user: dict = Depends(get_current_user)):
+    try:
+        return {"candidates": convex_client.query("candidates:list") or []}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/candidates/{candidate_id}")
+def delete_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
+    try:
+        convex_client.mutation("candidates:remove", {"id": candidate_id})
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Schedule interview endpoint ───────────────────────────────────────────────
+
+class ScheduleInterviewRequest(BaseModel):
+    candidate_id: str
+    platform: str = "google_meet"      # "google_meet" | "zoom" | "teams"
+    scheduled_at_iso: str              # ISO 8601 UTC e.g. "2026-07-15T10:00:00Z"
+    duration_minutes: int = 30
+    role_name: str = "Interview"
+    system_prompt: str = ""
+    bot_name: str = "RecruitX AI Interviewer"
+
+
+@app.post("/api/interviews/schedule")
+async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends(get_current_user)):
+    # Resolve candidate
+    try:
+        candidate = convex_client.query("candidates:get", {"id": req.candidate_id})
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {e}")
+    if not candidate:
+        raise HTTPException(404, "Candidate not found")
+
+    # Parse scheduled time
+    try:
+        from datetime import timezone
+        scheduled_dt = datetime.datetime.fromisoformat(
+            req.scheduled_at_iso.replace("Z", "+00:00")
+        ).astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception:
+        raise HTTPException(400, "Invalid scheduled_at_iso format. Use ISO 8601 e.g. 2026-07-15T10:00:00Z")
+
+    if scheduled_dt < datetime.datetime.utcnow():
+        raise HTTPException(400, "Scheduled time must be in the future")
+
+    # Platform routing
+    if req.platform == "google_meet":
+        tokens = convex_client.query("settings:get", {"key": "google_tokens"})
+        if not tokens or not tokens.get("refresh_token"):
+            raise HTTPException(400, "Google account not connected. Go to Settings → Connect Google.")
+        try:
+            meet_result = await gauth.create_google_meet(
+                token_dict=tokens,
+                candidate_name=candidate["name"],
+                candidate_email=candidate["email"],
+                scheduled_at=scheduled_dt,
+                duration_minutes=req.duration_minutes,
+                role_name=req.role_name,
+            )
+        except Exception as e:
+            raise HTTPException(500, f"Google Meet creation failed: {e}")
+        meeting_url = meet_result["meet_url"]
+        calendar_event_id = meet_result["event_id"]
+    elif req.platform == "zoom":
+        raise HTTPException(400, "Zoom integration not yet configured. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET env vars.")
+    elif req.platform == "teams":
+        raise HTTPException(400, "Microsoft Teams integration not yet configured. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET env vars.")
+    else:
+        raise HTTPException(400, f"Unknown platform: {req.platform}")
+
+    # Send email invite
+    sender = os.getenv("GOOGLE_SENDER_EMAIL", "")
+    email_sent = False
+    if req.platform == "google_meet" and tokens and sender:
+        try:
+            email_sent = await gauth.send_interview_email(
+                token_dict=tokens,
+                candidate_name=candidate["name"],
+                candidate_email=candidate["email"],
+                meet_url=meeting_url,
+                scheduled_at=scheduled_dt,
+                role_name=req.role_name,
+                sender=sender,
+                duration_minutes=req.duration_minutes,
+            )
+        except Exception as e:
+            print(f"[Schedule] Email error (non-fatal): {e}")
+
+    # Save to Convex
+    try:
+        interview_id = convex_client.mutation("scheduledInterviews:create", {
+            "candidateId": req.candidate_id,
+            "candidateName": candidate["name"],
+            "candidateEmail": candidate["email"],
+            "platform": req.platform,
+            "meetingUrl": meeting_url,
+            "scheduledAt": int(scheduled_dt.timestamp() * 1000),
+            "durationMinutes": req.duration_minutes,
+            "roleName": req.role_name,
+            "systemPrompt": req.system_prompt,
+            "botName": req.bot_name,
+            "emailSent": email_sent,
+            "calendarEventId": calendar_event_id,
+        })
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save scheduled interview: {e}")
+
+    # Schedule the bot
+    from datetime import timezone
+    run_at = datetime.datetime.fromtimestamp(
+        int(scheduled_dt.timestamp()), tz=timezone.utc
+    )
+    sched.schedule_interview(
+        interview_id=str(interview_id),
+        meeting_url=meeting_url,
+        system_prompt=req.system_prompt,
+        bot_name=req.bot_name,
+        candidate_name=candidate["name"],
+        run_at=run_at,
+    )
+
+    return {
+        "status": "scheduled",
+        "interview_id": interview_id,
+        "meeting_url": meeting_url,
+        "email_sent": email_sent,
+        "scheduled_at": scheduled_dt.isoformat() + "Z",
+    }
+
+
+@app.get("/api/interviews/scheduled")
+def list_scheduled_interviews(user: dict = Depends(get_current_user)):
+    try:
+        return {"interviews": convex_client.query("scheduledInterviews:list") or []}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/interviews/{interview_id}/cancel")
+def cancel_scheduled_interview(interview_id: str, user: dict = Depends(get_current_user)):
+    try:
+        convex_client.mutation("scheduledInterviews:updateStatus", {
+            "id": interview_id, "status": "cancelled"
+        })
+        sched.cancel_interview(interview_id)
+        return {"status": "cancelled"}
+    except Exception as e:
+        raise HTTPException(500, str(e))

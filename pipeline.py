@@ -969,45 +969,98 @@ class ConversationPipeline:
         scorecard_prompt = f"""You are an expert recruiter evaluating a voice interview conducted by an AI bot.
 
 IMPORTANT — ASR TRANSCRIPT NOTICE:
-This transcript was produced by real-time speech-to-text (Deepgram) during a live call. It may contain:
-- Garbled technical terms (e.g. "next sales" = Next.js, "famous project" = company name, "RGS" = some framework)
-- Sentence fragments from mid-speech endpointing (a complete answer may appear as 2–3 short lines in sequence)
-- Filler words and disfluencies that are normal in spoken conversation
-
-You MUST read the transcript charitably: if a candidate's answer is fragmented or uses unusual spellings for a technical term, infer the most likely correct meaning from context. Do NOT penalise for transcript artefacts — only penalise for genuine lack of knowledge or inability to answer after follow-up questions.
+This transcript was produced by real-time speech-to-text (Deepgram). It may contain garbled technical terms, sentence fragments, and disfluencies. Read charitably — infer the most likely meaning from context. Do NOT penalise for transcript artefacts — only penalise for genuine lack of knowledge.
 
 Candidate: {candidate_name}
 
-Real-Time Profile (collected turn-by-turn during the interview):
+Real-Time Profile (collected turn-by-turn):
 {profile_summary}
 
 Interview Transcript:
 {eval_text}
 
-Generate a JSON scorecard:
+Generate a comprehensive JSON scorecard. Return ONLY valid JSON, no extra text:
 {{
   "candidate_name": "{candidate_name}",
-  "overall_score": <1-10>,
+  "overall_score": <1-10 integer>,
   "recommendation": "STRONG HIRE | HIRE | MAYBE | NO HIRE",
-  "summary": "<2-3 sentence summary of the candidate>",
+  "summary": "<2-3 sentence balanced assessment of the candidate>",
   "dimensions": [
-    {{"name": "<dimension>", "score": <1-10>, "comment": "<brief comment>"}},
-    ...
+    {{"name": "Communication", "score": <1-10>, "comment": "<brief evidence-backed comment>"}},
+    {{"name": "Technical Depth", "score": <1-10>, "comment": "<brief evidence-backed comment>"}},
+    {{"name": "Problem Solving", "score": <1-10>, "comment": "<brief evidence-backed comment>"}},
+    {{"name": "Cultural Fit", "score": <1-10>, "comment": "<brief evidence-backed comment>"}},
+    {{"name": "Enthusiasm", "score": <1-10>, "comment": "<brief evidence-backed comment>"}},
+    {{"name": "Experience Relevance", "score": <1-10>, "comment": "<brief evidence-backed comment>"}}
   ],
-  "strengths": ["<strength>", ...],
-  "concerns": ["<concern>", ...],
-  "suggested_next_steps": "<what should happen next>"
+  "top_strengths": [
+    {{"name": "<strongest area>", "score": <1-10>}},
+    {{"name": "<second strongest>", "score": <1-10>}}
+  ],
+  "top_gaps": [
+    {{"name": "<main gap>", "score": <1-10>}},
+    {{"name": "<second gap>", "score": <1-10>}}
+  ],
+  "green_flags": [
+    "<specific positive observation backed by transcript evidence>",
+    "<specific positive observation>",
+    "<specific positive observation>"
+  ],
+  "red_flags": [
+    "<specific concern backed by transcript evidence>",
+    "<specific concern>"
+  ],
+  "skill_breakdown": [
+    {{"name": "<skill actually discussed>", "score": <1-10>, "description": "<what the candidate specifically said or demonstrated about this skill>"}},
+    {{"name": "<skill>", "score": <1-10>, "description": "<evidence>"}},
+    {{"name": "<skill>", "score": <1-10>, "description": "<evidence>"}},
+    {{"name": "<skill>", "score": <1-10>, "description": "<evidence>"}}
+  ],
+  "areas_for_improvement": [
+    "<specific actionable improvement with clear rationale>",
+    "<specific actionable improvement>",
+    "<specific actionable improvement>"
+  ],
+  "ai_report": {{
+    "position_applied": "<role mentioned in conversation or 'Not disclosed'>",
+    "years_of_experience": "<estimate from transcript or 'Not specified'>",
+    "why_interested": "<candidate's stated reason or 'Not explicitly stated in the transcript'>",
+    "past_experience": [
+      {{
+        "title": "<project or role title>",
+        "objectives": ["<key objective or responsibility>"],
+        "achievements": ["<specific achievement or result>"]
+      }}
+    ],
+    "technical_skills": [
+      {{"name": "<technical skill>", "description": "<evidence from transcript showing this skill>", "verified": true}},
+      {{"name": "<technical skill>", "description": "<evidence>", "verified": false}}
+    ],
+    "soft_skills": [
+      {{"name": "<soft skill e.g. Communication>", "description": "<specific behavioral evidence from transcript>", "verified": true}},
+      {{"name": "<soft skill>", "description": "<evidence>", "verified": true}}
+    ],
+    "next_steps": [
+      {{"action": "<concrete recommended next step>", "owner": "<who — e.g. Hiring Manager, Recruiter>", "timeline": "<e.g. Within 1 week>"}},
+      {{"action": "<next step>", "owner": "<owner>", "timeline": "<timeline>"}}
+    ]
+  }}
 }}
 
-Score 4-6 dimensions relevant to what was discussed.
-Use the real-time profile data to inform your scores — it was collected live.
-Return ONLY valid JSON, no extra text."""
+Guidelines:
+- "dimensions" must have exactly 6 items (used for radar chart)
+- "skill_breakdown" should cover 4-6 skills actually discussed in the interview
+- "green_flags" should have 3-5 entries with specific transcript evidence
+- "red_flags" should have 2-4 entries with specific transcript evidence
+- "areas_for_improvement" should have 3-4 actionable suggestions
+- "past_experience" should cover 2-4 projects/roles the candidate mentioned
+- Use the real-time profile data to inform scores — it was collected live during the interview"""
 
         response = await self._openai.chat.completions.create(
             model=self._scorecard_model,
             messages=[{"role": "user", "content": scorecard_prompt}],
             temperature=0.3,
-            max_tokens=800,
+            max_tokens=2500,
         )
 
         try:

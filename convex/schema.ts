@@ -31,4 +31,35 @@ export default defineSchema({
     promptText: v.string(),
     createdAt: v.number(),
   }).index("by_role", ["roleName"]),
+
+  candidates: defineTable({
+    name: v.string(),
+    email: v.string(),
+    phone: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_email", ["email"]),
+
+  scheduledInterviews: defineTable({
+    candidateId: v.string(),
+    candidateName: v.string(),
+    candidateEmail: v.string(),
+    platform: v.string(),        // "google_meet" | "zoom" | "teams"
+    meetingUrl: v.string(),
+    scheduledAt: v.number(),     // UTC milliseconds
+    durationMinutes: v.number(),
+    roleName: v.string(),
+    systemPrompt: v.string(),
+    botName: v.string(),
+    status: v.string(),          // "pending" | "active" | "completed" | "cancelled"
+    emailSent: v.boolean(),
+    calendarEventId: v.optional(v.string()),
+    meetingId: v.optional(v.string()),  // Convex meetings table ID after completion
+    createdAt: v.number(),
+  }).index("by_status", ["status"]).index("by_candidate", ["candidateId"]),
+
+  settings: defineTable({
+    key: v.string(),
+    value: v.any(),
+  }).index("by_key", ["key"]),
 });
