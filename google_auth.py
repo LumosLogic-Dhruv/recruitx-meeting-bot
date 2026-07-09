@@ -103,7 +103,7 @@ def _get_credentials(token_dict: dict) -> Credentials:
 def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: str,
                       scheduled_at: datetime, duration_minutes: int, role_name: str) -> dict:
     creds = _get_credentials(token_dict)
-    service = build("calendar", "v3", credentials=creds)
+    service = build("calendar", "v3", credentials=creds, cache_discovery=False)
 
     end_at = scheduled_at + timedelta(minutes=duration_minutes)
     event = {
@@ -199,7 +199,7 @@ def _send_email_sync(token_dict: dict, candidate_name: str, candidate_email: str
                      meet_url: str, scheduled_at: datetime, role_name: str,
                      sender: str, duration_minutes: int) -> bool:
     creds = _get_credentials(token_dict)
-    gmail = build("gmail", "v1", credentials=creds)
+    gmail = build("gmail", "v1", credentials=creds, cache_discovery=False)
 
     html = _build_email_html(candidate_name, meet_url, scheduled_at, role_name, sender, duration_minutes)
     msg = MIMEMultipart("alternative")
@@ -246,7 +246,7 @@ def _send_email_smtp_sync(candidate_name: str, candidate_email: str, meet_url: s
     msg.attach(MIMEText(html, "html"))
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
             server.ehlo()
             server.starttls()
             server.login(smtp_user, smtp_pass)
