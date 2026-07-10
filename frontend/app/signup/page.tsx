@@ -43,7 +43,8 @@ export default function SignupPage() {
 
       localStorage.setItem("token", loginData.token);
       localStorage.setItem("user", JSON.stringify(loginData.user));
-      setTimeout(() => { window.location.href = "/dashboard"; }, 800);
+      const role = loginData.user?.role || "recruiter";
+      setTimeout(() => { window.location.href = role === "admin" ? "/admin" : "/recruiter"; }, 800);
     } catch (err: unknown) {
       setStatus({ msg: err instanceof Error ? err.message : "Sign up failed", type: "error" });
       setLoading(false);

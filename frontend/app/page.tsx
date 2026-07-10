@@ -39,7 +39,7 @@ export default function LandingPage() {
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           {authed ? (
-            <Link href="/dashboard" style={{ padding: "10px 20px", textDecoration: "none", background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
+            <Link href="/recruiter" style={{ padding: "10px 20px", textDecoration: "none", background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
               Go to Dashboard
             </Link>
           ) : (
@@ -68,7 +68,7 @@ export default function LandingPage() {
             RecruitX orchestrates intelligent, conversational AI bots directly in your live calls. Conduct structured technical or behavioral interviews, generate real-time transcripts, and receive immediate dimensions-based evaluations.
           </p>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center", marginTop: 24 }}>
-            <Link href={authed ? "/dashboard" : "/signup"} style={{ padding: "14px 28px", fontSize: 16, fontWeight: 600, textDecoration: "none", background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", color: "#fff", borderRadius: 12, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}>
+            <Link href={authed ? "/recruiter" : "/signup"} style={{ padding: "14px 28px", fontSize: 16, fontWeight: 600, textDecoration: "none", background: "linear-gradient(135deg,#8b5cf6,#7c3aed)", color: "#fff", borderRadius: 12, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}>
               {authed ? "Go to Dashboard" : "Get Started Free"}
             </Link>
             <a href="#how-to-use" style={{ padding: "14px 28px", fontSize: 16, fontWeight: 600, textDecoration: "none", background: "#fff", border: "1px solid #e2e8f0", color: "#0f172a", borderRadius: 12 }}>
@@ -116,7 +116,7 @@ export default function LandingPage() {
           <p style={{ margin: 0, color: "#ddd6fe", maxWidth: 500, fontSize: 15 }}>
             {authed ? "Access your workspace to orchestrate bots and view candidate transcripts." : "Deploy your first RecruitX interviewer bot and automate screeners effortlessly."}
           </p>
-          <Link href={authed ? "/dashboard" : "/signup"} style={{ background: "#fff", color: "#8b5cf6", padding: "12px 28px", fontSize: 16, fontWeight: 700, borderRadius: 12, textDecoration: "none", marginTop: 8 }}>
+          <Link href={authed ? "/recruiter" : "/signup"} style={{ background: "#fff", color: "#8b5cf6", padding: "12px 28px", fontSize: 16, fontWeight: 700, borderRadius: 12, textDecoration: "none", marginTop: 8 }}>
             {authed ? "Go to Dashboard" : "Create Free Account"}
           </Link>
         </div>

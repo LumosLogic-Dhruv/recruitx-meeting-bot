@@ -14,7 +14,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (token) checkSession().then((ok) => { if (ok) window.location.href = "/dashboard"; });
+    if (token) checkSession().then((ok) => {
+      if (ok) {
+        const u = JSON.parse(localStorage.getItem("user") || "{}");
+        window.location.href = u?.role === "admin" ? "/admin" : "/recruiter";
+      }
+    });
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
