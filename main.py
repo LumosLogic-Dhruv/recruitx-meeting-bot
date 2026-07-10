@@ -141,7 +141,23 @@ def admin_page():
 
 @app.get("/recruiter")
 def recruiter_page():
-    return FileResponse("static/recruiter.html")
+    return RedirectResponse(url="/recruiter/add")
+
+@app.get("/recruiter/add")
+def recruiter_add():
+    return FileResponse("static/recruiter-add.html")
+
+@app.get("/recruiter/schedule")
+def recruiter_schedule():
+    return FileResponse("static/recruiter-schedule.html")
+
+@app.get("/recruiter/scorecards")
+def recruiter_scorecards():
+    return FileResponse("static/recruiter-scorecards.html")
+
+@app.get("/recruiter/prompts")
+def recruiter_prompts():
+    return FileResponse("static/recruiter-prompts.html")
 
 
 @app.get("/health")
