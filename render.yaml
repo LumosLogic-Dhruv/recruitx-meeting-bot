@@ -1,15 +1,49 @@
 services:
+
+  # ── Backend: FastAPI + Recall.ai bot engine ────────────────────────────────
   - type: web
-    name: lumos-interview-bot
+    name: recruitx-backend
     runtime: python
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
       - key: RECALL_API_KEY
         sync: false
       - key: RECALL_API_URL
         value: https://ap-northeast-1.recall.ai/api/v1
-      - key: OPENAI_API_KEY
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: CONVEX_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: COMPANY_NAME
         sync: false
       - key: RENDER_URL
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: ELEVENLABS_VOICE_ID_NILA
+        sync: false
+      - key: GOOGLE_SENDER_EMAIL
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+
+  # ── Frontend: Next.js recruiter + admin portal ─────────────────────────────
+  - type: web
+    name: recruitx-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
         sync: false

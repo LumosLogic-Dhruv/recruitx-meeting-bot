@@ -1,31 +1,42 @@
-# Environment — never commit real keys
+# ── Environment — never commit real keys ──────────────────────────────────────
 .env
 .env.local
+backend/.env
+backend/.env.local
+frontend/.env.local
 
-# Node.js
-node_modules/
-
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-
-# Virtual environments
+backend/__pycache__/
+backend/venv/
+backend/.venv/
 venv/
 .venv/
-env/
-ENV/
 
-# Render / build artifacts
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# ── Next.js build ─────────────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+
+# ── Build artifacts ───────────────────────────────────────────────────────────
 *.egg-info/
 dist/
 build/
 .eggs/
 
-# Editor
+# ── Editors ───────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
