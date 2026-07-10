@@ -168,8 +168,15 @@ let filteredCandidates = [];
 
 async function init() {
   if (!token) { window.location.href='/login'; return; }
+  // Role check before hitting the server
+  if (currentUser.role && currentUser.role !== 'admin') {
+    window.location.href = '/recruiter';
+    return;
+  }
   const ok = await checkAuth();
-  if (!ok) { window.location.href='/login'; return; }
+  if (!ok) { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href='/login'; return; }
+  // Re-verify role from server response
+  if (currentUser.role !== 'admin') { window.location.href='/recruiter'; return; }
   document.getElementById('user-name').textContent = currentUser.name || currentUser.email || '';
   setWeekLabel();
   await Promise.all([loadCandidates(), loadMeetings(), loadSettings()]);
@@ -182,7 +189,14 @@ async function init() {
 async function checkAuth() {
   try {
     const r = await fetch(`${API}/api/auth/me`, {headers:{Authorization:`Bearer ${token}`}});
-    return r.ok;
+    if (!r.ok) return false;
+    const d = await r.json();
+    // Sync role from server in case localStorage is stale
+    if (d.user && d.user.role) {
+      currentUser.role = d.user.role;
+      localStorage.setItem('user', JSON.stringify(currentUser));
+    }
+    return true;
   } catch { return false; }
 }
 

@@ -38,6 +38,9 @@ def get_current_user(authorization: str = Header(None)):
     token = authorization.split(" ")[1]
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        # Back-fill role for old tokens that predate the RBAC change
+        if "role" not in payload:
+            payload["role"] = "recruiter"
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(401, "Token has expired")
@@ -132,18 +135,12 @@ def dashboard_page():
 
 
 @app.get("/admin")
-def admin_page(authorization: str = Header(None)):
-    user = get_current_user(authorization)
-    if user.get("role") != "admin":
-        raise HTTPException(403, "Admin access required")
+def admin_page():
     return FileResponse("static/admin.html")
 
 
 @app.get("/recruiter")
-def recruiter_page(authorization: str = Header(None)):
-    user = get_current_user(authorization)
-    if user.get("role") not in ("recruiter", "admin"):
-        raise HTTPException(403, "Recruiter access required")
+def recruiter_page():
     return FileResponse("static/recruiter.html")
 
 
