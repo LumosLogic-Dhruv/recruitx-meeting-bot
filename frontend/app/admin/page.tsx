@@ -37,17 +37,30 @@ function ScoreChip({ score }: { score: number }) {
 }
 
 function StatusBadge({ status, cooldownUntil }: { status?: string; cooldownUntil?: number }) {
-  const s = status || "never_invited";
-  let label = s;
-  if (s === "cooldown" && cooldownUntil) label = `Cooldown (${Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 86400000))}d)`;
-  const colors: Record<string, [string, string]> = {
-    never_invited: ["#f8fafc", "#64748b"], attempt_1_scheduled: ["#eff6ff", "#1d4ed8"],
-    cooldown: ["#fff7ed", "#c2410c"], attempt_2_scheduled: ["#eff6ff", "#1d4ed8"],
-    locked: ["#fef2f2", "#991b1b"], completed: ["#f0fdf4", "#166534"],
-    partial: ["#fefce8", "#854d0e"], no_show: ["#fff7ed", "#c2410c"],
+  const s = (status || "never_invited").replace(/\.\d+/g, ""); // strip any float remnants like "1.0"
+  const labelMap: Record<string, string> = {
+    never_invited: "Not Invited",
+    attempt_1_scheduled: "Interview 1 Scheduled",
+    attempt_2_scheduled: "Interview 2 Scheduled",
+    cooldown: cooldownUntil ? `Cooldown (${Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 86400000))}d)` : "Cooldown",
+    locked: "Final / Locked",
+    completed: "Completed",
+    partial: "Partial",
+    no_show: "No Show",
   };
-  const [bg, col] = colors[s] || ["#f8fafc", "#64748b"];
-  return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color: col }}>{label.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</span>;
+  const colorMap: Record<string, [string, string]> = {
+    never_invited: ["#f8fafc", "#64748b"],
+    attempt_1_scheduled: ["#eff6ff", "#1d4ed8"],
+    attempt_2_scheduled: ["#eff6ff", "#1d4ed8"],
+    cooldown: ["#fff7ed", "#c2410c"],
+    locked: ["#fef2f2", "#991b1b"],
+    completed: ["#f0fdf4", "#166534"],
+    partial: ["#fefce8", "#854d0e"],
+    no_show: ["#fff7ed", "#c2410c"],
+  };
+  const label = labelMap[s] || s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const [bg, col] = colorMap[s] || ["#f8fafc", "#64748b"];
+  return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color: col }}>{label}</span>;
 }
 
 export default function AdminPage() {
@@ -60,6 +73,7 @@ export default function AdminPage() {
   const [filterRecruiter, setFilterRecruiter] = useState("");
   const [modal, setModal] = useState<Meeting | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [usersList, setUsersList] = useState<{ _id: string; name: string; email: string; role: string }[]>([]);
   const [smtp, setSmtp] = useState({ host: "smtp.gmail.com", port: "587", user: "", pass: "" });
   const [googleConnected, setGoogleConnected] = useState(false);
   const [smtpMsg, setSmtpMsg] = useState("");
@@ -80,6 +94,7 @@ export default function AdminPage() {
     Promise.all([
       fetch(`${BASE}/api/candidates`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setCandidates(d.candidates || [])),
       fetch(`${BASE}/api/meetings`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setMeetings(d.meetings || [])),
+      fetch(`${BASE}/api/users`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setUsersList(d.users || [])).catch(() => {}),
       fetch(`${BASE}/api/settings/smtp`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => {
         if (d.smtp_host) setSmtp({ host: d.smtp_host, port: String(d.smtp_port || 587), user: d.smtp_user || "", pass: "" });
       }).catch(() => {}),
@@ -90,9 +105,9 @@ export default function AdminPage() {
     ]);
   }, []);
 
+  // Build recruiter name map from actual users list (authoritative source)
   const recruiterMap: Record<string, string> = {};
-  meetings.forEach(m => { if (m.recruiterId && m.recruiterName) recruiterMap[m.recruiterId] = m.recruiterName; });
-  candidates.forEach(c => { if (c.recruiterId && c.recruiterName) recruiterMap[c.recruiterId] = c.recruiterName; });
+  usersList.forEach(u => { recruiterMap[u._id] = u.name || u.email; });
 
   const weekStart = (() => { const now = new Date(); const d = new Date(now); d.setDate(now.getDate() - ((now.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); return d.getTime(); })();
   const weeklyMeetings = meetings.filter(m => (m.createdAt || 0) >= weekStart && m.scorecard?.overall_score).sort((a, b) => (b.scorecard?.overall_score || 0) - (a.scorecard?.overall_score || 0));

@@ -12,7 +12,7 @@ interface Candidate {
 }
 
 function Badge({ c }: { c: Candidate }) {
-  const s = c.interviewStatus || "never_invited";
+  const s = (c.interviewStatus || "never_invited").replace(/\.\d+/g, "");
   const map: Record<string, [string, string]> = {
     never_invited: ["#f1f5f9|#64748b", "Not Invited"],
     attempt_1_scheduled: ["#eff6ff|#1d4ed8", "Interview 1 Sched."],
@@ -23,7 +23,7 @@ function Badge({ c }: { c: Candidate }) {
     partial: ["#fefce8|#854d0e", "Partial"],
     no_show: ["#fff7ed|#c2410c", "No Show"],
   };
-  const [colors, label] = map[s] || ["#f1f5f9|#64748b", s];
+  const [colors, label] = map[s] || ["#f1f5f9|#64748b", s.replace(/_/g, " ")];
   const [bg, color] = colors.split("|");
   return <span style={{ display: "inline-block", padding: "3px 11px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color }}>{label}</span>;
 }

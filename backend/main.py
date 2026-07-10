@@ -711,7 +711,7 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
 
     # Update candidate interview state machine
     candidate_id = session.get("candidate_id")
-    attempt_number = session.get("attempt_number", 1)
+    attempt_number = int(session.get("attempt_number") or 1)
     if candidate_id:
         try:
             if interview_status in ("completed", "partial"):
@@ -1689,6 +1689,18 @@ async def upload_resume(candidate_id: str, file: UploadFile = File(...),
 
 # ── Admin analytics endpoint ──────────────────────────────────────────────────
 
+@app.get("/api/users")
+def list_users(user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin only")
+    try:
+        users = convex_client.query("users:list") or []
+        # Strip password hashes before sending to frontend
+        return {"users": [{"_id": u["_id"], "name": u["name"], "email": u["email"], "role": u.get("role", "recruiter")} for u in users]}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @app.get("/api/admin/analytics")
 def admin_analytics(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
@@ -1891,7 +1903,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 print(f"[Schedule] Gmail API email error (non-fatal): {e}")
 
     recruiter_id = user.get("sub", "")
-    attempt_number = candidate.get("attemptCount", 0) + 1
+    attempt_number = int(candidate.get("attemptCount") or 0) + 1
 
     # Save to Convex
     try:
