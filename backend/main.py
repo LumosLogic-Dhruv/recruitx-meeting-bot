@@ -1038,6 +1038,77 @@ def login(req: LoginRequest):
         raise HTTPException(500, f"Login error: {str(e)}")
 
 
+@app.post("/api/auth/forgot-password")
+async def forgot_password(request: Request):
+    import secrets, hashlib
+    import email_templates as et
+    body = await request.json()
+    email = (body.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(400, "Email is required")
+
+    user = convex_client.query("users:getByEmail", {"email": email})
+    if not user:
+        # Return success regardless — don't reveal if email exists
+        return {"status": "ok", "message": "If that email exists, a reset link has been sent."}
+
+    raw_token = secrets.token_urlsafe(32)
+    hashed = hashlib.sha256(raw_token.encode()).hexdigest()
+    expiry = int((__import__("time").time() + 3600) * 1000)  # 1 hour
+
+    convex_client.mutation("users:setResetToken", {
+        "id": user["_id"],
+        "resetToken": hashed,
+        "resetTokenExpiry": expiry,
+    })
+
+    frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+    reset_url = f"{frontend_url}/reset-password?token={raw_token}"
+
+    try:
+        smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
+        html = et.build_password_reset_email(name=user["name"], reset_url=reset_url)
+        company = os.getenv("COMPANY_NAME", "LumosLogic")
+        await gauth.send_email_smtp_generic(
+            to_email=email,
+            to_name=user["name"],
+            subject=f"[{company}] Reset Your Password",
+            html_body=html,
+            smtp_config=smtp_config,
+        )
+    except Exception as e:
+        print(f"[Auth] Password reset email error: {e}")
+
+    return {"status": "ok", "message": "If that email exists, a reset link has been sent."}
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password(request: Request):
+    import hashlib
+    body = await request.json()
+    token = (body.get("token") or "").strip()
+    new_password = body.get("password") or ""
+
+    if not token or not new_password:
+        raise HTTPException(400, "Token and new password are required")
+    if len(new_password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+
+    hashed = hashlib.sha256(token.encode()).hexdigest()
+    user = convex_client.query("users:getByResetToken", {"resetToken": hashed})
+
+    if not user:
+        raise HTTPException(400, "Invalid or expired reset link")
+    if user.get("resetTokenExpiry", 0) < int(__import__("time").time() * 1000):
+        raise HTTPException(400, "Reset link has expired. Please request a new one.")
+
+    salt = bcrypt.gensalt()
+    new_hash = bcrypt.hashpw(new_password.encode(), salt).decode()
+    convex_client.mutation("users:updatePassword", {"id": user["_id"], "passwordHash": new_hash})
+
+    return {"status": "ok", "message": "Password updated successfully."}
+
+
 @app.get("/api/auth/me")
 def auth_me(user: dict = Depends(get_current_user)):
     return {"user": user}
@@ -1496,7 +1567,6 @@ def list_candidates(user: dict = Depends(get_current_user)):
 @app.delete("/api/candidates/{candidate_id}")
 def delete_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
     try:
-        # Recruiters can only delete their own candidates
         if user.get("role") != "admin":
             candidate = convex_client.query("candidates:get", {"id": candidate_id})
             if candidate and candidate.get("recruiterId") != user.get("sub"):
@@ -1505,6 +1575,65 @@ def delete_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
         return {"status": "deleted"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+class CandidateUpdateRequest(BaseModel):
+    name: str = ""
+    email: str = ""
+    phone: str = ""
+    notes: str = ""
+    role_name: str = ""
+
+
+@app.put("/api/candidates/{candidate_id}")
+def update_candidate(candidate_id: str, req: CandidateUpdateRequest,
+                     user: dict = Depends(get_current_user)):
+    try:
+        if user.get("role") != "admin":
+            candidate = convex_client.query("candidates:get", {"id": candidate_id})
+            if candidate and candidate.get("recruiterId") != user.get("sub"):
+                raise HTTPException(403, "Cannot edit another recruiter's candidate")
+        patch: dict = {}
+        if req.name:      patch["name"]     = req.name.strip()
+        if req.email:     patch["email"]    = req.email.lower().strip()
+        if req.phone:     patch["phone"]    = req.phone.strip()
+        if req.notes:     patch["notes"]    = req.notes.strip()
+        if req.role_name: patch["roleName"] = req.role_name.strip()
+        convex_client.mutation("candidates:update", {"id": candidate_id, **patch})
+        return {"status": "updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Prompt CRUD ───────────────────────────────────────────────────────────────
+
+class PromptUpdateRequest(BaseModel):
+    role_name: str = ""
+    prompt_text: str = ""
+
+
+@app.put("/api/prompts/{prompt_id}")
+def update_prompt(prompt_id: str, req: PromptUpdateRequest,
+                  user: dict = Depends(get_current_user)):
+    try:
+        patch: dict = {"id": prompt_id}
+        if req.role_name:   patch["roleName"]   = req.role_name.strip()
+        if req.prompt_text: patch["promptText"] = req.prompt_text.strip()
+        convex_client.mutation("prompts:update", patch)
+        return {"status": "updated"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/prompts/{prompt_id}")
+def delete_prompt(prompt_id: str, user: dict = Depends(get_current_user)):
+    try:
+        convex_client.mutation("prompts:remove", {"id": prompt_id})
+        return {"status": "deleted"}
     except Exception as e:
         raise HTTPException(500, str(e))
 

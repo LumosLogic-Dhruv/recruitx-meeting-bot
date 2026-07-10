@@ -441,3 +441,34 @@ def build_recruiter_no_show_email(
   </p>
 """
     return _wrap(body)
+
+
+# ── 7. Password Reset Email ───────────────────────────────────────────────────
+
+def build_password_reset_email(name: str, reset_url: str) -> str:
+    body = f"""
+  <div style="text-align:center;margin-bottom:28px;">
+    <h1 style="font-size:24px;font-weight:800;color:#7c3aed;margin:0 0 6px;">Reset Your Password</h1>
+    <p style="color:#94a3b8;margin:0;font-size:13px;">{COMPANY} · AI-Powered Recruitment</p>
+  </div>
+  <p style="font-size:15px;margin-bottom:8px;">Hi <strong>{name}</strong>,</p>
+  <p style="color:#475569;line-height:1.7;margin-bottom:24px;">
+    We received a request to reset your RecruitX password.
+    Click the button below — this link expires in <strong>1 hour</strong>.
+  </p>
+  <div style="text-align:center;margin-bottom:28px;">
+    <a href="{reset_url}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);
+      color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:16px;font-weight:700;">
+      Reset Password
+    </a>
+    <p style="margin:12px 0 0;font-size:12px;color:#94a3b8;">
+      Or copy: <a href="{reset_url}" style="color:#7c3aed;">{reset_url}</a>
+    </p>
+  </div>
+  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;">
+    <p style="margin:0;color:#991b1b;font-size:13px;">
+      If you didn&apos;t request this, ignore this email — your password won&apos;t change.
+    </p>
+  </div>
+"""
+    return _wrap(body)

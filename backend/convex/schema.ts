@@ -6,8 +6,10 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     passwordHash: v.string(),
-    role: v.optional(v.string()),   // "admin" | "recruiter" — defaults to "recruiter"
-  }).index("by_email", ["email"]),
+    role: v.optional(v.string()),            // "admin" | "recruiter"
+    resetToken: v.optional(v.string()),      // hashed password-reset token
+    resetTokenExpiry: v.optional(v.number()), // UTC epoch ms — token expires after 1h
+  }).index("by_email", ["email"]).index("by_reset_token", ["resetToken"]),
 
   meetings: defineTable({
     meetingUrl: v.string(),

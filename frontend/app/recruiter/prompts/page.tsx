@@ -7,6 +7,58 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 interface Prompt { _id: string; roleName: string; promptText: string; }
 
+function EditPromptModal({ prompt, onClose, onSaved }: { prompt: Prompt; onClose: () => void; onSaved: () => void }) {
+  const [roleName, setRoleName] = useState(prompt.roleName);
+  const [promptText, setPromptText] = useState(prompt.promptText);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const BASE2 = process.env.NEXT_PUBLIC_API_URL || "";
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true); setErr("");
+    try {
+      const res = await fetch(`${BASE2}/api/prompts/${prompt._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ role_name: roleName, prompt_text: promptText }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.detail || "Failed");
+      onSaved();
+    } catch (err: unknown) { setErr(err instanceof Error ? err.message : "Error"); }
+    finally { setLoading(false); }
+  }
+
+  const inp: React.CSSProperties = { width: "100%", padding: "10px 13px", fontSize: 14, border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", fontFamily: "inherit" };
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 600, padding: 32, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Edit Prompt</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>✕</button>
+        </div>
+        <form onSubmit={save}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>Role Name</label>
+            <input style={inp} value={roleName} onChange={e => setRoleName(e.target.value)} required />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 }}>Prompt Text</label>
+            <textarea rows={12} style={{ ...inp, resize: "vertical", fontSize: 13, lineHeight: 1.6 }} value={promptText} onChange={e => setPromptText(e.target.value)} required />
+          </div>
+          {err && <div style={{ padding: "10px 14px", background: "#fef2f2", color: "#dc2626", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, padding: "10px", background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button type="submit" disabled={loading} style={{ flex: 1, padding: "10px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: loading ? 0.65 : 1 }}>{loading ? "Saving..." : "Save Changes"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function PromptsPage() {
   const router = useRouter();
   const [tab, setTab] = useState<"role" | "docs">("role");
@@ -19,6 +71,7 @@ export default function PromptsPage() {
   const [loading, setLoading] = useState(false);
   const [library, setLibrary] = useState<Prompt[]>([]);
   const [libError, setLibError] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
 
   useEffect(() => { loadLibrary(); }, []);
 
@@ -158,15 +211,25 @@ export default function PromptsPage() {
               <div key={p._id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginBottom: 10 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{p.roleName}</div>
                 <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 10 }}>{(p.promptText || "").slice(0, 140)}…</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => navigator.clipboard.writeText(p.promptText).then(() => window.alert("Copied!"))} style={{ padding: "7px 14px", background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>📋 Copy</button>
-                  <button onClick={() => useInSchedule(p.promptText)} style={{ padding: "7px 14px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Use in Schedule →</button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={() => navigator.clipboard.writeText(p.promptText).then(() => window.alert("Copied!"))} style={{ padding: "6px 12px", background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>📋 Copy</button>
+                  <button onClick={() => useInSchedule(p.promptText)} style={{ padding: "6px 12px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Use in Schedule →</button>
+                  <button onClick={() => setEditingPrompt(p)} style={{ padding: "6px 12px", background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                  <button onClick={async () => { if (!confirm(`Delete "${p.roleName}"?`)) return; await fetch(`${BASE}/api/prompts/${p._id}`, { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }); loadLibrary(); }} style={{ padding: "6px 12px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Delete</button>
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {editingPrompt && (
+        <EditPromptModal
+          prompt={editingPrompt}
+          onClose={() => setEditingPrompt(null)}
+          onSaved={() => { setEditingPrompt(null); loadLibrary(); }}
+        />
+      )}
     </>
   );
 }

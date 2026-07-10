@@ -114,7 +114,10 @@ export default function LoginPage() {
           </div>
         )}
 
-        <div style={{ textAlign: "center", marginTop: 24, fontSize: 14, color: "#64748b" }}>
+        <div style={{ textAlign: "center", marginTop: 16, fontSize: 13 }}>
+          <Link href="/forgot-password" style={{ color: "#64748b", textDecoration: "none" }}>Forgot your password?</Link>
+        </div>
+        <div style={{ textAlign: "center", marginTop: 12, fontSize: 14, color: "#64748b" }}>
           Don&apos;t have an account?{" "}
           <Link href="/signup" style={{ color: "#8b5cf6", textDecoration: "none", fontWeight: 600 }}>Sign Up</Link>
         </div>

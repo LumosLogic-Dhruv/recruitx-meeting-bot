@@ -46,3 +46,21 @@ export const getByRole = query({
       .first();
   },
 });
+
+export const update = mutation({
+  args: { id: v.string(), roleName: v.optional(v.string()), promptText: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const { id, ...fields } = args;
+    const patch: Record<string, unknown> = {};
+    if (fields.roleName !== undefined) patch.roleName = fields.roleName;
+    if (fields.promptText !== undefined) patch.promptText = fields.promptText;
+    await ctx.db.patch(id as any, patch);
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.id as any);
+  },
+});

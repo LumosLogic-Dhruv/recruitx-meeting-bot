@@ -56,3 +56,34 @@ export const getByEmail = query({
       .first();
   },
 });
+
+export const setResetToken = mutation({
+  args: { id: v.string(), resetToken: v.string(), resetTokenExpiry: v.number() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id as any, {
+      resetToken: args.resetToken,
+      resetTokenExpiry: args.resetTokenExpiry,
+    });
+  },
+});
+
+export const getByResetToken = query({
+  args: { resetToken: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_reset_token", (q) => q.eq("resetToken", args.resetToken))
+      .first();
+  },
+});
+
+export const updatePassword = mutation({
+  args: { id: v.string(), passwordHash: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id as any, {
+      passwordHash: args.passwordHash,
+      resetToken: undefined,
+      resetTokenExpiry: undefined,
+    });
+  },
+});

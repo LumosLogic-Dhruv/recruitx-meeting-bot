@@ -64,6 +64,25 @@ export const remove = mutation({
   },
 });
 
+export const update = mutation({
+  args: {
+    id: v.string(),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    roleName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...fields } = args;
+    const patch: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(fields)) {
+      if (val !== undefined) patch[k] = val;
+    }
+    await ctx.db.patch(id as any, patch);
+  },
+});
+
 export const updateResume = mutation({
   args: {
     id: v.string(),
