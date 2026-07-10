@@ -126,6 +126,11 @@ def _webhook_url() -> str:
     return f"{base}/webhook/recall" if base else ""
 
 
+@app.get("/")
+def root():
+    return {"service": "RecruitX Backend", "status": "ok"}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "active_sessions": list(_sessions.keys())}
