@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: recruitx-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://your-fastapi-backend.onrender.com
+      - key: NODE_VERSION
+        value: 20

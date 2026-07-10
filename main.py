@@ -63,6 +63,7 @@ async def lifespan(application: FastAPI):
         sessions_ref=_sessions,
         auto_end_fn=_auto_end_session,
         retry_fn=retry_service.process_cooldown_candidates,
+        send_email_fn=gauth.send_email_smtp_generic,
     )
     sched.scheduler.start()
     sched.start_recurring_jobs()
@@ -79,6 +80,19 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 _sessions: dict[str, dict] = {}
 # meeting_url → bot_id
 _url_to_bot: dict[str, str] = {}
+
+
+def _log_timeline(candidate_id: str, event_type: str, actor: str = "system", metadata: dict = None):
+    """Fire-and-forget timeline event log. Never raises."""
+    if not candidate_id:
+        return
+    try:
+        payload = {"candidateId": candidate_id, "eventType": event_type, "actor": actor}
+        if metadata:
+            payload["metadata"] = metadata
+        convex_client.mutation("timeline:log", payload)
+    except Exception as e:
+        print(f"[Timeline] Log error ({event_type}): {e}")
 # bot_id → set of "speaker:text" keys already forwarded to the pipeline.
 # Prevents Deepgram from re-delivering a corrected/duplicate final segment and
 # triggering a second AI response for text the pipeline has already processed.
@@ -212,6 +226,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         "greeted_to_human": False,
         "candidate_absent": False,
         "candidate_was_absent": False,
+        "candidate_ever_joined": False,
         "created_at": _time.time(),
     }
     _url_to_bot[req.meeting_url] = bot_id
@@ -328,7 +343,7 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             print(f"[Webhook] {event} — auto-ending session {bot_id} for {candidate_name}")
             background_tasks.add_task(_auto_end_session, bot_id, session, candidate_name)
 
-    # Participant joined the call — clear absent flag, re-greet if needed
+    # Participant joined the call — resume pipeline, greet first-timers or re-greet rejoinders
     if event == "participant.join":
         bot_id = data.get("bot", {}).get("id", "")
         participant = data.get("data", {}).get("participant", {})
@@ -337,12 +352,43 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         if session and participant_name.lower() != session.get("bot_name", "").lower():
             session["candidate_absent"] = False
             print(f"[Webhook] Participant joined: {participant_name}")
-            # If candidate rejoined after being absent, send a brief re-orientation
-            if session.get("candidate_was_absent"):
-                session["candidate_was_absent"] = False
-                background_tasks.add_task(_send_rejoin_greeting, bot_id)
 
-    # Participant left the call — set absent flag, cancel noisy pipeline tasks
+            pipeline: ConversationPipeline | None = session.get("pipeline")
+
+            if session.get("candidate_was_absent"):
+                # ── Rejoin after a disconnect ──────────────────────────────────
+                # Candidate was here before, left, and came back.
+                session["candidate_was_absent"] = False
+                if pipeline:
+                    pipeline.resume()
+                background_tasks.add_task(_send_rejoin_greeting, bot_id)
+                _log_timeline(session.get("candidate_id", ""), "candidate_rejoined",
+                              metadata={"participantName": participant_name})
+
+            elif not session.get("candidate_ever_joined"):
+                # ── First join (possibly late) ────────────────────────────────
+                # Bot greeted an empty room; candidate just arrived for the first time.
+                session["candidate_ever_joined"] = True
+                if pipeline:
+                    pipeline.resume()
+                # Send the opening greeting now that someone is actually listening.
+                if not session.get("greeted"):
+                    session["greeted"] = True
+                    background_tasks.add_task(_webhook_greeting, bot_id)
+                else:
+                    # Bot already greeted empty room — send a fresh start message.
+                    background_tasks.add_task(_send_late_join_greeting, bot_id)
+                _log_timeline(session.get("candidate_id", ""), "candidate_joined",
+                              metadata={"participantName": participant_name, "lateJoin": True})
+            else:
+                # Normal on-time join — already handled by _webhook_greeting
+                session["candidate_ever_joined"] = True
+                if pipeline:
+                    pipeline.resume()
+                _log_timeline(session.get("candidate_id", ""), "candidate_joined",
+                              metadata={"participantName": participant_name})
+
+    # Participant left the call — PAUSE pipeline so AI doesn't speak to an empty room
     if event == "participant.leave":
         bot_id = data.get("bot", {}).get("id", "")
         participant = data.get("data", {}).get("participant", {})
@@ -351,7 +397,12 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         if session and participant_name.lower() != session.get("bot_name", "").lower():
             session["candidate_absent"] = True
             session["candidate_was_absent"] = True
-            print(f"[Webhook] Participant left: {participant_name} — waiting for rejoin or timeout")
+            pipeline: ConversationPipeline | None = session.get("pipeline")
+            if pipeline:
+                pipeline.pause()    # cancels silence timer — no speaking to empty room
+            print(f"[Webhook] Participant left: {participant_name} — pipeline paused, waiting for rejoin or 3-min timeout")
+            _log_timeline(session.get("candidate_id", ""), "candidate_left",
+                          metadata={"participantName": participant_name})
 
     # Real-time transcript events from Recall.ai realtime_endpoints
     # transcript.partial_data = interim words (candidate is mid-sentence)
@@ -455,7 +506,8 @@ async def _send_recruiter_summary_email(
 
 
 async def _send_scorecard_email(candidate_name: str, candidate_email: str,
-                                scorecard: dict, role_name: str, attempt_number: int):
+                                scorecard: dict, role_name: str, attempt_number: int,
+                                candidate_id: str = ""):
     """Send scorecard result email to candidate after interview ends."""
     import email_templates as et
     try:
@@ -483,12 +535,66 @@ async def _send_scorecard_email(candidate_name: str, candidate_email: str,
             html_body=html,
             smtp_config=smtp_config,
         )
+        if candidate_id:
+            _log_timeline(candidate_id, "scorecard_email_sent",
+                          metadata={"attemptNumber": attempt_number,
+                                    "score": scorecard.get("overall_score")})
     except Exception as e:
         print(f"[Email] Scorecard email error: {e}")
 
 
+async def _send_no_show_email(candidate_name: str, candidate_email: str,
+                              role_name: str, attempt_number: int,
+                              candidate_id: str = "", recruiter_id: str = "",
+                              scheduled_at_ms: int = 0):
+    """Send no-show notification to candidate and recruiter when bot.done fires with no transcript."""
+    import email_templates as et
+    import datetime as _dt
+    try:
+        smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
+        company = os.getenv("COMPANY_NAME", "LumosLogic")
+
+        # Email candidate
+        html_cand = et.build_no_show_email(
+            candidate_name=candidate_name,
+            role_name=role_name,
+            attempt_number=attempt_number,
+        )
+        await gauth.send_email_smtp_generic(
+            to_email=candidate_email, to_name=candidate_name,
+            subject=f"[{company}] Missed Interview — {role_name}",
+            html_body=html_cand, smtp_config=smtp_config,
+        )
+        _log_timeline(candidate_id, "scorecard_email_sent",
+                      actor="system", metadata={"type": "no_show", "attemptNumber": attempt_number})
+
+        # Email recruiter
+        if recruiter_id:
+            try:
+                recruiter = convex_client.query("users:getById", {"id": recruiter_id})
+                if recruiter:
+                    sched_dt = (_dt.datetime.fromtimestamp(scheduled_at_ms / 1000, tz=_dt.timezone.utc)
+                                if scheduled_at_ms else _dt.datetime.now(_dt.timezone.utc))
+                    html_rec = et.build_recruiter_no_show_email(
+                        recruiter_name=recruiter.get("name", "Recruiter"),
+                        candidate_name=candidate_name,
+                        role_name=role_name,
+                        attempt_number=attempt_number,
+                        scheduled_at=sched_dt,
+                    )
+                    await gauth.send_email_smtp_generic(
+                        to_email=recruiter["email"], to_name=recruiter.get("name", "Recruiter"),
+                        subject=f"[{company}] No-Show Alert — {candidate_name}",
+                        html_body=html_rec, smtp_config=smtp_config,
+                    )
+            except Exception as e:
+                print(f"[Email] Recruiter no-show email error: {e}")
+    except Exception as e:
+        print(f"[Email] No-show email error: {e}")
+
+
 async def _send_rejoin_greeting(bot_id: str):
-    """Send a brief re-orientation when candidate rejoins after dropping."""
+    """Send re-orientation message when candidate comes back after disconnecting mid-interview."""
     await asyncio.sleep(2)
     session = _sessions.get(bot_id)
     if not session:
@@ -504,6 +610,31 @@ async def _send_rejoin_greeting(bot_id: str):
             await recall.speak(bot_id, audio)
     except Exception as e:
         print(f"[Webhook] Rejoin greeting error: {e}")
+
+
+async def _send_late_join_greeting(bot_id: str):
+    """Greet a candidate who joined late (bot already greeted an empty room earlier)."""
+    await asyncio.sleep(2)
+    session = _sessions.get(bot_id)
+    if not session:
+        return
+    pipeline: ConversationPipeline = session.get("pipeline")
+    recall: RecallClient = session.get("recall")
+    bot_name: str = session.get("bot_name", "RecruitX AI")
+    if not pipeline or not recall:
+        return
+    try:
+        # Re-send the full opening greeting so the candidate doesn't enter mid-silence
+        greeting = (
+            f"Hey, thanks for joining! I'm {bot_name}. "
+            "So just to kick things off — tell me a bit about yourself and what you've been working on lately."
+        )
+        audio = await pipeline._tts(greeting)
+        if audio:
+            await recall.speak(bot_id, audio)
+        print(f"[Webhook] Late-join greeting sent for bot {bot_id}")
+    except Exception as e:
+        print(f"[Webhook] Late-join greeting error: {e}")
 
 
 async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
@@ -580,9 +711,10 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
     except Exception as e:
         print(f"[AutoEnd] Convex save error: {e}")
 
-    # Send scorecard email to candidate (non-blocking, fire-and-forget)
+    # Send appropriate email to candidate (non-blocking, fire-and-forget)
     candidate_email = session.get("candidate_email", "")
     if candidate_email and scorecard and word_count >= 100:
+        # Completed/partial interview → send scorecard
         asyncio.create_task(
             _send_scorecard_email(
                 candidate_name=candidate_name,
@@ -590,6 +722,20 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
                 scorecard=scorecard,
                 role_name=session.get("role_name", "Interview"),
                 attempt_number=session.get("attempt_number", 1),
+                candidate_id=session.get("candidate_id", ""),
+            )
+        )
+    elif candidate_email and interview_status == "no_show":
+        # No-show → notify candidate so they know they missed it
+        asyncio.create_task(
+            _send_no_show_email(
+                candidate_name=candidate_name,
+                candidate_email=candidate_email,
+                role_name=session.get("role_name", "Interview"),
+                attempt_number=session.get("attempt_number", 1),
+                candidate_id=session.get("candidate_id", ""),
+                recruiter_id=session.get("recruiter_id", ""),
+                scheduled_at_ms=session.get("scheduled_at_ms", 0),
             )
         )
 
@@ -663,6 +809,27 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
             })
         except Exception as e:
             print(f"[AutoEnd] Failed to update scheduledInterview {scheduled_id}: {e}")
+
+    # Timeline events
+    if candidate_id:
+        _log_timeline(candidate_id, "interview_ended", metadata={
+            "status": interview_status, "wordCount": word_count,
+            "attemptNumber": session.get("attempt_number", 1),
+        })
+        if scorecard and scorecard.get("overall_score"):
+            _log_timeline(candidate_id, "score_generated", metadata={
+                "overallScore": scorecard.get("overall_score"),
+                "recommendation": scorecard.get("recommendation", ""),
+                "attemptNumber": session.get("attempt_number", 1),
+            })
+        if interview_status in ("completed", "partial") and session.get("attempt_number", 1) == 1:
+            _log_timeline(candidate_id, "cooldown_started",
+                          metadata={"cooldownDays": 7, "attemptNumber": 1})
+        if session.get("attempt_number", 1) >= 2:
+            _log_timeline(candidate_id, "final_result", metadata={
+                "overallScore": scorecard.get("overall_score") if scorecard else None,
+                "recommendation": scorecard.get("recommendation", "") if scorecard else "",
+            })
 
 
 async def _fetch_and_store_recording(
@@ -1181,12 +1348,14 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
         "greeted_to_human": False,
         "candidate_absent": False,
         "candidate_was_absent": False,
+        "candidate_ever_joined": False,    # True once first participant.join fires
         "scheduled_interview_id": scheduled_interview_id,
         "recruiter_id": recruiter_id,
         "candidate_id": candidate_id,
         "candidate_email": candidate_email,
         "role_name": role_name,
         "attempt_number": attempt_number,
+        "scheduled_at_ms": 0,              # filled by schedule_interview caller
         "created_at": _time.time(),
     }
     _url_to_bot[meeting_url] = bot_id
@@ -1339,6 +1508,9 @@ def create_candidate(req: CandidateCreateRequest, user: dict = Depends(get_curre
             **({"roleName": req.role_name} if req.role_name else {}),
             "recruiterId": user.get("sub", ""),
         })
+        _log_timeline(str(cid), "candidate_added",
+                      actor=user.get("sub", "system"),
+                      metadata={"name": req.name, "email": req.email, "roleName": req.role_name})
         return {"id": cid, "name": req.name, "email": req.email}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -1370,6 +1542,154 @@ def delete_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
         return {"status": "deleted"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Candidate timeline endpoint ───────────────────────────────────────────────
+
+@app.get("/api/candidates/{candidate_id}/timeline")
+def get_candidate_timeline(candidate_id: str, user: dict = Depends(get_current_user)):
+    try:
+        events = convex_client.query("timeline:listByCandidate", {"candidateId": candidate_id}) or []
+        return {"timeline": events}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Resume upload endpoint ────────────────────────────────────────────────────
+
+@app.post("/api/candidates/{candidate_id}/resume")
+async def upload_resume(candidate_id: str, file: UploadFile = File(...),
+                        user: dict = Depends(get_current_user)):
+    """Upload a CV/resume PDF and store extracted text against the candidate."""
+    content = await file.read()
+    filename = file.filename or "resume.pdf"
+    text = ""
+    try:
+        if filename.lower().endswith(".pdf"):
+            import io
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text = "\n".join(
+                page.extract_text() or "" for page in reader.pages
+            ).strip()
+        else:
+            text = content.decode("utf-8", errors="ignore").strip()
+    except Exception as e:
+        raise HTTPException(400, f"Could not parse file: {e}")
+
+    if not text:
+        raise HTTPException(400, "No text could be extracted from the uploaded file")
+
+    try:
+        convex_client.mutation("candidates:updateResume", {
+            "id": candidate_id,
+            "resumeText": text[:20000],  # cap to 20k chars
+            "resumeFileName": filename,
+        })
+        _log_timeline(candidate_id, "resume_uploaded",
+                      actor=user.get("sub", "system"),
+                      metadata={"fileName": filename, "charCount": len(text)})
+        return {"status": "stored", "fileName": filename, "charCount": len(text)}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Admin analytics endpoint ──────────────────────────────────────────────────
+
+@app.get("/api/admin/analytics")
+def admin_analytics(user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin only")
+    try:
+        candidates = convex_client.query("candidates:list") or []
+        meetings = convex_client.query("meetings:list") or []
+
+        total = len(candidates)
+        completed = sum(1 for c in candidates if c.get("interviewStatus") in ("locked", "completed"))
+        cooldown = sum(1 for c in candidates if c.get("interviewStatus") == "cooldown")
+        no_show = sum(1 for m in meetings if m.get("interviewStatus") == "no_show")
+
+        scored = [m for m in meetings if m.get("scorecard", {}).get("overall_score")]
+        avg_score = round(sum(m["scorecard"]["overall_score"] for m in scored) / len(scored), 1) if scored else 0
+
+        # Improvement %: candidates who improved score from attempt 1 to attempt 2
+        cand_meetings: dict[str, list] = {}
+        for m in meetings:
+            name = m.get("candidateName", "")
+            if name:
+                cand_meetings.setdefault(name, []).append(m)
+
+        improved_count = 0
+        total_retried = 0
+        for name, cms in cand_meetings.items():
+            attempts = sorted(
+                [m for m in cms if m.get("scorecard", {}).get("overall_score")],
+                key=lambda m: m.get("attemptNumber") or 1
+            )
+            if len(attempts) >= 2:
+                total_retried += 1
+                if attempts[1]["scorecard"]["overall_score"] > attempts[0]["scorecard"]["overall_score"]:
+                    improved_count += 1
+
+        improvement_rate = round(improved_count / total_retried * 100) if total_retried else 0
+
+        # Recruiter performance
+        recruiter_stats: dict[str, dict] = {}
+        for c in candidates:
+            rid = c.get("recruiterId") or "unknown"
+            if rid not in recruiter_stats:
+                rname = c.get("recruiterName") or rid[-6:]
+                recruiter_stats[rid] = {"name": rname, "total": 0, "completed": 0, "scores": []}
+            recruiter_stats[rid]["total"] += 1
+            if c.get("interviewStatus") in ("locked", "completed"):
+                recruiter_stats[rid]["completed"] += 1
+        for m in meetings:
+            rid = m.get("recruiterId") or "unknown"
+            if rid in recruiter_stats and m.get("scorecard", {}).get("overall_score"):
+                recruiter_stats[rid]["scores"].append(m["scorecard"]["overall_score"])
+        recruiter_list = []
+        for rid, rs in recruiter_stats.items():
+            avg = round(sum(rs["scores"]) / len(rs["scores"]), 1) if rs["scores"] else 0
+            recruiter_list.append({
+                "recruiterId": rid,
+                "name": rs["name"],
+                "totalCandidates": rs["total"],
+                "completedInterviews": rs["completed"],
+                "averageScore": avg,
+                "successRate": round(rs["completed"] / rs["total"] * 100) if rs["total"] else 0,
+            })
+
+        # Weekly top
+        import time as _time
+        now = _time.time() * 1000
+        week_start = now - 7 * 24 * 3600 * 1000
+        weekly = [m for m in scored if (m.get("createdAt") or 0) >= week_start]
+        weekly.sort(key=lambda m: m["scorecard"]["overall_score"], reverse=True)
+
+        return {
+            "summary": {
+                "totalCandidates": total,
+                "completedInterviews": completed,
+                "inCooldown": cooldown,
+                "noShowCount": no_show,
+                "averageScore": avg_score,
+                "totalScoredMeetings": len(scored),
+                "retryImprovedCount": improved_count,
+                "totalRetried": total_retried,
+                "improvementRate": improvement_rate,
+            },
+            "recruiterPerformance": sorted(recruiter_list, key=lambda r: r["totalCandidates"], reverse=True),
+            "weeklyTop": [
+                {
+                    "candidateName": m.get("candidateName"),
+                    "roleName": m.get("roleName"),
+                    "score": m["scorecard"]["overall_score"],
+                    "recommendation": m.get("scorecard", {}).get("recommendation", ""),
+                }
+                for m in weekly[:10]
+            ],
+        }
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -1511,11 +1831,26 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     except Exception as e:
         print(f"[Schedule] Failed to update candidate status: {e}")
 
+    # Timeline: interview scheduled + email sent
+    _log_timeline(req.candidate_id, "interview_scheduled",
+                  actor=recruiter_id,
+                  metadata={
+                      "meetingUrl": meeting_url,
+                      "scheduledAt": int(scheduled_dt.timestamp() * 1000),
+                      "roleName": req.role_name,
+                      "attemptNumber": attempt_number,
+                  })
+    if email_sent:
+        _log_timeline(req.candidate_id, "email_invite_sent",
+                      actor="system",
+                      metadata={"attemptNumber": attempt_number})
+
     # Schedule the bot — store metadata in scheduler for session creation
     from datetime import timezone
     run_at = datetime.datetime.fromtimestamp(
         int(scheduled_dt.timestamp()), tz=timezone.utc
     )
+    scheduled_at_ms = int(scheduled_dt.timestamp() * 1000)
     sched.schedule_interview(
         interview_id=str(interview_id),
         meeting_url=meeting_url,
@@ -1528,6 +1863,8 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
         role_name=req.role_name,
         attempt_number=attempt_number,
         candidate_email=candidate.get("email", ""),
+        duration_minutes=req.duration_minutes,
+        scheduled_at_ms=scheduled_at_ms,
     )
 
     return {

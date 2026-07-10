@@ -48,6 +48,8 @@ export default defineSchema({
     attemptCount: v.optional(v.number()),           // 0, 1, or 2
     cooldownUntil: v.optional(v.number()),          // UTC epoch ms — null when not in cooldown
     roleName: v.optional(v.string()),               // role they are being interviewed for
+    resumeText: v.optional(v.string()),             // extracted text from uploaded CV
+    resumeFileName: v.optional(v.string()),         // original filename
   }).index("by_email", ["email"]).index("by_recruiter", ["recruiterId"]),
 
   scheduledInterviews: defineTable({
@@ -75,4 +77,14 @@ export default defineSchema({
     key: v.string(),
     value: v.any(),
   }).index("by_key", ["key"]),
+
+  // Immutable event log — one row per lifecycle event per candidate
+  timeline_events: defineTable({
+    candidateId: v.string(),               // candidates table _id
+    eventType: v.string(),                 // see EVENT_TYPES in timeline.ts
+    timestamp: v.number(),                 // UTC epoch ms
+    actor: v.optional(v.string()),         // userId or "system"
+    metadata: v.optional(v.any()),         // extra context (score, meetUrl, …)
+  }).index("by_candidate", ["candidateId"])
+    .index("by_candidate_time", ["candidateId", "timestamp"]),
 });

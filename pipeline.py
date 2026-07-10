@@ -240,6 +240,10 @@ class ConversationPipeline:
         # Interruption state
         self._was_interrupted: bool = False
 
+        # Candidate presence — paused when candidate is absent from the call.
+        # While paused, silence timers are suppressed so we never speak to an empty room.
+        self._paused: bool = False
+
         # Confusion loop prevention
         self._confusion_fallback_idx: int = 0
 
@@ -253,6 +257,23 @@ class ConversationPipeline:
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
         self._on_response = callback
+
+    def pause(self):
+        """Suspend all AI responses — call when candidate leaves the meeting."""
+        self._paused = True
+        # Cancel any pending silence timer so we don't speak to an empty room.
+        if self._silence_task and not self._silence_task.done():
+            self._silence_task.cancel()
+            self._silence_task = None
+        if self._backchannel_task and not self._backchannel_task.done():
+            self._backchannel_task.cancel()
+            self._backchannel_task = None
+        print("[Pipeline] PAUSED — candidate absent")
+
+    def resume(self):
+        """Resume AI responses — call when candidate rejoins the meeting."""
+        self._paused = False
+        print("[Pipeline] RESUMED — candidate present")
 
     async def send_greeting(self, bot_name: str) -> bytes:
         self._speaking = True
@@ -361,6 +382,8 @@ class ConversationPipeline:
         If the candidate still hasn't spoken and the bot hasn't spoken, emit a
         gentle nudge so the interview doesn't freeze in dead silence."""
         await asyncio.sleep(delay)
+        if self._paused:
+            return
         if not self._speaking and not self._pending_text and not self._silence_task:
             print("[Pipeline] Dead silence after discarded fragment — emitting re-prompt")
             nudge = "Please go ahead."
@@ -427,6 +450,10 @@ class ConversationPipeline:
         timeout = self._adaptive_timeout(self._pending_text)
         print(f"[Pipeline] Silence timer: {timeout}s ({len(self._pending_text.split())} words so far)")
         await asyncio.sleep(timeout)
+        # Do not respond if the candidate is not in the call
+        if self._paused:
+            print("[Pipeline] Silence timer fired but pipeline is paused — suppressing response")
+            return
         text = self._pending_text.strip()
         speaker = self._pending_speaker
         self._pending_text = ""

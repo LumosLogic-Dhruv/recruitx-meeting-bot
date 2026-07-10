@@ -64,6 +64,18 @@ export const remove = mutation({
   },
 });
 
+export const updateResume = mutation({
+  args: {
+    id: v.string(),
+    resumeText: v.string(),
+    resumeFileName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...patch } = args;
+    await ctx.db.patch(id as any, patch);
+  },
+});
+
 export const updateStatus = mutation({
   args: {
     id: v.string(),
