@@ -13,6 +13,7 @@ import type * as meetings from "../meetings.js";
 import type * as prompts from "../prompts.js";
 import type * as scheduledInterviews from "../scheduledInterviews.js";
 import type * as settings from "../settings.js";
+import type * as timeline from "../timeline.js";
 import type * as users from "../users.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   prompts: typeof prompts;
   scheduledInterviews: typeof scheduledInterviews;
   settings: typeof settings;
+  timeline: typeof timeline;
   users: typeof users;
 }>;
 
