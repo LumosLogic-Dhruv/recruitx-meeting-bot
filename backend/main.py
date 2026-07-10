@@ -995,7 +995,11 @@ def signup(req: SignupRequest):
         })
         return {"status": "success", "userId": user_id}
     except Exception as e:
-        raise HTTPException(400, str(e))
+        msg = str(e)
+        # Convex wraps thrown errors as "[Request ID: ...] Server Error" — extract the real message
+        if "Email already registered" in msg or "already registered" in msg.lower():
+            raise HTTPException(400, "Email already registered. Please sign in instead.")
+        raise HTTPException(400, "Sign up failed. Please try again.")
 
 
 @app.post("/api/auth/login")
