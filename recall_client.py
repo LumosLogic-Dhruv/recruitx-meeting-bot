@@ -70,9 +70,13 @@ class RecallClient:
                     "type": "webhook",
                     # transcript.data = finalized utterance (primary)
                     # transcript.partial_data = interim words while candidate is speaking
-                    # Subscribing to both lets the pipeline start its silence timer
-                    # as soon as the first word arrives, not after endpointing fires.
-                    "events": ["transcript.data", "transcript.partial_data"],
+                    # participant.join / participant.leave = detect candidate presence
+                    "events": [
+                        "transcript.data",
+                        "transcript.partial_data",
+                        "participant.join",
+                        "participant.leave",
+                    ],
                 }
             ]
 
@@ -80,6 +84,15 @@ class RecallClient:
             "meeting_url": meeting_url,
             "bot_name": bot_name,
             "recording_config": recording_config,
+            # Automatic leave settings — prevents hung sessions
+            "automatic_leave": {
+                # Fire bot.done if nobody joins within 5 minutes of bot entering
+                "noone_joined_timeout": 300,
+                # Fire bot.done 3 minutes after ALL participants leave (grace window for rejoin)
+                "everyone_left_timeout": 180,
+            },
+            # Absolute ceiling — no session ever exceeds 60 minutes
+            "max_duration_minutes": 60,
         }
 
         res = await self._client.post(

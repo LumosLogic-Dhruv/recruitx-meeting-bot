@@ -15,6 +15,8 @@ export const create = mutation({
     botName: v.string(),
     emailSent: v.boolean(),
     calendarEventId: v.optional(v.string()),
+    recruiterId: v.optional(v.string()),
+    attemptNumber: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("scheduledInterviews", {
@@ -29,6 +31,17 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     return await ctx.db.query("scheduledInterviews").order("desc").collect();
+  },
+});
+
+export const listByRecruiter = query({
+  args: { recruiterId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("scheduledInterviews")
+      .withIndex("by_recruiter", (q) => q.eq("recruiterId", args.recruiterId))
+      .order("desc")
+      .collect();
   },
 });
 

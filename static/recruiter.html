@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RecruitX — Recruiter Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{--primary:#7c3aed;--primary-dark:#6d28d9;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f8fafc;}
+  .nav-btn{padding:8px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:#64748b;border:none;background:transparent;transition:all .2s;}
+  .nav-btn.active,.nav-btn:hover{background:#f1f0ff;color:var(--primary);}
+  .view{display:none;} .view.active{display:block;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;}
+  .badge-cooldown{background:#fff7ed;color:#c2410c;}
+  .badge-locked{background:#fef2f2;color:#991b1b;}
+  .badge-completed{background:#f0fdf4;color:#166534;}
+  .badge-scheduled{background:#eff6ff;color:#1d4ed8;}
+  .badge-noinvite{background:#f8fafc;color:#64748b;}
+  .badge-partial{background:#fefce8;color:#854d0e;}
+  .score-chip{display:inline-block;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;color:#fff;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:none;align-items:center;justify-content:center;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:#fff;border-radius:16px;width:90%;max-width:700px;max-height:90vh;overflow-y:auto;padding:32px;}
+  input,select,textarea{border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;font-size:14px;width:100%;outline:none;transition:border .2s;}
+  input:focus,select:focus,textarea:focus{border-color:var(--primary);}
+  .btn-primary{background:var(--primary);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-ghost{background:#f1f5f9;color:#374151;border:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn-ghost:hover{background:#e2e8f0;}
+  .btn-danger{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;}
+  .btn-danger:hover{background:#fee2e2;}
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;padding:10px 12px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;background:#f8fafc;border-bottom:2px solid #e2e8f0;}
+  td{padding:12px;font-size:14px;color:#374151;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+  tr:hover td{background:#fafafe;}
+  .radar-wrap{position:relative;margin:0 auto;width:260px;height:260px;}
+</style>
+</head>
+<body>
+
+<!-- Navbar -->
+<header style="background:#fff;border-bottom:1px solid #e2e8f0;padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <img src="/static/LogoWithoutName.svg" style="height:32px;" onerror="this.style.display='none'">
+    <span style="font-size:18px;font-weight:800;color:var(--primary);">RecruitX</span>
+    <span style="background:#ede9fe;color:var(--primary);padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">Recruiter</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span id="user-name" style="font-size:14px;color:#64748b;"></span>
+    <button onclick="logout()" class="btn-ghost">Logout</button>
+  </div>
+</header>
+
+<!-- Nav tabs -->
+<div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:0 24px;display:flex;gap:4px;">
+  <button class="nav-btn active" id="nav-candidates" onclick="showView('candidates')">My Candidates</button>
+  <button class="nav-btn" id="nav-schedule" onclick="showView('schedule')">Schedule Interview</button>
+  <button class="nav-btn" id="nav-interviews" onclick="showView('interviews')">Scheduled Interviews</button>
+</div>
+
+<main style="padding:24px;max-width:1200px;margin:0 auto;">
+
+  <!-- ── Candidates View ──────────────────────────────────────────── -->
+  <div id="view-candidates" class="view active">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin:0;">My Candidates</h2>
+      <button class="btn-primary" onclick="document.getElementById('add-modal').classList.add('open')">+ Add Candidate</button>
+    </div>
+    <div id="candidates-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Name</th><th>Email</th><th>Role</th><th>Attempt</th><th>Status</th><th>Score</th><th>Last Interview</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="candidates-tbody"><tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:40px;">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Schedule Interview View ──────────────────────────────────── -->
+  <div id="view-schedule" class="view">
+    <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:20px;">Schedule Interview</h2>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:28px;max-width:560px;">
+      <form id="schedule-form" onsubmit="submitSchedule(event)">
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Candidate *</label>
+          <select id="sch-candidate" required style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+            <option value="">Select candidate...</option>
+          </select>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Date & Time (UTC) *</label>
+          <input type="datetime-local" id="sch-datetime" required>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Duration (minutes)</label>
+          <select id="sch-duration" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+            <option value="20">20 min</option>
+            <option value="30" selected>30 min</option>
+            <option value="45">45 min</option>
+            <option value="60">60 min</option>
+          </select>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Role / Position *</label>
+          <input type="text" id="sch-role" placeholder="e.g. Full Stack Developer" required>
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">System Prompt (AI instructions)</label>
+          <select id="sch-prompt-select" onchange="fillPrompt()" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:8px;">
+            <option value="">— Choose saved prompt or write custom —</option>
+          </select>
+          <textarea id="sch-prompt" rows="5" placeholder="Describe how the AI should conduct this interview..."></textarea>
+        </div>
+        <div id="sch-status" style="display:none;margin-bottom:12px;padding:10px;border-radius:8px;font-size:14px;"></div>
+        <button type="submit" class="btn-primary" style="width:100%;">Schedule Interview</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Scheduled Interviews View ───────────────────────────────── -->
+  <div id="view-interviews" class="view">
+    <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:20px;">Scheduled Interviews</h2>
+    <table>
+      <thead><tr>
+        <th>Candidate</th><th>Role</th><th>Scheduled At</th><th>Attempt</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="interviews-tbody"><tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:40px;">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- Add Candidate Modal -->
+<div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+      <h3 style="font-size:18px;font-weight:800;color:#0f172a;margin:0;">Add Candidate</h3>
+      <button onclick="document.getElementById('add-modal').classList.remove('open')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">✕</button>
+    </div>
+    <form id="add-form" onsubmit="submitAddCandidate(event)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Full Name *</label>
+          <input type="text" id="add-name" placeholder="Jane Doe" required>
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Email *</label>
+          <input type="email" id="add-email" placeholder="jane@example.com" required>
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Phone</label>
+          <input type="text" id="add-phone" placeholder="+91 98765 43210">
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Role Applied For</label>
+          <input type="text" id="add-role" placeholder="Full Stack Developer">
+        </div>
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Notes</label>
+        <textarea id="add-notes" rows="2" placeholder="Any additional info..."></textarea>
+      </div>
+      <div id="add-status" style="display:none;margin-bottom:12px;padding:10px;border-radius:8px;font-size:14px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-ghost" onclick="document.getElementById('add-modal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="btn-primary">Add Candidate</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Scorecard Modal -->
+<div class="modal-overlay" id="scorecard-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" id="scorecard-content" style="max-width:740px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h3 style="font-size:18px;font-weight:800;color:#0f172a;margin:0;" id="sc-title">Scorecard</h3>
+      <button onclick="document.getElementById('scorecard-modal').classList.remove('open')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">✕</button>
+    </div>
+    <div id="sc-body">Loading...</div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let token = localStorage.getItem('token');
+let currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+let allCandidates = [];
+let allPrompts = [];
+
+async function init() {
+  if (!token) { window.location.href='/login'; return; }
+  const ok = await checkAuth();
+  if (!ok) { window.location.href='/login'; return; }
+  document.getElementById('user-name').textContent = currentUser.name || currentUser.email || '';
+  await Promise.all([loadCandidates(), loadPrompts(), loadInterviews()]);
+}
+
+async function checkAuth() {
+  try {
+    const r = await fetch(`${API}/api/auth/me`, {headers:{Authorization:`Bearer ${token}`}});
+    return r.ok;
+  } catch { return false; }
+}
+
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href='/login';
+}
+
+function showView(v) {
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
+  document.getElementById(`view-${v}`).classList.add('active');
+  document.getElementById(`nav-${v}`).classList.add('active');
+  if (v==='schedule') populateScheduleDropdown();
+  if (v==='interviews') loadInterviews();
+}
+
+async function loadCandidates() {
+  try {
+    const r = await fetch(`${API}/api/candidates`, {headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json();
+    allCandidates = d.candidates || [];
+    renderCandidatesTable();
+  } catch(e) {
+    document.getElementById('candidates-tbody').innerHTML =
+      '<tr><td colspan="8" style="text-align:center;color:#dc2626;padding:40px;">Failed to load candidates</td></tr>';
+  }
+}
+
+function statusBadge(c) {
+  const s = c.interviewStatus || 'never_invited';
+  const map = {
+    'never_invited': ['badge-noinvite','Not Invited'],
+    'attempt_1_scheduled': ['badge-scheduled','Interview 1 Scheduled'],
+    'attempt_2_scheduled': ['badge-scheduled','Interview 2 Scheduled'],
+    'cooldown': ['badge-cooldown', cooldownLabel(c)],
+    'locked': ['badge-locked','Locked (Final)'],
+    'completed': ['badge-completed','Completed'],
+    'partial': ['badge-partial','Partial'],
+    'no_show': ['badge-cooldown','No Show'],
+  };
+  const [cls, label] = map[s] || ['badge-noinvite', s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function cooldownLabel(c) {
+  if (!c.cooldownUntil) return 'Cooldown';
+  const days = Math.max(0, Math.ceil((c.cooldownUntil - Date.now()) / 86400000));
+  return `Cooldown (${days}d left)`;
+}
+
+function scoreChip(scorecard) {
+  if (!scorecard || !scorecard.overall_score) return '<span style="color:#94a3b8;">—</span>';
+  const s = scorecard.overall_score;
+  const col = s>=7?'#16a34a':s>=5?'#d97706':'#dc2626';
+  return `<span class="score-chip" style="background:${col};">${s}/10</span>`;
+}
+
+function canSchedule(c) {
+  const s = c.interviewStatus || 'never_invited';
+  return ['never_invited',''].includes(s);
+}
+
+function renderCandidatesTable() {
+  const tbody = document.getElementById('candidates-tbody');
+  if (!allCandidates.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:40px;">No candidates yet. Add one to get started.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allCandidates.map(c => {
+    const sc = c.latestScorecard || {};
+    const lastDate = c.lastInterviewDate ? new Date(c.lastInterviewDate).toLocaleDateString() : '—';
+    return `<tr>
+      <td><strong>${c.name}</strong></td>
+      <td style="color:#64748b;">${c.email}</td>
+      <td>${c.roleName || '—'}</td>
+      <td style="text-align:center;">${c.attemptCount || 0}/2</td>
+      <td>${statusBadge(c)}</td>
+      <td>${scoreChip(sc)}</td>
+      <td style="color:#64748b;">${lastDate}</td>
+      <td>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn-ghost" style="font-size:12px;padding:5px 10px;" onclick="viewScorecard('${c._id}')">Scorecard</button>
+          <button class="btn-danger" onclick="deleteCandidate('${c._id}','${c.name}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteCandidate(id, name) {
+  if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+  try {
+    const r = await fetch(`${API}/api/candidates/${id}`, {method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
+    if (!r.ok) throw new Error((await r.json()).detail || 'Failed');
+    await loadCandidates();
+  } catch(e) { alert(e.message); }
+}
+
+async function submitAddCandidate(e) {
+  e.preventDefault();
+  const statusEl = document.getElementById('add-status');
+  statusEl.style.display='none';
+  const body = {
+    name: document.getElementById('add-name').value.trim(),
+    email: document.getElementById('add-email').value.trim(),
+    phone: document.getElementById('add-phone').value.trim(),
+    notes: document.getElementById('add-notes').value.trim(),
+    role_name: document.getElementById('add-role').value.trim(),
+  };
+  try {
+    const r = await fetch(`${API}/api/candidates`, {
+      method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Failed');
+    statusEl.style.cssText='display:block;background:#f0fdf4;color:#166534;padding:10px;border-radius:8px;font-size:14px;';
+    statusEl.textContent='Candidate added!';
+    e.target.reset();
+    await loadCandidates();
+    setTimeout(()=>{ document.getElementById('add-modal').classList.remove('open'); statusEl.style.display='none'; }, 1200);
+  } catch(err) {
+    statusEl.style.cssText='display:block;background:#fef2f2;color:#dc2626;padding:10px;border-radius:8px;font-size:14px;';
+    statusEl.textContent=err.message;
+  }
+}
+
+async function loadPrompts() {
+  try {
+    const r = await fetch(`${API}/api/prompts`, {headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json();
+    allPrompts = d.prompts || [];
+    const sel = document.getElementById('sch-prompt-select');
+    allPrompts.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.promptText;
+      o.textContent = p.roleName;
+      sel.appendChild(o);
+    });
+  } catch {}
+}
+
+function fillPrompt() {
+  const v = document.getElementById('sch-prompt-select').value;
+  if (v) document.getElementById('sch-prompt').value = v;
+}
+
+function populateScheduleDropdown() {
+  const sel = document.getElementById('sch-candidate');
+  sel.innerHTML = '<option value="">Select candidate...</option>';
+  allCandidates.filter(c => canSchedule(c)).forEach(c => {
+    const o = document.createElement('option');
+    o.value = c._id;
+    o.textContent = `${c.name} (${c.email})`;
+    sel.appendChild(o);
+  });
+}
+
+async function submitSchedule(e) {
+  e.preventDefault();
+  const statusEl = document.getElementById('sch-status');
+  statusEl.style.display='none';
+  const dt = document.getElementById('sch-datetime').value;
+  if (!dt) return;
+  const body = {
+    candidate_id: document.getElementById('sch-candidate').value,
+    scheduled_at_iso: new Date(dt).toISOString(),
+    duration_minutes: parseInt(document.getElementById('sch-duration').value),
+    role_name: document.getElementById('sch-role').value.trim() || 'Interview',
+    system_prompt: document.getElementById('sch-prompt').value.trim(),
+    platform: 'google_meet',
+  };
+  try {
+    const r = await fetch(`${API}/api/interviews/schedule`, {
+      method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Schedule failed');
+    statusEl.style.cssText='display:block;background:#f0fdf4;color:#166534;padding:10px;border-radius:8px;font-size:14px;';
+    statusEl.textContent=`Scheduled! Email sent: ${d.email_sent ? 'Yes' : 'No'}`;
+    e.target.reset();
+    await Promise.all([loadCandidates(), loadInterviews()]);
+  } catch(err) {
+    statusEl.style.cssText='display:block;background:#fef2f2;color:#dc2626;padding:10px;border-radius:8px;font-size:14px;';
+    statusEl.textContent=err.message;
+  }
+}
+
+async function loadInterviews() {
+  try {
+    const r = await fetch(`${API}/api/interviews/scheduled`, {headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json();
+    const rows = d.interviews || [];
+    const tbody = document.getElementById('interviews-tbody');
+    if (!rows.length) {
+      tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:40px;">No scheduled interviews</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(iv => {
+      const dt = new Date(iv.scheduledAt).toLocaleString();
+      const statusCls = iv.status==='pending'?'badge-scheduled':iv.status==='completed'?'badge-completed':'badge-noinvite';
+      return `<tr>
+        <td><strong>${iv.candidateName}</strong></td>
+        <td>${iv.roleName}</td>
+        <td style="color:#64748b;">${dt}</td>
+        <td style="text-align:center;">#${iv.attemptNumber||1}</td>
+        <td><span class="badge ${statusCls}">${iv.status}</span></td>
+        <td>${iv.status==='pending'?`<button class="btn-danger" onclick="cancelInterview('${iv._id}')">Cancel</button>`:'—'}</td>
+      </tr>`;
+    }).join('');
+  } catch {}
+}
+
+async function cancelInterview(id) {
+  if (!confirm('Cancel this interview?')) return;
+  try {
+    await fetch(`${API}/api/interviews/${id}/cancel`, {method:'POST',headers:{Authorization:`Bearer ${token}`}});
+    await loadInterviews();
+  } catch(e) { alert('Failed to cancel: ' + e.message); }
+}
+
+async function viewScorecard(candidateId) {
+  const candidate = allCandidates.find(c => c._id === candidateId);
+  if (!candidate) return;
+
+  document.getElementById('sc-title').textContent = `Scorecard — ${candidate.name}`;
+  document.getElementById('sc-body').innerHTML = '<p style="color:#94a3b8;text-align:center;padding:40px;">Loading...</p>';
+  document.getElementById('scorecard-modal').classList.add('open');
+
+  try {
+    const r = await fetch(`${API}/api/meetings?candidate=${candidateId}`, {headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json();
+    const meetings = (d.meetings || []).filter(m => m.candidateName === candidate.name);
+    if (!meetings.length) {
+      document.getElementById('sc-body').innerHTML = '<p style="color:#94a3b8;text-align:center;padding:40px;">No interview results yet.</p>';
+      return;
+    }
+    renderScorecardBody(meetings, candidate);
+  } catch(e) {
+    document.getElementById('sc-body').innerHTML = `<p style="color:#dc2626;padding:20px;">Error: ${e.message}</p>`;
+  }
+}
+
+function renderScorecardBody(meetings, candidate) {
+  const tabs = meetings.map((m,i) => {
+    const sc = m.scorecard || {};
+    const overall = sc.overall_score || '—';
+    const rec = sc.recommendation || '';
+    const recColor = rec==='STRONG HIRE'?'#16a34a':rec==='HIRE'?'#2563eb':rec==='MAYBE'?'#d97706':'#dc2626';
+    const scoreColor = typeof overall==='number'?(overall>=7?'#16a34a':overall>=5?'#d97706':'#dc2626'):'#64748b';
+    const dims = (sc.dimensions||[]).map(d =>
+      `<tr><td style="padding:8px 0;font-size:14px;">${d.name}</td>
+       <td style="padding:8px;"><span style="background:${d.score>=7?'#16a34a':d.score>=5?'#d97706':'#dc2626'};color:#fff;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">${d.score}/10</span></td>
+       <td style="padding:8px;font-size:13px;color:#64748b;">${d.comment||''}</td></tr>`
+    ).join('');
+    const greenFlags = (sc.green_flags||[]).map(f=>`<li style="color:#166534;margin-bottom:4px;">✓ ${f}</li>`).join('');
+    const redFlags = (sc.red_flags||[]).map(f=>`<li style="color:#991b1b;margin-bottom:4px;">✗ ${f}</li>`).join('');
+    const recordingBtn = m.recordingUrl
+      ? `<a href="${m.recordingUrl}" target="_blank" style="display:inline-block;background:#7c3aed;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;margin-top:12px;">▶ Watch Recording</a>`
+      : `<p style="color:#94a3b8;font-size:13px;margin-top:12px;">Recording processing...</p>`;
+
+    return { label:`Attempt ${m.attemptNumber||i+1}`, sc, overall, scoreColor, rec, recColor, dims, greenFlags, redFlags, recordingBtn, m };
+  });
+
+  let html = '';
+  if (tabs.length > 1) {
+    html += `<div style="display:flex;gap:8px;margin-bottom:20px;">
+      ${tabs.map((t,i)=>`<button onclick="switchTab(${i})" id="sc-tab-${i}" class="btn-ghost" style="font-size:13px;${i===0?'background:#ede9fe;color:var(--primary);':''}">${t.label}</button>`).join('')}
+    </div>`;
+  }
+
+  tabs.forEach((t, i) => {
+    html += `<div id="sc-tab-body-${i}" style="display:${i===0?'block':'none'};">`;
+    if (!t.sc || !t.overall || t.overall==='—') {
+      html += `<p style="color:#94a3b8;text-align:center;padding:40px;">No scorecard data for this attempt.</p>`;
+    } else {
+      html += `
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="display:inline-block;background:${t.scoreColor};color:#fff;border-radius:50%;width:80px;height:80px;line-height:80px;font-size:32px;font-weight:800;">${t.overall}</div>
+          <p style="margin:6px 0 0;font-size:12px;color:#64748b;">out of 10</p>
+          ${t.rec ? `<span style="background:${t.recColor};color:#fff;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:700;display:inline-block;margin-top:6px;">${t.rec}</span>` : ''}
+        </div>
+        ${t.sc.summary?`<p style="color:#475569;line-height:1.7;margin-bottom:20px;font-style:italic;">"${t.sc.summary}"</p>`:''}
+        ${t.dims?`<table style="width:100%;margin-bottom:20px;">${t.dims}</table>`:''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+          ${t.greenFlags?`<div><h4 style="color:#166534;font-size:14px;margin-bottom:8px;">Strengths</h4><ul style="margin:0;padding-left:18px;">${t.greenFlags}</ul></div>`:''}
+          ${t.redFlags?`<div><h4 style="color:#991b1b;font-size:14px;margin-bottom:8px;">Areas to Improve</h4><ul style="margin:0;padding-left:18px;">${t.redFlags}</ul></div>`:''}
+        </div>
+        <div style="text-align:center;">${t.recordingBtn}</div>
+      `;
+    }
+    html += `</div>`;
+  });
+
+  document.getElementById('sc-body').innerHTML = html;
+}
+
+window.switchTab = function(idx) {
+  document.querySelectorAll('[id^="sc-tab-body-"]').forEach((el,i) => el.style.display = i===idx?'block':'none');
+  document.querySelectorAll('[id^="sc-tab-"]').forEach((el,i) => {
+    el.style.background = i===idx?'#ede9fe':'#f1f5f9';
+    el.style.color = i===idx?'var(--primary)':'#374151';
+  });
+};
+
+init();
+</script>
+</body>
+</html>

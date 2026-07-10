@@ -264,12 +264,14 @@
         
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        
+
         statusEl.textContent = 'Login successful! Redirecting...';
         statusEl.className = 'status-alert show success';
-        
+
+        const role = data.user?.role || 'recruiter';
+        const dest = role === 'admin' ? '/admin' : '/recruiter';
         setTimeout(() => {
-          window.location.href = '/dashboard';
+          window.location.href = dest;
         }, 800);
       } catch (err) {
         statusEl.textContent = err.message;

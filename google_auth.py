@@ -269,3 +269,44 @@ async def send_interview_email_smtp(candidate_name: str, candidate_email: str, m
                                        scheduled_at, role_name, duration_minutes,
                                        smtp_config or {}),
     )
+
+
+def _send_generic_smtp_sync(to_email: str, to_name: str, subject: str,
+                              html_body: str, smtp_config: dict) -> bool:
+    """Generic SMTP sender for any pre-built HTML email."""
+    smtp_host = smtp_config.get("host") or os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(smtp_config.get("port") or os.getenv("SMTP_PORT", "587"))
+    smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
+    smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
+
+    if not smtp_user or not smtp_pass:
+        print("[SMTP] No credentials configured — skipping generic send")
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{COMPANY_NAME} <{smtp_user}>"
+    msg["To"] = f"{to_name} <{to_email}>"
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [to_email], msg.as_string())
+        print(f"[SMTP] Sent '{subject}' to {to_email}")
+        return True
+    except Exception as e:
+        print(f"[SMTP] Generic send error: {e}")
+        return False
+
+
+async def send_email_smtp_generic(to_email: str, to_name: str, subject: str,
+                                   html_body: str, smtp_config: dict = None) -> bool:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: _send_generic_smtp_sync(to_email, to_name, subject,
+                                         html_body, smtp_config or {}),
+    )

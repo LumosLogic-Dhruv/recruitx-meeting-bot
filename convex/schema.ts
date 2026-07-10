@@ -6,6 +6,7 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     passwordHash: v.string(),
+    role: v.optional(v.string()),   // "admin" | "recruiter" — defaults to "recruiter"
   }).index("by_email", ["email"]),
 
   meetings: defineTable({
@@ -24,6 +25,10 @@ export default defineSchema({
     recordingUrl: v.optional(v.string()),
     botAudioUrl: v.optional(v.string()),
     candidateAudioUrl: v.optional(v.string()),
+    interviewStatus: v.optional(v.string()),  // "completed" | "partial" | "no_show"
+    recruiterId: v.optional(v.string()),
+    roleName: v.optional(v.string()),
+    attemptNumber: v.optional(v.number()),
   }),
 
   rolePrompts: defineTable({
@@ -38,7 +43,12 @@ export default defineSchema({
     phone: v.optional(v.string()),
     notes: v.optional(v.string()),
     createdAt: v.number(),
-  }).index("by_email", ["email"]),
+    recruiterId: v.optional(v.string()),           // user._id of the recruiter who added them
+    interviewStatus: v.optional(v.string()),        // "never_invited"|"cooldown"|"locked"|...
+    attemptCount: v.optional(v.number()),           // 0, 1, or 2
+    cooldownUntil: v.optional(v.number()),          // UTC epoch ms — null when not in cooldown
+    roleName: v.optional(v.string()),               // role they are being interviewed for
+  }).index("by_email", ["email"]).index("by_recruiter", ["recruiterId"]),
 
   scheduledInterviews: defineTable({
     candidateId: v.string(),
@@ -56,7 +66,10 @@ export default defineSchema({
     calendarEventId: v.optional(v.string()),
     meetingId: v.optional(v.string()),  // Convex meetings table ID after completion
     createdAt: v.number(),
-  }).index("by_status", ["status"]).index("by_candidate", ["candidateId"]),
+    recruiterId: v.optional(v.string()),   // user._id of recruiter who scheduled
+    attemptNumber: v.optional(v.number()), // 1 or 2
+  }).index("by_status", ["status"]).index("by_candidate", ["candidateId"])
+    .index("by_recruiter", ["recruiterId"]),
 
   settings: defineTable({
     key: v.string(),

@@ -6,6 +6,7 @@ export const create = mutation({
     name: v.string(),
     email: v.string(),
     passwordHash: v.string(),
+    role: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -19,8 +20,30 @@ export const create = mutation({
       name: args.name,
       email: args.email,
       passwordHash: args.passwordHash,
+      role: args.role ?? "recruiter",
     });
     return userId;
+  },
+});
+
+export const setRole = mutation({
+  args: { id: v.string(), role: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id as any, { role: args.role });
+  },
+});
+
+export const getById = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id as any);
+  },
+});
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("users").order("desc").collect();
   },
 });
 

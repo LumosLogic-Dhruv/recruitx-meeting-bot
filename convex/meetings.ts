@@ -14,6 +14,10 @@ export const create = mutation({
     ),
     scorecard: v.any(),
     botId: v.optional(v.string()),
+    interviewStatus: v.optional(v.string()),  // "completed" | "partial" | "no_show"
+    recruiterId: v.optional(v.string()),
+    roleName: v.optional(v.string()),
+    attemptNumber: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const meetingId = await ctx.db.insert("meetings", {
@@ -24,6 +28,10 @@ export const create = mutation({
       scorecard: args.scorecard,
       createdAt: Date.now(),
       botId: args.botId,
+      interviewStatus: args.interviewStatus,
+      recruiterId: args.recruiterId,
+      roleName: args.roleName,
+      attemptNumber: args.attemptNumber,
     });
     return meetingId;
   },
@@ -49,9 +57,36 @@ export const list = query({
   },
 });
 
-export const get = query({
-  args: { id: v.id("meetings") },
+export const listByRecruiter = query({
+  args: { recruiterId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    return await ctx.db
+      .query("meetings")
+      .filter((q) => q.eq(q.field("recruiterId"), args.recruiterId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const listWeekly = query({
+  args: { weekStart: v.number() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("meetings")
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("createdAt"), args.weekStart),
+          q.eq(q.field("interviewStatus"), "completed")
+        )
+      )
+      .order("desc")
+      .collect();
+  },
+});
+
+export const get = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id as any);
   },
 });
