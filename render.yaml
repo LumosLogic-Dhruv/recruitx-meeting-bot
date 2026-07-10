@@ -26,6 +26,8 @@ services:
         sync: false
       - key: RENDER_URL
         sync: false
+      - key: FRONTEND_URL
+        sync: false
       - key: ELEVENLABS_VOICE_ID
         sync: false
       - key: ELEVENLABS_VOICE_ID_NILA

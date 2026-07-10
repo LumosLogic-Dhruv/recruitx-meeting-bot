@@ -4,8 +4,7 @@ import os
 import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Header, UploadFile, File, Form
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -74,7 +73,6 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="RecruitX AI Interviewer Bot Server", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # bot_id → session data
 _sessions: dict[str, dict] = {}
@@ -126,52 +124,6 @@ def _deepgram_key() -> str:
 def _webhook_url() -> str:
     base = os.getenv("RENDER_URL", "").rstrip("/")
     return f"{base}/webhook/recall" if base else ""
-
-
-@app.get("/")
-def ui():
-    return FileResponse("static/index.html")
-
-
-@app.get("/login")
-def login_page():
-    return FileResponse("static/login.html")
-
-
-@app.get("/signup")
-def signup_page():
-    return FileResponse("static/signup.html")
-
-
-@app.get("/dashboard")
-def dashboard_page():
-    return FileResponse("static/dashboard.html")
-
-
-@app.get("/admin")
-def admin_page():
-    return FileResponse("static/admin.html")
-
-
-@app.get("/recruiter")
-def recruiter_page():
-    return RedirectResponse(url="/recruiter/add")
-
-@app.get("/recruiter/add")
-def recruiter_add():
-    return FileResponse("static/recruiter-add.html")
-
-@app.get("/recruiter/schedule")
-def recruiter_schedule():
-    return FileResponse("static/recruiter-schedule.html")
-
-@app.get("/recruiter/scorecards")
-def recruiter_scorecards():
-    return FileResponse("static/recruiter-scorecards.html")
-
-@app.get("/recruiter/prompts")
-def recruiter_prompts():
-    return FileResponse("static/recruiter-prompts.html")
 
 
 @app.get("/health")
@@ -480,8 +432,8 @@ async def _send_recruiter_summary_email(
             print(f"[Email] No recruiter found for id={recruiter_id}")
             return
         smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
-        render_url = os.getenv("RENDER_URL", "").rstrip("/")
-        dashboard_url = f"{render_url}/admin" if render_url else ""
+        frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+        dashboard_url = f"{frontend_url}/admin" if frontend_url else ""
         html = et.build_recruiter_summary_email(
             recruiter_name=recruiter.get("name", "Recruiter"),
             candidate_name=candidate_name,
@@ -1378,22 +1330,24 @@ def google_auth_start(user: dict = Depends(get_current_user)):
 @app.get("/api/auth/google/callback")
 async def google_auth_callback(code: str = None, error: str = None, state: str = ""):
     """Exchange OAuth code for tokens. No JWT required — called by Google redirect."""
+    import urllib.parse
+    frontend = os.getenv("FRONTEND_URL", "").rstrip("/")
+    dashboard = f"{frontend}/dashboard" if frontend else "/dashboard"
+
     if error:
         print(f"[Google OAuth] Google returned error: {error}")
-        return RedirectResponse(url=f"/dashboard?google_error={error}")
+        return RedirectResponse(url=f"{dashboard}?google_error={error}")
     if not code:
-        return RedirectResponse(url="/dashboard?google_error=missing_code")
+        return RedirectResponse(url=f"{dashboard}?google_error=missing_code")
     try:
-        import urllib.parse
         loop = asyncio.get_event_loop()
         tokens = await loop.run_in_executor(None, lambda: gauth.exchange_code(code, state))
         convex_client.mutation("settings:set", {"key": "google_tokens", "value": tokens})
         print("[Google OAuth] Tokens saved to Convex successfully")
-        return RedirectResponse(url="/dashboard?google_connected=1")
+        return RedirectResponse(url=f"{dashboard}?google_connected=1")
     except Exception as e:
         print(f"[Google OAuth] Callback exception: {type(e).__name__}: {e}")
-        import urllib.parse
-        return RedirectResponse(url=f"/dashboard?google_error={urllib.parse.quote(str(e)[:80])}")
+        return RedirectResponse(url=f"{dashboard}?google_error={urllib.parse.quote(str(e)[:80])}")
 
 
 @app.get("/api/auth/google/status")
