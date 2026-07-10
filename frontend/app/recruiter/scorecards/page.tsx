@@ -1,21 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDetailModal";
 
 interface Candidate {
   _id: string; name: string; email: string; roleName?: string;
   interviewStatus?: string; attemptCount?: number; cooldownUntil?: number;
-}
-interface Scorecard {
-  overall_score?: number; recommendation?: string; summary?: string;
-  dimensions?: { name: string; score: number; comment?: string }[];
-  green_flags?: string[]; red_flags?: string[];
-  skill_breakdown?: { name: string; score: number; description?: string }[];
-  areas_for_improvement?: string[];
-}
-interface Meeting {
-  _id: string; candidateName: string; roleName?: string; scorecard?: Scorecard;
-  attemptNumber?: number; recordingUrl?: string;
 }
 
 function ScoreChip({ score }: { score: number }) {
@@ -43,92 +33,10 @@ function coolDays(c: Candidate) {
   return `Cooldown (${Math.max(0, Math.ceil((c.cooldownUntil - Date.now()) / 86400000))}d)`;
 }
 
-function ScorecardModal({ candidateName, meetings, onClose }: { candidateName: string; meetings: Meeting[]; onClose: () => void }) {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const m = meetings[activeIdx];
-  const sc = m?.scorecard || {};
-
-  return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "92%", maxWidth: 740, maxHeight: "88vh", overflowY: "auto", padding: 32 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: 0 }}>{candidateName}</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", lineHeight: 1 }}>✕</button>
-        </div>
-        {meetings.length > 1 && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-            {meetings.map((_, i) => (
-              <button key={i} onClick={() => setActiveIdx(i)} style={{ padding: "7px 16px", borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: activeIdx === i ? "#7c3aed" : "#f1f5f9", color: activeIdx === i ? "#fff" : "#374151" }}>
-                Attempt {meetings[i].attemptNumber || i + 1}
-              </button>
-            ))}
-          </div>
-        )}
-        {!sc?.overall_score ? (
-          <p style={{ color: "#64748b", textAlign: "center", padding: 40 }}>No scorecard data for this attempt.</p>
-        ) : (
-          <div>
-            <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: sc.overall_score >= 7 ? "#16a34a" : sc.overall_score >= 5 ? "#d97706" : "#dc2626", color: "#fff", borderRadius: "50%", width: 84, height: 84, fontSize: 34, fontWeight: 800 }}>{sc.overall_score}</div>
-              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748b" }}>out of 10</p>
-              {sc.recommendation && <span style={{ display: "inline-block", marginTop: 8, padding: "4px 14px", borderRadius: 20, fontSize: 13, fontWeight: 700, background: sc.recommendation.includes("HIRE") ? "#16a34a" : "#d97706", color: "#fff" }}>{sc.recommendation}</span>}
-            </div>
-            {sc.summary && <p style={{ color: "#475569", lineHeight: 1.7, fontStyle: "italic", marginBottom: 20 }}>&quot;{sc.summary}&quot;</p>}
-
-            {sc.dimensions && sc.dimensions.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Evaluation Dimensions</h4>
-                <table style={{ width: "100%" }}>
-                  <tbody>
-                    {sc.dimensions.map((d, i) => (
-                      <tr key={i}>
-                        <td style={{ padding: "8px 0", fontSize: 14 }}>{d.name}</td>
-                        <td style={{ padding: 8 }}><ScoreChip score={d.score} /></td>
-                        <td style={{ padding: 8, fontSize: 13, color: "#64748b" }}>{d.comment}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-              {sc.green_flags && sc.green_flags.length > 0 && (
-                <div>
-                  <h4 style={{ color: "#166534", fontSize: 14, marginBottom: 8 }}>✅ Strengths</h4>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {sc.green_flags.map((f, i) => <li key={i} style={{ color: "#166534", marginBottom: 4 }}>✓ {f}</li>)}
-                  </ul>
-                </div>
-              )}
-              {sc.red_flags && sc.red_flags.length > 0 && (
-                <div>
-                  <h4 style={{ color: "#991b1b", fontSize: 14, marginBottom: 8 }}>⚠️ Areas to Improve</h4>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {sc.red_flags.map((f, i) => <li key={i} style={{ color: "#991b1b", marginBottom: 4 }}>✗ {f}</li>)}
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {m.recordingUrl ? (
-              <div style={{ textAlign: "center" }}>
-                <a href={m.recordingUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", background: "#7c3aed", color: "#fff", padding: "9px 20px", borderRadius: 8, fontSize: 14, fontWeight: 700, textDecoration: "none", marginTop: 16 }}>▶ Watch Recording</a>
-              </div>
-            ) : (
-              <p style={{ color: "#64748b", fontSize: 13, marginTop: 12, textAlign: "center" }}>Recording still processing — check back soon.</p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function ScorecardsPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [modal, setModal] = useState<{ name: string; meetings: Meeting[] } | null>(null);
+  const [meetings, setMeetings] = useState<ScorecardMeeting[]>([]);
+  const [modal, setModal] = useState<{ name: string; meetings: ScorecardMeeting[] } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -161,7 +69,6 @@ export default function ScorecardsPage() {
     <>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 24px" }}>Candidate Scorecards</h1>
 
-      {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
         {stats.map(s => (
           <div key={s.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, textAlign: "center" }}>
@@ -175,7 +82,7 @@ export default function ScorecardsPage() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Candidate","Role","Attempts","Best Score","Recommendation","Status","Scorecards"].map(h => (
+              {["Candidate", "Role", "Attempts", "Best Score", "Recommendation", "Status", "Scorecards"].map(h => (
                 <th key={h} style={{ textAlign: "left", padding: "10px 13px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
               ))}
             </tr>
@@ -214,7 +121,13 @@ export default function ScorecardsPage() {
         </table>
       </div>
 
-      {modal && <ScorecardModal candidateName={modal.name} meetings={modal.meetings} onClose={() => setModal(null)} />}
+      {modal && (
+        <ScorecardDetailModal
+          meetings={modal.meetings}
+          onClose={() => setModal(null)}
+          dashboardUrl="/recruiter/scorecards"
+        />
+      )}
     </>
   );
 }

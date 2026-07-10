@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { logout, getUser } from "@/lib/api";
+import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDetailModal";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 function auth() { return `Bearer ${localStorage.getItem("token")}`; }
@@ -11,13 +11,8 @@ interface Candidate {
   _id: string; name: string; email: string; roleName?: string; recruiterId?: string;
   recruiterName?: string; interviewStatus?: string; attemptCount?: number; cooldownUntil?: number;
 }
-interface Scorecard {
-  overall_score?: number; recommendation?: string; summary?: string;
-}
-interface Meeting {
-  _id: string; candidateName?: string; roleName?: string; createdAt?: number;
-  scorecard?: Scorecard; recruiterId?: string; recruiterName?: string; interviewStatus?: string;
-}
+
+type Meeting = ScorecardMeeting & { recruiterId?: string; recruiterName?: string; interviewStatus?: string; };
 
 type AdminTab = "weekly" | "candidates" | "recruiters" | "analytics" | "settings";
 
@@ -417,26 +412,13 @@ export default function AdminPage() {
         )}
       </main>
 
-      {/* Modal */}
+      {/* Scorecard Modal */}
       {modal && (
-        <div onClick={e => { if (e.target === e.currentTarget) setModal(null); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#fff", borderRadius: 16, width: "90%", maxWidth: 700, maxHeight: "90vh", overflowY: "auto", padding: 32 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: 0 }}>{modal.candidateName} — Scorecard</h3>
-              <button onClick={() => setModal(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#64748b" }}>✕</button>
-            </div>
-            {modal.scorecard?.overall_score ? (
-              <div>
-                <div style={{ textAlign: "center", marginBottom: 24 }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: modal.scorecard.overall_score >= 7 ? "#16a34a" : modal.scorecard.overall_score >= 5 ? "#d97706" : "#dc2626", color: "#fff", borderRadius: "50%", width: 84, height: 84, fontSize: 34, fontWeight: 800 }}>{modal.scorecard.overall_score}</div>
-                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748b" }}>out of 10</p>
-                  {modal.scorecard.recommendation && <span style={{ display: "inline-block", marginTop: 8, padding: "4px 14px", borderRadius: 20, fontSize: 13, fontWeight: 700, background: "#7c3aed", color: "#fff" }}>{modal.scorecard.recommendation}</span>}
-                </div>
-                {modal.scorecard.summary && <p style={{ color: "#475569", lineHeight: 1.7, fontStyle: "italic" }}>&quot;{modal.scorecard.summary}&quot;</p>}
-              </div>
-            ) : <p style={{ color: "#64748b", textAlign: "center", padding: 40 }}>No scorecard data available.</p>}
-          </div>
-        </div>
+        <ScorecardDetailModal
+          meetings={[modal]}
+          onClose={() => setModal(null)}
+          dashboardUrl="/admin"
+        />
       )}
     </div>
   );

@@ -59,6 +59,7 @@ def build_scorecard_email(
     role_name: str,
     attempt_number: int = 1,
     retry_in_days: int = 7,
+    next_meet_url: str = "",
 ) -> str:
     overall = scorecard.get("overall_score", 0)
     recommendation = scorecard.get("recommendation", "")
@@ -71,20 +72,38 @@ def build_scorecard_email(
     rec_color = _recommendation_color(recommendation)
 
     is_final = attempt_number >= 2
-    retry_note = (
-        f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;'
-        f'padding:16px;margin:24px 0;">'
-        f'<p style="margin:0;color:#1d4ed8;font-size:14px;line-height:1.6;">'
-        f'<strong>What\'s next?</strong> You have one more opportunity to improve your score. '
-        f'We\'ll send you a new interview invitation in <strong>{retry_in_days} days</strong>. '
-        f'Use this time to review the areas below and come back stronger!</p></div>'
-        if not is_final else
-        f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;'
-        f'padding:16px;margin:24px 0;">'
-        f'<p style="margin:0;color:#15803d;font-size:14px;line-height:1.6;">'
-        f'<strong>Thank you</strong> for completing both interview sessions. '
-        f'This is your final evaluation result. Our team will be in touch regarding next steps.</p></div>'
-    )
+
+    if not is_final and next_meet_url:
+        retry_note = (
+            f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;'
+            f'padding:20px;margin:24px 0;text-align:center;">'
+            f'<p style="margin:0 0 12px;color:#1d4ed8;font-size:14px;line-height:1.6;">'
+            f'<strong>Your next interview is ready.</strong> You have one more opportunity to improve your score. '
+            f'Join at the link below when you\'re ready.</p>'
+            f'<a href="{next_meet_url}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);'
+            f'color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:15px;font-weight:700;">'
+            f'Join Next Interview</a>'
+            f'<div style="margin-top:10px;font-size:12px;color:#94a3b8;">'
+            f'Or open: <a href="{next_meet_url}" style="color:#7c3aed;">{next_meet_url}</a></div>'
+            f'</div>'
+        )
+    elif not is_final:
+        retry_note = (
+            f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;'
+            f'padding:16px;margin:24px 0;">'
+            f'<p style="margin:0;color:#1d4ed8;font-size:14px;line-height:1.6;">'
+            f'<strong>What\'s next?</strong> You have one more opportunity to improve your score. '
+            f'We\'ll send you a new interview invitation in <strong>{retry_in_days} days</strong>. '
+            f'Use this time to review the areas below and come back stronger!</p></div>'
+        )
+    else:
+        retry_note = (
+            f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;'
+            f'padding:16px;margin:24px 0;">'
+            f'<p style="margin:0;color:#15803d;font-size:14px;line-height:1.6;">'
+            f'<strong>Thank you</strong> for completing both interview sessions. '
+            f'This is your final evaluation result. Our team will be in touch regarding next steps.</p></div>'
+        )
 
     dims_html = "".join(
         f'<tr><td style="padding:8px 0;font-size:14px;color:#374151;">{d["name"]}</td>'
@@ -157,27 +176,136 @@ def build_recruiter_summary_email(
     overall = scorecard.get("overall_score", 0)
     recommendation = scorecard.get("recommendation", "")
     summary = scorecard.get("summary", "")
+    dimensions = scorecard.get("dimensions", [])
+    top_strengths = scorecard.get("top_strengths", [])[:3]
+    top_gaps = scorecard.get("top_gaps", [])[:3]
+    green_flags = scorecard.get("green_flags", [])[:4]
+    red_flags = scorecard.get("red_flags", [])[:4]
+    skill_breakdown = scorecard.get("skill_breakdown", [])[:6]
+    areas = scorecard.get("areas_for_improvement", [])[:4]
+
     score_color = _score_color(overall)
     rec_color = _recommendation_color(recommendation)
     attempt_label = "Attempt 1" if attempt_number == 1 else "Final Attempt"
     is_no_show = interview_status == "no_show"
 
     recording_block = (
-        f'<div style="text-align:center;margin:20px 0;">'
+        f'<div style="text-align:center;margin:24px 0;">'
         f'<a href="{recording_url}" style="display:inline-block;background:#7c3aed;color:#fff;'
         f'text-decoration:none;padding:12px 28px;border-radius:10px;font-size:15px;font-weight:700;">'
         f'▶ Watch Recording</a></div>'
         if recording_url else
-        '<p style="color:#94a3b8;font-size:13px;text-align:center;">'
+        '<p style="color:#94a3b8;font-size:13px;text-align:center;margin:16px 0;">'
         'Recording is still processing — check the dashboard in a few minutes.</p>'
     )
 
     dashboard_block = (
         f'<div style="text-align:center;margin:16px 0;">'
-        f'<a href="{dashboard_url}" style="color:#7c3aed;font-size:14px;text-decoration:underline;">'
-        f'View full scorecard in dashboard →</a></div>'
+        f'<a href="{dashboard_url}" style="display:inline-block;background:#f1f5f9;color:#374151;'
+        f'text-decoration:none;padding:11px 28px;border-radius:10px;font-size:14px;font-weight:700;'
+        f'border:1px solid #e2e8f0;">Go to Dashboard →</a></div>'
         if dashboard_url else ""
     )
+
+    # ── Build detail sections ──────────────────────────────────────────────────
+
+    strengths_gaps_html = ""
+    if top_strengths or top_gaps:
+        s_rows = "".join(
+            f'<tr><td style="padding:6px 8px;font-size:13px;color:#0f172a;">{s["name"]}</td>'
+            f'<td style="padding:6px 8px;text-align:right;">'
+            f'<span style="background:{_score_color(s["score"])};color:#fff;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700;">{s["score"]}</span></td></tr>'
+            for s in top_strengths
+        )
+        g_rows = "".join(
+            f'<tr><td style="padding:6px 8px;font-size:13px;color:#0f172a;">{g["name"]}</td>'
+            f'<td style="padding:6px 8px;text-align:right;">'
+            f'<span style="background:{_score_color(g["score"])};color:#fff;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700;">{g["score"]}</span></td></tr>'
+            for g in top_gaps
+        )
+        strengths_gaps_html = f"""
+<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+  <tr>
+    <td style="width:50%;padding-right:12px;vertical-align:top;">
+      <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;">Top Strengths</p>
+      <table style="width:100%;border-collapse:collapse;">{s_rows}</table>
+    </td>
+    <td style="width:50%;padding-left:12px;vertical-align:top;border-left:1px solid #e2e8f0;">
+      <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;">Top Gaps</p>
+      <table style="width:100%;border-collapse:collapse;">{g_rows}</table>
+    </td>
+  </tr>
+</table>"""
+
+    dims_html = ""
+    if dimensions:
+        rows = "".join(
+            f'<tr>'
+            f'<td style="padding:8px 0;font-size:14px;color:#374151;width:160px;">{d["name"]}</td>'
+            f'<td style="padding:8px 4px;">'
+            f'<div style="height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden;">'
+            f'<div style="height:5px;background:{_score_color(d["score"])};border-radius:3px;width:{d["score"]*10}%;"></div></div></td>'
+            f'<td style="padding:8px 8px;text-align:right;width:60px;">'
+            f'<span style="background:{_score_color(d["score"])};color:#fff;padding:2px 8px;border-radius:20px;font-size:12px;font-weight:700;">{d["score"]}/10</span></td>'
+            f'<td style="padding:8px 0;font-size:12px;color:#64748b;">{d.get("comment","")}</td>'
+            f'</tr>'
+            for d in dimensions
+        )
+        dims_html = f"""
+<div style="margin-bottom:24px;">
+  <h3 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 12px;">Competency Breakdown</h3>
+  <table style="width:100%;border-collapse:collapse;">{rows}</table>
+</div>"""
+
+    flags_html = ""
+    if green_flags or red_flags:
+        g_items = "".join(f'<li style="margin-bottom:6px;color:#166534;font-size:13px;line-height:1.5;">{f}</li>' for f in green_flags)
+        r_items = "".join(f'<li style="margin-bottom:6px;color:#991b1b;font-size:13px;line-height:1.5;">{f}</li>' for f in red_flags)
+        flags_html = f"""
+<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+  <tr>
+    <td style="width:50%;padding-right:12px;vertical-align:top;">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;">
+        <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#16a34a;">● Green Flags</p>
+        <ul style="margin:0;padding-left:16px;">{g_items}</ul>
+      </div>
+    </td>
+    <td style="width:50%;padding-left:12px;vertical-align:top;">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;">
+        <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#dc2626;">● Red Flags</p>
+        <ul style="margin:0;padding-left:16px;">{r_items}</ul>
+      </div>
+    </td>
+  </tr>
+</table>"""
+
+    skills_html = ""
+    if skill_breakdown:
+        bars = "".join(
+            f'<div style="margin-bottom:12px;">'
+            f'<div style="display:flex;justify-content:space-between;margin-bottom:4px;">'
+            f'<span style="font-size:13px;font-weight:600;color:#0f172a;">{sk["name"]}</span>'
+            f'<span style="font-size:12px;font-weight:700;color:{_score_color(sk["score"])};">{sk["score"]}/10</span></div>'
+            f'<div style="height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden;">'
+            f'<div style="height:5px;background:{_score_color(sk["score"])};border-radius:3px;width:{sk["score"]*10}%;"></div></div>'
+            f'{"<p style=margin:4px 0 0;font-size:12px;color:#64748b;>" + sk.get("description","") + "</p>" if sk.get("description") else ""}'
+            f'</div>'
+            for sk in skill_breakdown
+        )
+        skills_html = f"""
+<div style="margin-bottom:24px;">
+  <h3 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 12px;">Skill Breakdown</h3>
+  {bars}
+</div>"""
+
+    areas_html = ""
+    if areas:
+        items = "".join(f'<li style="margin-bottom:6px;color:#92400e;font-size:13px;line-height:1.5;">{a}</li>' for a in areas)
+        areas_html = f"""
+<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#d97706;">● Areas for Improvement</p>
+  <ol style="margin:0;padding-left:18px;">{items}</ol>
+</div>"""
 
     if is_no_show:
         content = f"""
@@ -189,16 +317,18 @@ def build_recruiter_summary_email(
       {"A retry interview will be automatically scheduled in 7 days." if attempt_number == 1 else "This was their final attempt — no further retries."}
     </p>
   </div>
+  {dashboard_block}
 """
     else:
         content = f"""
   <p style="font-size:15px;margin-bottom:8px;">Hi <strong>{recruiter_name}</strong>,</p>
   <p style="color:#475569;line-height:1.7;margin-bottom:24px;">
     <strong>{candidate_name}</strong> has completed their <strong>{attempt_label}</strong>
-    interview for <strong>{role_name}</strong>. Here's a summary.
+    interview for <strong>{role_name}</strong>. Here is the full AI screening report.
   </p>
 
-  <div style="text-align:center;margin-bottom:24px;">
+  <!-- Score + Recommendation -->
+  <div style="text-align:center;margin-bottom:28px;">
     <div style="display:inline-block;background:{score_color};color:#fff;border-radius:50%;
       width:80px;height:80px;line-height:80px;font-size:32px;font-weight:800;">{overall}</div>
     <p style="margin:6px 0 0;font-size:12px;color:#64748b;">out of 10</p>
@@ -206,8 +336,13 @@ def build_recruiter_summary_email(
       font-size:13px;font-weight:700;display:inline-block;margin-top:6px;">{recommendation}</span>
   </div>
 
-  <p style="color:#475569;line-height:1.7;margin-bottom:20px;font-style:italic;">"{summary}"</p>
+  <p style="color:#475569;line-height:1.7;margin-bottom:24px;font-style:italic;">"{summary}"</p>
 
+  {strengths_gaps_html}
+  {dims_html}
+  {flags_html}
+  {skills_html}
+  {areas_html}
   {recording_block}
   {dashboard_block}
 """
