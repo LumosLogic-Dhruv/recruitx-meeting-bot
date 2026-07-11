@@ -52,6 +52,17 @@ export default defineSchema({
     roleName: v.optional(v.string()),               // role they are being interviewed for
     resumeText: v.optional(v.string()),             // extracted text from uploaded CV
     resumeFileName: v.optional(v.string()),         // original filename
+    // Extended profile fields
+    experienceYears: v.optional(v.string()),
+    currentCompany: v.optional(v.string()),
+    currentRole: v.optional(v.string()),
+    currentCtc: v.optional(v.string()),
+    expectedCtc: v.optional(v.string()),
+    location: v.optional(v.string()),
+    skills: v.optional(v.array(v.string())),
+    education: v.optional(v.string()),
+    linkedinUrl: v.optional(v.string()),
+    githubUrl: v.optional(v.string()),
   }).index("by_email", ["email"]).index("by_recruiter", ["recruiterId"]),
 
   scheduledInterviews: defineTable({

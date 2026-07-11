@@ -9,6 +9,16 @@ export const create = mutation({
     notes: v.optional(v.string()),
     recruiterId: v.optional(v.string()),
     roleName: v.optional(v.string()),
+    experienceYears: v.optional(v.string()),
+    currentCompany: v.optional(v.string()),
+    currentRole: v.optional(v.string()),
+    currentCtc: v.optional(v.string()),
+    expectedCtc: v.optional(v.string()),
+    location: v.optional(v.string()),
+    skills: v.optional(v.array(v.string())),
+    education: v.optional(v.string()),
+    linkedinUrl: v.optional(v.string()),
+    githubUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("candidates", {
@@ -72,6 +82,16 @@ export const update = mutation({
     phone: v.optional(v.string()),
     notes: v.optional(v.string()),
     roleName: v.optional(v.string()),
+    experienceYears: v.optional(v.string()),
+    currentCompany: v.optional(v.string()),
+    currentRole: v.optional(v.string()),
+    currentCtc: v.optional(v.string()),
+    expectedCtc: v.optional(v.string()),
+    location: v.optional(v.string()),
+    skills: v.optional(v.array(v.string())),
+    education: v.optional(v.string()),
+    linkedinUrl: v.optional(v.string()),
+    githubUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { id, ...fields } = args;
