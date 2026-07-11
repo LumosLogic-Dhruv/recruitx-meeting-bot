@@ -1359,7 +1359,7 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
     except Exception as e:
         print(f"[Scheduler] create_bot error: {e}")
         await recall.aclose()
-        return
+        raise  # re-raise so _bot_join_job retries and logs the failure properly
 
     bot_id = bot_data["id"]
     bot_id_holder.append(bot_id)
@@ -1527,6 +1527,16 @@ class CandidateCreateRequest(BaseModel):
     phone: str = ""
     notes: str = ""
     role_name: str = ""
+    experience_years: str = ""
+    current_company: str = ""
+    current_role: str = ""
+    current_ctc: str = ""
+    expected_ctc: str = ""
+    location: str = ""
+    skills: list[str] = []
+    education: str = ""
+    linkedin_url: str = ""
+    github_url: str = ""
 
 
 @app.post("/api/candidates")
@@ -1534,13 +1544,25 @@ def create_candidate(req: CandidateCreateRequest, user: dict = Depends(get_curre
     if not req.name or not req.email:
         raise HTTPException(400, "Name and email are required")
     try:
+        profile_patch = {}
+        if req.phone: profile_patch["phone"] = req.phone
+        if req.notes: profile_patch["notes"] = req.notes
+        if req.role_name: profile_patch["roleName"] = req.role_name
+        if req.experience_years: profile_patch["experienceYears"] = req.experience_years
+        if req.current_company: profile_patch["currentCompany"] = req.current_company
+        if req.current_role: profile_patch["currentRole"] = req.current_role
+        if req.current_ctc: profile_patch["currentCtc"] = req.current_ctc
+        if req.expected_ctc: profile_patch["expectedCtc"] = req.expected_ctc
+        if req.location: profile_patch["location"] = req.location
+        if req.skills: profile_patch["skills"] = req.skills
+        if req.education: profile_patch["education"] = req.education
+        if req.linkedin_url: profile_patch["linkedinUrl"] = req.linkedin_url
+        if req.github_url: profile_patch["githubUrl"] = req.github_url
         cid = convex_client.mutation("candidates:create", {
             "name": req.name,
             "email": req.email.lower().strip(),
-            **({"phone": req.phone} if req.phone else {}),
-            **({"notes": req.notes} if req.notes else {}),
-            **({"roleName": req.role_name} if req.role_name else {}),
             "recruiterId": user.get("sub", ""),
+            **profile_patch,
         })
         _log_timeline(str(cid), "candidate_added",
                       actor=user.get("sub", "system"),
@@ -1585,6 +1607,16 @@ class CandidateUpdateRequest(BaseModel):
     phone: str = ""
     notes: str = ""
     role_name: str = ""
+    experience_years: str = ""
+    current_company: str = ""
+    current_role: str = ""
+    current_ctc: str = ""
+    expected_ctc: str = ""
+    location: str = ""
+    skills: list[str] = []
+    education: str = ""
+    linkedin_url: str = ""
+    github_url: str = ""
 
 
 @app.put("/api/candidates/{candidate_id}")
@@ -1596,11 +1628,21 @@ def update_candidate(candidate_id: str, req: CandidateUpdateRequest,
             if candidate and candidate.get("recruiterId") != user.get("sub"):
                 raise HTTPException(403, "Cannot edit another recruiter's candidate")
         patch: dict = {}
-        if req.name:      patch["name"]     = req.name.strip()
-        if req.email:     patch["email"]    = req.email.lower().strip()
-        if req.phone:     patch["phone"]    = req.phone.strip()
-        if req.notes:     patch["notes"]    = req.notes.strip()
-        if req.role_name: patch["roleName"] = req.role_name.strip()
+        if req.name:             patch["name"]            = req.name.strip()
+        if req.email:            patch["email"]           = req.email.lower().strip()
+        if req.phone:            patch["phone"]           = req.phone.strip()
+        if req.notes:            patch["notes"]           = req.notes.strip()
+        if req.role_name:        patch["roleName"]        = req.role_name.strip()
+        if req.experience_years: patch["experienceYears"] = req.experience_years.strip()
+        if req.current_company:  patch["currentCompany"]  = req.current_company.strip()
+        if req.current_role:     patch["currentRole"]     = req.current_role.strip()
+        if req.current_ctc:      patch["currentCtc"]      = req.current_ctc.strip()
+        if req.expected_ctc:     patch["expectedCtc"]     = req.expected_ctc.strip()
+        if req.location:         patch["location"]        = req.location.strip()
+        if req.skills:           patch["skills"]          = req.skills
+        if req.education:        patch["education"]       = req.education.strip()
+        if req.linkedin_url:     patch["linkedinUrl"]     = req.linkedin_url.strip()
+        if req.github_url:       patch["githubUrl"]       = req.github_url.strip()
         convex_client.mutation("candidates:update", {"id": candidate_id, **patch})
         return {"status": "updated"}
     except HTTPException:
@@ -1636,6 +1678,84 @@ def delete_prompt(prompt_id: str, user: dict = Depends(get_current_user)):
         return {"status": "deleted"}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# ── Get single candidate endpoint ────────────────────────────────────────────
+
+@app.get("/api/candidates/{candidate_id}")
+def get_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
+    try:
+        candidate = convex_client.query("candidates:get", {"id": candidate_id})
+        if not candidate:
+            raise HTTPException(404, "Candidate not found")
+        if user.get("role") != "admin" and candidate.get("recruiterId") != user.get("sub"):
+            raise HTTPException(403, "Access denied")
+        return {"candidate": candidate}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Generate prompt from candidate profile ────────────────────────────────────
+
+@app.post("/api/candidates/{candidate_id}/generate-prompt")
+async def generate_prompt_from_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
+    """Generate a tailored interview system prompt from the candidate's profile and resume."""
+    try:
+        candidate = convex_client.query("candidates:get", {"id": candidate_id})
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    if not candidate:
+        raise HTTPException(404, "Candidate not found")
+
+    from openai import AsyncOpenAI
+    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+    resume_text = candidate.get("resumeText", "")
+    role = candidate.get("roleName") or "Software Engineer"
+    skills = candidate.get("skills") or []
+    experience = candidate.get("experienceYears") or ""
+    education = candidate.get("education") or ""
+    notes = candidate.get("notes") or ""
+
+    context_parts = []
+    if resume_text:
+        context_parts.append(f"RESUME:\n{resume_text[:3000]}")
+    if skills:
+        context_parts.append(f"Skills listed: {', '.join(skills)}")
+    if experience:
+        context_parts.append(f"Years of experience: {experience}")
+    if education:
+        context_parts.append(f"Education: {education}")
+    if notes:
+        context_parts.append(f"Recruiter notes: {notes}")
+
+    context = "\n\n".join(context_parts) or f"Candidate applying for {role} role."
+
+    prompt_request = (
+        f"Generate a focused AI interviewer system prompt for a voice interview with a candidate applying for: {role}\n\n"
+        f"Candidate context:\n{context}\n\n"
+        "Write a concise system prompt (200-350 words) that:\n"
+        "1. Specifies what topics to cover based on their actual background\n"
+        "2. Lists 4-6 specific technical areas to probe (based on their skills/resume)\n"
+        "3. Mentions any gaps or areas to verify from their resume\n"
+        "4. Sets the interview tone and structure\n"
+        "DO NOT include general rules about how to speak — only the interview-specific content.\n"
+        "Start with: 'You are interviewing [candidate name] for the [role] position.'"
+    )
+
+    try:
+        resp = await openai_client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[{"role": "user", "content": prompt_request}],
+            max_tokens=500,
+            temperature=0.4,
+        )
+        generated = (resp.choices[0].message.content or "").strip()
+        return {"prompt": generated, "candidate_name": candidate.get("name", "")}
+    except Exception as e:
+        raise HTTPException(500, f"Prompt generation error: {e}")
 
 
 # ── Candidate timeline endpoint ───────────────────────────────────────────────
@@ -1798,6 +1918,54 @@ def admin_analytics(user: dict = Depends(get_current_user)):
         raise HTTPException(500, str(e))
 
 
+# ── Candidate profile → system prompt enrichment ──────────────────────────────
+
+def _build_candidate_context(candidate: dict, base_prompt: str) -> str:
+    """Prepend candidate profile + resume to the system prompt so the AI bot
+    has full context about the person it is about to interview."""
+    lines = ["CANDIDATE PROFILE (use this to ask specific, relevant questions):"]
+    lines.append(f"Name: {candidate.get('name', 'Candidate')}")
+    if candidate.get("roleName"):
+        lines.append(f"Role Applied For: {candidate['roleName']}")
+    if candidate.get("experienceYears"):
+        lines.append(f"Years of Experience: {candidate['experienceYears']}")
+    if candidate.get("currentCompany"):
+        lines.append(f"Current Company: {candidate['currentCompany']}")
+    if candidate.get("currentRole"):
+        lines.append(f"Current Role: {candidate['currentRole']}")
+    if candidate.get("currentCtc"):
+        lines.append(f"Current CTC: {candidate['currentCtc']}")
+    if candidate.get("expectedCtc"):
+        lines.append(f"Expected CTC: {candidate['expectedCtc']}")
+    if candidate.get("location"):
+        lines.append(f"Location: {candidate['location']}")
+    if candidate.get("education"):
+        lines.append(f"Education: {candidate['education']}")
+    if candidate.get("skills"):
+        skills = candidate["skills"]
+        if isinstance(skills, list):
+            lines.append(f"Skills: {', '.join(skills)}")
+        else:
+            lines.append(f"Skills: {skills}")
+    if candidate.get("linkedinUrl"):
+        lines.append(f"LinkedIn: {candidate['linkedinUrl']}")
+    if candidate.get("githubUrl"):
+        lines.append(f"GitHub: {candidate['githubUrl']}")
+    if candidate.get("notes"):
+        lines.append(f"Recruiter Notes: {candidate['notes']}")
+
+    profile_block = "\n".join(lines)
+
+    resume_block = ""
+    if candidate.get("resumeText"):
+        resume_text = candidate["resumeText"][:4000]
+        resume_block = f"\nRESUME CONTENT:\n{resume_text}\n"
+
+    recruiter_block = f"\n--- RECRUITER INSTRUCTIONS ---\n{base_prompt}" if base_prompt.strip() else ""
+
+    return profile_block + resume_block + recruiter_block
+
+
 # ── Schedule interview endpoint ───────────────────────────────────────────────
 
 class ScheduleInterviewRequest(BaseModel):
@@ -1905,6 +2073,10 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     recruiter_id = user.get("sub", "")
     attempt_number = int(candidate.get("attemptCount") or 0) + 1
 
+    # Enrich system prompt with candidate profile and resume data
+    enriched_prompt = _build_candidate_context(candidate, req.system_prompt)
+    print(f"[Schedule] System prompt enriched with candidate profile ({len(enriched_prompt)} chars)")
+
     # Save to Convex
     try:
         interview_id = convex_client.mutation("scheduledInterviews:create", {
@@ -1916,7 +2088,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
             "scheduledAt": int(scheduled_dt.timestamp() * 1000),
             "durationMinutes": req.duration_minutes,
             "roleName": req.role_name,
-            "systemPrompt": req.system_prompt,
+            "systemPrompt": enriched_prompt,
             "botName": req.bot_name,
             "emailSent": email_sent,
             "calendarEventId": calendar_event_id,

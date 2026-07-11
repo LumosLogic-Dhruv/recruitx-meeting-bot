@@ -70,12 +70,11 @@ class RecallClient:
                     "type": "webhook",
                     # transcript.data = finalized utterance (primary)
                     # transcript.partial_data = interim words while candidate is speaking
-                    # participant.join / participant.leave = detect candidate presence
+                    # participant.join / participant.leave come as top-level webhook events,
+                    # NOT as realtime_endpoint events — they are NOT valid here.
                     "events": [
                         "transcript.data",
                         "transcript.partial_data",
-                        "participant.join",
-                        "participant.leave",
                     ],
                 }
             ]
