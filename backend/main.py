@@ -1753,6 +1753,10 @@ async def generate_prompt_from_candidate(candidate_id: str, user: dict = Depends
             temperature=0.4,
         )
         generated = (resp.choices[0].message.content or "").strip()
+        try:
+            convex_client.mutation("candidates:update", {"id": candidate_id, "generatedPrompt": generated})
+        except Exception:
+            pass
         return {"prompt": generated, "candidate_name": candidate.get("name", "")}
     except Exception as e:
         raise HTTPException(500, f"Prompt generation error: {e}")

@@ -92,6 +92,7 @@ export const update = mutation({
     education: v.optional(v.string()),
     linkedinUrl: v.optional(v.string()),
     githubUrl: v.optional(v.string()),
+    generatedPrompt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { id, ...fields } = args;

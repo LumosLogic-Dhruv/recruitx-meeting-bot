@@ -8,93 +8,65 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 interface Candidate {
   _id: string; name: string; email: string; roleName?: string;
   interviewStatus?: string; attemptCount?: number; cooldownUntil?: number;
-  phone?: string; notes?: string;
+  phone?: string; notes?: string; experienceYears?: string;
+  currentCompany?: string; currentCtc?: string; expectedCtc?: string;
+  location?: string;
 }
 
 function Badge({ c }: { c: Candidate }) {
   const s = (c.interviewStatus || "never_invited").replace(/\.\d+/g, "");
   const map: Record<string, [string, string]> = {
-    never_invited: ["#f1f5f9|#64748b", "Not Invited"],
-    attempt_1_scheduled: ["#eff6ff|#1d4ed8", "Interview 1 Sched."],
-    cooldown: ["#fff7ed|#c2410c", coolDays(c)],
-    attempt_2_scheduled: ["#eff6ff|#1d4ed8", "Interview 2 Sched."],
-    locked: ["#fef2f2|#dc2626", "Final/Locked"],
-    completed: ["#f0fdf4|#16a34a", "Completed"],
-    partial: ["#fefce8|#854d0e", "Partial"],
-    no_show: ["#fff7ed|#c2410c", "No Show"],
+    never_invited:        ["#f1f5f9|#64748b", "Not Invited"],
+    attempt_1_scheduled:  ["#eff6ff|#1d4ed8", "Scheduled"],
+    cooldown:             ["#fff7ed|#c2410c", coolDays(c)],
+    attempt_2_scheduled:  ["#eff6ff|#1d4ed8", "Retry Sched."],
+    locked:               ["#fef2f2|#dc2626", "Locked"],
+    completed:            ["#f0fdf4|#16a34a", "Completed"],
+    partial:              ["#fefce8|#854d0e", "Partial"],
+    no_show:              ["#fff7ed|#c2410c", "No Show"],
   };
   const [colors, label] = map[s] || ["#f1f5f9|#64748b", s.replace(/_/g, " ")];
   const [bg, color] = colors.split("|");
-  return <span style={{ display: "inline-block", padding: "3px 11px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color }}>{label}</span>;
+  return (
+    <span style={{ display: "inline-block", padding: "3px 11px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color }}>
+      {label}
+    </span>
+  );
 }
 
 function coolDays(c: Candidate) {
   if (!c.cooldownUntil) return "Cooldown";
-  const d = Math.max(0, Math.ceil((c.cooldownUntil - Date.now()) / 86400000));
-  return `Cooldown (${d}d)`;
+  return `Cooldown (${Math.max(0, Math.ceil((c.cooldownUntil - Date.now()) / 86400000))}d)`;
 }
 
-function EditModal({ candidate, onClose, onSaved }: { candidate: Candidate; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ name: candidate.name, email: candidate.email, phone: candidate.phone || "", role_name: candidate.roleName || "", notes: candidate.notes || "" });
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+const inp: React.CSSProperties = {
+  width: "100%", padding: "9px 12px", fontSize: 13,
+  border: "1px solid #e2e8f0", borderRadius: 8, outline: "none",
+  background: "#fff", fontFamily: "inherit", boxSizing: "border-box",
+};
+const lbl: React.CSSProperties = {
+  display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4,
+};
+const sectionTitle: React.CSSProperties = {
+  fontSize: 13, fontWeight: 700, color: "#7c3aed", marginBottom: 12, marginTop: 4,
+  paddingBottom: 6, borderBottom: "1px solid #ede9fe",
+};
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true); setErr("");
-    try {
-      const res = await fetch(`${BASE}/api/candidates/${candidate._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-        body: JSON.stringify(form),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.detail || "Failed");
-      onSaved();
-    } catch (err: unknown) { setErr(err instanceof Error ? err.message : "Error"); }
-    finally { setLoading(false); }
-  }
+const emptyForm = {
+  name: "", email: "", phone: "", location: "",
+  role_name: "", current_company: "", current_role: "",
+  experience_years: "", current_ctc: "", expected_ctc: "",
+  education: "", linkedin_url: "", github_url: "", notes: "",
+};
 
-  const inp: React.CSSProperties = { width: "100%", padding: "10px 13px", fontSize: 14, border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", fontFamily: "inherit" };
-  const lbl: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 };
-
-  return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "90%", maxWidth: 480, padding: 32 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Edit Candidate</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>✕</button>
-        </div>
-        <form onSubmit={save}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            {[["Full Name", "name", "text", "Jane Doe"], ["Email Address", "email", "email", "jane@example.com"], ["Phone", "phone", "text", "+91 98765 43210"], ["Role Applied For", "role_name", "text", "Full Stack Developer"]].map(([label, key, type, ph]) => (
-              <div key={key} style={{ marginBottom: 14 }}>
-                <label style={lbl}>{label}</label>
-                <input type={type} placeholder={ph} style={inp} value={(form as Record<string, string>)[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} />
-              </div>
-            ))}
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Notes</label>
-            <textarea rows={2} style={{ ...inp, resize: "vertical" }} placeholder="Any relevant context..." value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
-          </div>
-          {err && <div style={{ padding: "10px 14px", background: "#fef2f2", color: "#dc2626", borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{err}</div>}
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={onClose} style={{ flex: 1, padding: "10px", background: "#f1f5f9", color: "#374151", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-            <button type="submit" disabled={loading} style={{ flex: 1, padding: "10px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: loading ? 0.65 : 1 }}>{loading ? "Saving..." : "Save Changes"}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export default function AddCandidatePage() {
+export default function CandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role_name: "", notes: "" });
+  const [form, setForm] = useState(emptyForm);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
   const [alert, setAlert] = useState<{ msg: string; type: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [editing, setEditing] = useState<Candidate | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => { loadCandidates(); }, []);
 
@@ -106,6 +78,17 @@ export default function AddCandidatePage() {
     } catch { /* ignore */ }
   }
 
+  function setField(k: keyof typeof emptyForm, v: string) {
+    setForm(p => ({ ...p, [k]: v }));
+  }
+
+  function addSkill() {
+    const s = skillInput.trim();
+    if (!s || skills.includes(s)) return;
+    setSkills(p => [...p, s]);
+    setSkillInput("");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -114,16 +97,19 @@ export default function AddCandidatePage() {
       const res = await fetch(`${BASE}/api/candidates`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, skills }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.detail || "Failed");
-      setAlert({ msg: `${d.name} added successfully.`, type: "success" });
-      setForm({ name: "", email: "", phone: "", role_name: "", notes: "" });
+      setAlert({ msg: `${d.name} added. Redirecting to profile...`, type: "success" });
+      setForm(emptyForm);
+      setSkills([]);
       loadCandidates();
+      setTimeout(() => { window.location.href = `/recruiter/candidates/${d.id}`; }, 800);
     } catch (err: unknown) {
       setAlert({ msg: err instanceof Error ? err.message : "Error", type: "error" });
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   }
 
   async function deleteCand(id: string, name: string) {
@@ -132,78 +118,215 @@ export default function AddCandidatePage() {
     loadCandidates();
   }
 
-  const inp: React.CSSProperties = { width: "100%", padding: "10px 13px", fontSize: 14, border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff", fontFamily: "inherit" };
-  const lbl: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 5 };
+  const filtered = candidates.filter(c =>
+    !search ||
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.email.toLowerCase().includes(search.toLowerCase()) ||
+    (c.roleName || "").toLowerCase().includes(search.toLowerCase())
+  );
+
   const alertColor = alert?.type === "success" ? "#f0fdf4|#16a34a" : alert?.type === "error" ? "#fef2f2|#dc2626" : "#eff6ff|#1d4ed8";
-  const [alertBg, alertText] = (alertColor || "").split("|");
+  const [alertBg, alertText] = alertColor.split("|");
 
   return (
     <>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 24px" }}>Add Candidate</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: 0 }}>Candidates</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>{candidates.length} total</p>
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "400px 1fr", gap: 24, alignItems: "start" }}>
 
-        {/* Add form */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 28 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#374151", margin: "0 0 20px" }}>New Candidate</h2>
+        {/* ── Add Candidate Form ── */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, maxHeight: "calc(100vh - 140px)", overflowY: "auto" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#374151", margin: "0 0 16px" }}>Add New Candidate</h2>
+
           <form onSubmit={handleSubmit}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div style={{ marginBottom: 16 }}>
+            {/* Basic Information */}
+            <p style={sectionTitle}>Basic Information</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
+              <div>
                 <label style={lbl}>Full Name *</label>
-                <input style={inp} required placeholder="Jane Doe" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+                <input style={inp} required placeholder="Jane Doe" value={form.name} onChange={e => setField("name", e.target.value)} />
               </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={lbl}>Email Address *</label>
-                <input style={inp} type="email" required placeholder="jane@example.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
+              <div>
+                <label style={lbl}>Email *</label>
+                <input style={inp} type="email" required placeholder="jane@example.com" value={form.email} onChange={e => setField("email", e.target.value)} />
               </div>
-              <div style={{ marginBottom: 16 }}>
+              <div>
                 <label style={lbl}>Phone</label>
-                <input style={inp} placeholder="+91 98765 43210" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
+                <input style={inp} placeholder="+91 98765 43210" value={form.phone} onChange={e => setField("phone", e.target.value)} />
               </div>
-              <div style={{ marginBottom: 16 }}>
+              <div>
+                <label style={lbl}>Location</label>
+                <input style={inp} placeholder="Bangalore, India" value={form.location} onChange={e => setField("location", e.target.value)} />
+              </div>
+            </div>
+
+            {/* Professional Details */}
+            <p style={{ ...sectionTitle, marginTop: 16 }}>Professional Details</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
+              <div style={{ gridColumn: "1 / -1" }}>
                 <label style={lbl}>Role Applied For</label>
-                <input style={inp} placeholder="e.g. Full Stack Developer" value={form.role_name} onChange={e => setForm(p => ({ ...p, role_name: e.target.value }))} />
+                <input style={inp} placeholder="e.g. Full Stack Developer" value={form.role_name} onChange={e => setField("role_name", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Current Company</label>
+                <input style={inp} placeholder="Company name" value={form.current_company} onChange={e => setField("current_company", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Current Role / Title</label>
+                <input style={inp} placeholder="e.g. Senior Engineer" value={form.current_role} onChange={e => setField("current_role", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Years of Experience</label>
+                <input style={inp} placeholder="e.g. 4" value={form.experience_years} onChange={e => setField("experience_years", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Education</label>
+                <input style={inp} placeholder="B.Tech CS, IIT Delhi" value={form.education} onChange={e => setField("education", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Current CTC</label>
+                <input style={inp} placeholder="e.g. 12 LPA" value={form.current_ctc} onChange={e => setField("current_ctc", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>Expected CTC</label>
+                <input style={inp} placeholder="e.g. 18 LPA" value={form.expected_ctc} onChange={e => setField("expected_ctc", e.target.value)} />
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={lbl}>Notes</label>
-              <textarea style={{ ...inp, resize: "vertical", minHeight: 60 }} placeholder="Any relevant context..." value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
+
+            {/* Online Presence */}
+            <p style={{ ...sectionTitle, marginTop: 16 }}>Online Presence</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
+              <div>
+                <label style={lbl}>LinkedIn URL</label>
+                <input style={inp} placeholder="linkedin.com/in/..." value={form.linkedin_url} onChange={e => setField("linkedin_url", e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>GitHub URL</label>
+                <input style={inp} placeholder="github.com/..." value={form.github_url} onChange={e => setField("github_url", e.target.value)} />
+              </div>
             </div>
-            {alert && <div style={{ padding: "11px 14px", borderRadius: 8, fontSize: 14, marginBottom: 14, background: alertBg, color: alertText }}>{alert.msg}</div>}
-            <button type="submit" disabled={loading} style={{ width: "100%", padding: "10px 22px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.65 : 1 }}>
-              Add Candidate
+
+            {/* Skills */}
+            <p style={{ ...sectionTitle, marginTop: 16 }}>Skills</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input
+                style={{ ...inp, flex: 1 }}
+                placeholder="Add a skill (press Enter)"
+                value={skillInput}
+                onChange={e => setSkillInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
+              />
+              <button type="button" onClick={addSkill} style={{ padding: "9px 14px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                Add
+              </button>
+            </div>
+            {skills.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                {skills.map(s => (
+                  <span key={s} style={{ display: "flex", alignItems: "center", gap: 5, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", padding: "3px 9px", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
+                    {s}
+                    <button onClick={() => setSkills(p => p.filter(x => x !== s))} style={{ background: "none", border: "none", cursor: "pointer", color: "#a78bfa", fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Notes */}
+            <p style={{ ...sectionTitle, marginTop: 16 }}>Recruiter Notes</p>
+            <textarea
+              rows={3}
+              style={{ ...inp, resize: "vertical", marginBottom: 8 }}
+              placeholder="Any relevant context about this candidate..."
+              value={form.notes}
+              onChange={e => setField("notes", e.target.value)}
+            />
+
+            {alert && (
+              <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 12, background: alertBg, color: alertText }}>
+                {alert.msg}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ width: "100%", padding: "11px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.65 : 1 }}
+            >
+              {loading ? "Adding..." : "Add Candidate"}
             </button>
+            <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 8 }}>
+              Resume and AI prompt can be uploaded on the candidate&apos;s profile page
+            </p>
           </form>
         </div>
 
-        {/* Candidates list */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 28 }}>
+        {/* ── Candidates List ── */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#374151", margin: 0 }}>My Candidates</h2>
-            <span style={{ fontSize: 13, color: "#64748b" }}>{candidates.length} total</span>
+            <input
+              style={{ ...inp, width: 220, fontSize: 13 }}
+              placeholder="Search by name, email, role..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
+
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["Name","Email","Role","Status","Attempts","Actions"].map(h => (
-                  <th key={h} style={{ textAlign: "left", padding: "10px 13px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
+                {["Candidate", "Role", "Experience / CTC", "Status", "Attempts", "Actions"].map(h => (
+                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {candidates.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "#64748b", padding: 32 }}>No candidates yet.</td></tr>
-              ) : candidates.map(c => (
-                <tr key={c._id}>
-                  <td style={{ padding: 13, fontSize: 14, borderBottom: "1px solid #f1f5f9" }}><strong>{c.name}</strong></td>
-                  <td style={{ padding: 13, fontSize: 13, color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>{c.email}</td>
-                  <td style={{ padding: 13, fontSize: 14, borderBottom: "1px solid #f1f5f9" }}>{c.roleName || "—"}</td>
-                  <td style={{ padding: 13, borderBottom: "1px solid #f1f5f9" }}><Badge c={c} /></td>
-                  <td style={{ padding: 13, fontSize: 14, textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>{c.attemptCount || 0}/2</td>
-                  <td style={{ padding: 13, borderBottom: "1px solid #f1f5f9" }}>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "#64748b", padding: 40 }}>
+                  {search ? "No candidates match your search." : "No candidates yet. Add one using the form."}
+                </td></tr>
+              ) : filtered.map(c => (
+                <tr key={c._id} style={{ transition: "background .1s" }}>
+                  <td style={{ padding: "12px", fontSize: 14, borderBottom: "1px solid #f1f5f9" }}>
+                    <div style={{ fontWeight: 700, color: "#0f172a" }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>{c.email}</div>
+                    {c.location && <div style={{ fontSize: 11, color: "#94a3b8" }}>{c.location}</div>}
+                  </td>
+                  <td style={{ padding: "12px", fontSize: 13, borderBottom: "1px solid #f1f5f9" }}>
+                    {c.roleName || <span style={{ color: "#94a3b8" }}>—</span>}
+                    {c.currentCompany && <div style={{ fontSize: 11, color: "#64748b" }}>@ {c.currentCompany}</div>}
+                  </td>
+                  <td style={{ padding: "12px", fontSize: 13, borderBottom: "1px solid #f1f5f9" }}>
+                    {c.experienceYears ? <div>{c.experienceYears} yrs exp</div> : null}
+                    {c.expectedCtc ? <div style={{ fontSize: 11, color: "#64748b" }}>Exp: {c.expectedCtc}</div> : null}
+                    {!c.experienceYears && !c.expectedCtc ? <span style={{ color: "#94a3b8" }}>—</span> : null}
+                  </td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}><Badge c={c} /></td>
+                  <td style={{ padding: "12px", fontSize: 14, textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>{c.attemptCount || 0}/2</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <Link href={`/recruiter/candidates/${c._id}`} style={{ background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", padding: "5px 10px", fontSize: 12, borderRadius: 6, textDecoration: "none", fontWeight: 600 }}>Timeline</Link>
-                      <button onClick={() => setEditing(c)} style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>Edit</button>
-                      <button onClick={() => deleteCand(c._id, c.name)} style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer" }}>Delete</button>
+                      <Link
+                        href={`/recruiter/candidates/${c._id}`}
+                        style={{ background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", padding: "5px 10px", fontSize: 12, borderRadius: 6, textDecoration: "none", fontWeight: 600 }}
+                      >
+                        Profile
+                      </Link>
+                      <Link
+                        href={`/recruiter/schedule?candidateId=${c._id}`}
+                        style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", padding: "5px 10px", fontSize: 12, borderRadius: 6, textDecoration: "none", fontWeight: 600 }}
+                      >
+                        Schedule
+                      </Link>
+                      <button
+                        onClick={() => deleteCand(c._id, c.name)}
+                        style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer" }}
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -211,9 +334,8 @@ export default function AddCandidatePage() {
             </tbody>
           </table>
         </div>
-      </div>
 
-      {editing && <EditModal candidate={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); loadCandidates(); }} />}
+      </div>
     </>
   );
 }

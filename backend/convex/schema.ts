@@ -63,6 +63,7 @@ export default defineSchema({
     education: v.optional(v.string()),
     linkedinUrl: v.optional(v.string()),
     githubUrl: v.optional(v.string()),
+    generatedPrompt: v.optional(v.string()),
   }).index("by_email", ["email"]).index("by_recruiter", ["recruiterId"]),
 
   scheduledInterviews: defineTable({

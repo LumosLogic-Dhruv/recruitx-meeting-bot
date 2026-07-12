@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { logout, getUser } from "@/lib/api";
 
 const NAV = [
-  { href: "/recruiter/add",        icon: "👤", label: "Add Candidate" },
+  { href: "/recruiter/add",        icon: "👤", label: "Candidates" },
   { href: "/recruiter/schedule",   icon: "📅", label: "Schedule Interview" },
   { href: "/recruiter/scorecards", icon: "📊", label: "Scorecards" },
   { href: "/recruiter/prompts",    icon: "✨", label: "Generate Prompt" },
@@ -34,7 +34,7 @@ export default function RecruiterSidebar() {
 
       <nav style={{ flex: 1 }}>
         {NAV.map(({ href, icon, label }) => {
-          const active = pathname === href;
+          const active = pathname === href || (href === "/recruiter/add" && pathname.startsWith("/recruiter/candidates"));
           return (
             <Link key={href} href={href} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "11px 20px",

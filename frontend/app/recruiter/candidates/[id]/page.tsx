@@ -35,6 +35,7 @@ interface Candidate {
   education?: string;
   linkedinUrl?: string;
   githubUrl?: string;
+  generatedPrompt?: string;
 }
 
 const EVENT_LABELS: Record<string, { icon: string; label: string; color: string }> = {
@@ -124,6 +125,7 @@ export default function CandidateDetailPage() {
       ]);
       const c: Candidate = candRes.candidate;
       setCandidate(c);
+      setGeneratedPrompt(c.generatedPrompt || "");
       setProfileForm({
         name: c.name || "",
         email: c.email || "",
@@ -264,9 +266,17 @@ export default function CandidateDetailPage() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
         <div>
-          <Link href="/recruiter/add" style={{ fontSize: 13, color: "#7c3aed", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-            ← Back to Candidates
-          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 8 }}>
+            <Link href="/recruiter/add" style={{ fontSize: 13, color: "#7c3aed", textDecoration: "none" }}>
+              ← Back to Candidates
+            </Link>
+            <Link
+              href={`/recruiter/schedule?candidateId=${id}`}
+              style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: "#7c3aed", padding: "6px 14px", borderRadius: 8, textDecoration: "none" }}
+            >
+              Schedule Interview →
+            </Link>
+          </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: 0 }}>{candidate.name}</h1>
           <p style={{ margin: "4px 0 0", fontSize: 14, color: "#64748b" }}>
             {candidate.email}
@@ -422,25 +432,35 @@ export default function CandidateDetailPage() {
 
             {/* AI Prompt Generator */}
             <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 14, padding: 24 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: "#7c3aed", margin: "0 0 8px" }}>Generate Interview Prompt</h2>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: "#7c3aed", margin: 0 }}>AI Interview Prompt</h2>
+                {candidate.generatedPrompt && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#059669", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "2px 8px", borderRadius: 20 }}>
+                    Saved to Profile
+                  </span>
+                )}
+              </div>
               <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 14px" }}>
                 {candidate.resumeFileName
-                  ? `Resume uploaded (${candidate.resumeFileName}). Click to generate a tailored prompt.`
-                  : "Upload a resume above to get a resume-based prompt, or generate from profile fields."}
+                  ? `Resume: ${candidate.resumeFileName}. Generate a tailored prompt from resume + profile.`
+                  : "Upload a resume above for a resume-based prompt, or generate from profile fields."}
               </p>
-              <button onClick={generatePrompt} disabled={generatingPrompt} style={{ padding: "9px 18px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: generatingPrompt ? "not-allowed" : "pointer", opacity: generatingPrompt ? 0.65 : 1, marginBottom: generatedPrompt ? 14 : 0 }}>
-                {generatingPrompt ? "Generating..." : "Generate AI Prompt from Profile"}
+              <button onClick={generatePrompt} disabled={generatingPrompt} style={{ padding: "9px 18px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: generatingPrompt ? "not-allowed" : "pointer", opacity: generatingPrompt ? 0.65 : 1 }}>
+                {generatingPrompt ? "Generating..." : candidate.generatedPrompt ? "Regenerate Prompt" : "Generate AI Prompt from Profile"}
               </button>
               {generatedPrompt && (
                 <>
+                  <div style={{ fontSize: 12, color: "#059669", marginTop: 8, marginBottom: 4 }}>
+                    Prompt generated and saved to this candidate&apos;s profile. It will be auto-loaded when scheduling.
+                  </div>
                   <textarea
                     readOnly
                     rows={8}
                     value={generatedPrompt}
-                    style={{ ...inp, marginTop: 12, background: "#fff", resize: "vertical", fontSize: 12, color: "#374151" }}
+                    style={{ ...inp, background: "#fff", resize: "vertical", fontSize: 12, color: "#374151" }}
                   />
                   <button onClick={copyPromptToSchedule} style={{ marginTop: 8, padding: "8px 16px", background: "#059669", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    Use This Prompt in Schedule →
+                    Use in Schedule Interview →
                   </button>
                 </>
               )}

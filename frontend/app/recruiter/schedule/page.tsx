@@ -12,6 +12,9 @@ interface Candidate {
   interviewStatus?: string;
   resumeFileName?: string;
   roleName?: string;
+  generatedPrompt?: string;
+  experienceYears?: string;
+  currentCompany?: string;
 }
 interface Prompt { roleName: string; promptText: string; }
 interface ScheduledInterview {
@@ -32,22 +35,38 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(false);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [promptAutoFilled, setPromptAutoFilled] = useState(false);
 
   useEffect(() => {
-    Promise.all([loadCandidates(), loadPrompts(), loadScheduled()]).then(() => {
+    const urlCandidateId = new URLSearchParams(window.location.search).get("candidateId") || "";
+    Promise.all([loadCandidates(), loadPrompts(), loadScheduled()]).then(([allCandidates]) => {
       const pending = sessionStorage.getItem("pendingPrompt");
       if (pending) {
         setForm(p => ({ ...p, promptText: pending }));
         sessionStorage.removeItem("pendingPrompt");
       }
+      if (urlCandidateId && allCandidates) {
+        const c = allCandidates.find((x: Candidate) => x._id === urlCandidateId);
+        if (c) {
+          setSelectedCandidate(c);
+          setForm(p => ({
+            ...p,
+            candidateId: urlCandidateId,
+            role: c.roleName || p.role,
+            promptText: pending || c.generatedPrompt || p.promptText,
+          }));
+          if (c.generatedPrompt && !pending) setPromptAutoFilled(true);
+        }
+      }
     });
   }, []);
 
-  async function loadCandidates() {
+  async function loadCandidates(): Promise<Candidate[]> {
     const res = await api("/api/candidates");
     const d = await res.json();
     const all: Candidate[] = d.candidates || [];
-    setCandidates(all.filter(c => !c.interviewStatus || c.interviewStatus === "never_invited"));
+    setCandidates(all);
+    return all;
   }
 
   async function loadPrompts() {
@@ -65,13 +84,16 @@ export default function SchedulePage() {
   }
 
   function onCandidateChange(candidateId: string) {
-    setForm(p => ({ ...p, candidateId }));
     const c = candidates.find(c => c._id === candidateId) || null;
     setSelectedCandidate(c);
-    // Auto-fill role from candidate profile
-    if (c?.roleName && !form.role) {
-      setForm(p => ({ ...p, candidateId, role: c.roleName || "" }));
-    }
+    setPromptAutoFilled(false);
+    setForm(p => ({
+      ...p,
+      candidateId,
+      role: p.role || c?.roleName || "",
+      promptText: p.promptText || c?.generatedPrompt || "",
+    }));
+    if (c?.generatedPrompt && !form.promptText) setPromptAutoFilled(true);
   }
 
   async function generatePromptFromCandidate() {
@@ -144,25 +166,30 @@ export default function SchedulePage() {
               <label style={lbl}>Candidate *</label>
               <select required style={inp} value={form.candidateId} onChange={e => onCandidateChange(e.target.value)}>
                 <option value="">Select a candidate...</option>
-                {candidates.map(c => <option key={c._id} value={c._id}>{c.name} ({c.email})</option>)}
+                {candidates.map(c => {
+                  const s = (c.interviewStatus || "never_invited").replace(/\.\d+/g, "").replace(/_/g, " ");
+                  return <option key={c._id} value={c._id}>{c.name} — {c.roleName || c.email} [{s}]</option>;
+                })}
               </select>
-              {candidates.length === 0 && (
-                <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>Only candidates not yet scheduled or locked are shown.</p>
-              )}
             </div>
 
             {/* Candidate profile snapshot */}
             {selectedCandidate && (
               <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>{selectedCandidate.name}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
                       {selectedCandidate.roleName || "No role set"}
-                      {selectedCandidate.resumeFileName ? ` · Resume: ${selectedCandidate.resumeFileName}` : " · No resume uploaded"}
+                      {selectedCandidate.currentCompany ? ` · ${selectedCandidate.currentCompany}` : ""}
+                      {selectedCandidate.experienceYears ? ` · ${selectedCandidate.experienceYears} yrs` : ""}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      {selectedCandidate.resumeFileName ? `Resume: ${selectedCandidate.resumeFileName}` : "No resume uploaded"}
+                      {selectedCandidate.generatedPrompt ? " · AI prompt ready" : ""}
                     </div>
                   </div>
-                  <Link href={`/recruiter/candidates/${selectedCandidate._id}`} style={{ fontSize: 12, color: "#7c3aed", textDecoration: "none", fontWeight: 600 }}>
+                  <Link href={`/recruiter/candidates/${selectedCandidate._id}`} style={{ fontSize: 12, color: "#7c3aed", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }}>
                     View Profile →
                   </Link>
                 </div>
@@ -215,6 +242,11 @@ export default function SchedulePage() {
                 value={form.promptText}
                 onChange={e => setForm(p => ({ ...p, promptText: e.target.value }))}
               />
+              {promptAutoFilled && (
+                <p style={{ fontSize: 12, color: "#059669", margin: "4px 0 0", fontWeight: 600 }}>
+                  Auto-loaded from candidate&apos;s saved AI profile prompt
+                </p>
+              )}
               <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>
                 <Link href="/recruiter/prompts" style={{ color: "#7c3aed" }}>Manage saved prompts →</Link>
                 {" · "}
