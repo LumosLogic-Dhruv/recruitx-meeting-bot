@@ -263,44 +263,66 @@ export default function CandidateDetailPage() {
 
   return (
     <>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 8 }}>
-            <Link href="/recruiter/add" style={{ fontSize: 13, color: "#7c3aed", textDecoration: "none" }}>
-              ← Back to Candidates
-            </Link>
-            <Link
-              href={`/recruiter/schedule?candidateId=${id}`}
-              style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: "#7c3aed", padding: "6px 14px", borderRadius: 8, textDecoration: "none" }}
-            >
-              Schedule Interview →
-            </Link>
+      {/* Nav + Actions */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <Link href="/recruiter/add" style={{ fontSize: 13, color: "#7c3aed", textDecoration: "none" }}>← Candidates</Link>
+        <Link
+          href={`/recruiter/schedule?candidateId=${id}`}
+          style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: "#7c3aed", padding: "8px 18px", borderRadius: 8, textDecoration: "none" }}
+        >
+          Schedule Interview →
+        </Link>
+      </div>
+
+      {/* Candidate header card */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "20px 24px", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 4px" }}>{candidate.name}</h1>
+            <p style={{ margin: 0, fontSize: 14, color: "#64748b" }}>
+              {candidate.email}
+              {candidate.roleName ? ` · ${candidate.roleName}` : ""}
+              {candidate.attemptCount ? ` · Attempt ${candidate.attemptCount}/2` : ""}
+            </p>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: 0 }}>{candidate.name}</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 14, color: "#64748b" }}>
-            {candidate.email}
-            {candidate.roleName ? ` · ${candidate.roleName}` : ""}
-            {candidate.attemptCount ? ` · Attempt ${candidate.attemptCount}/2` : ""}
-          </p>
+
+          {/* Workflow status chips */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: "#f1f5f9", fontSize: 12, fontWeight: 700, color: "#64748b" }}>
+              <span>①</span>
+              <span style={{ color: "#16a34a" }}>Profile ✓</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: candidate.resumeFileName ? "#f0fdf4" : "#f1f5f9", fontSize: 12, fontWeight: 700, color: candidate.resumeFileName ? "#16a34a" : "#94a3b8" }}>
+              <span>②</span>
+              {candidate.resumeFileName ? "Resume ✓" : "No Resume"}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: candidate.generatedPrompt ? "#ede9fe" : "#f1f5f9", fontSize: 12, fontWeight: 700, color: candidate.generatedPrompt ? "#7c3aed" : "#94a3b8" }}>
+              <span>③</span>
+              {candidate.generatedPrompt ? "AI Prompt ✓" : "No AI Prompt"}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: "#f1f5f9", fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>
+              <span>④</span>
+              Schedule Interview
+            </div>
+          </div>
         </div>
 
-        {/* Resume upload */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "16px 20px", minWidth: 260 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 8 }}>Resume / CV</div>
+        {/* Resume upload row */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Resume:</span>
           {candidate.resumeFileName && (
-            <div style={{ fontSize: 12, color: "#16a34a", marginBottom: 8 }}>✓ {candidate.resumeFileName}</div>
+            <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>✓ {candidate.resumeFileName}</span>
           )}
-          <label style={{ display: "inline-block", padding: "8px 16px", background: "#7c3aed", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <label style={{ display: "inline-block", padding: "6px 14px", background: candidate.resumeFileName ? "#f1f5f9" : "#7c3aed", color: candidate.resumeFileName ? "#374151" : "#fff", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", border: candidate.resumeFileName ? "1px solid #e2e8f0" : "none" }}>
             {uploading ? "Uploading..." : candidate.resumeFileName ? "Replace Resume" : "Upload Resume"}
             <input type="file" accept=".pdf,.txt,.doc,.docx" style={{ display: "none" }} onChange={handleResumeUpload} disabled={uploading} />
           </label>
-          {uploadMsg && <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>{uploadMsg}</div>}
+          {uploadMsg && <span style={{ fontSize: 12, color: "#64748b" }}>{uploadMsg}</span>}
         </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "2px solid #e2e8f0" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "2px solid #e2e8f0", alignItems: "flex-end" }}>
         {(["profile", "timeline"] as Tab[]).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
             padding: "10px 20px", fontSize: 14, fontWeight: 600, border: "none",
@@ -310,6 +332,12 @@ export default function CandidateDetailPage() {
             {tab === "profile" ? "Candidate Profile" : "Interview Timeline"}
           </button>
         ))}
+        <Link
+          href="/recruiter/scorecards"
+          style={{ padding: "10px 20px", fontSize: 14, fontWeight: 600, color: "#64748b", textDecoration: "none", marginBottom: -2, borderBottom: "2px solid transparent", marginLeft: "auto" }}
+        >
+          View Scorecards →
+        </Link>
       </div>
 
       {/* Profile Tab */}

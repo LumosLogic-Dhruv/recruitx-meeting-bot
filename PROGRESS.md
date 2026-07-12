@@ -1,69 +1,75 @@
 # RecruitX — Progress & Remaining Work
 
-## Session: 2026-07-12
+## Session: 2026-07-12 (Part 2 — Full Recruiter Workflow)
 
 ---
 
-## ✅ What Was Done Today
+## ✅ What Was Done
 
-### Bug Fix 1 — Bot Not Joining Meeting
-- **Root cause:** `participant.join` and `participant.leave` were in `realtime_endpoints.events` — Recall.ai rejects these (they are not valid realtime event values, only top-level webhook events)
-- **Fix:** Removed them from `recall_client.py` → only `transcript.data` + `transcript.partial_data` remain
-- **Secondary bug:** `_scheduled_create_session` in `main.py` was catching the create_bot exception and doing `return` instead of `raise` → scheduler always printed "Bot join succeeded" even when the bot never joined
-- **Fix:** Changed `return` → `raise` so the scheduler properly retries and logs failure
+### Complete Recruiter Workflow Redesign
 
-### Feature — Candidate Profile Fields (Backend + Convex)
-Added 10 new fields to the candidate data model:
-- `experienceYears`, `currentCompany`, `currentRole`, `currentCtc`, `expectedCtc`
-- `location`, `skills` (array), `education`, `linkedinUrl`, `githubUrl`
+The recruiter flow is now a clean linear pipeline:
 
-**Files changed:**
-- `backend/main.py` → `CandidateCreateRequest` + `CandidateUpdateRequest` models updated
-- `backend/convex/schema.ts` → `candidates` table updated with new fields
-- `backend/convex/candidates.ts` → `create` + `update` mutations updated
+```
+Add Candidate (+ resume)
+     ↓
+Candidate Profile (review / edit / manage)
+     ↓
+Schedule Interview (AI prompt auto-generated)
+     ↓
+Scorecard (auto-appears after interview)
+```
 
-**New backend endpoints:**
-- `GET /api/candidates/{id}` — fetch single candidate
-- `POST /api/candidates/{id}/generate-prompt` — generate tailored AI interview prompt from resume + profile using OpenAI
+---
 
-### Feature — Candidate Data → AI Bot
-- `_build_candidate_context()` helper in `main.py` builds a structured block from all profile fields + resume text
-- Schedule endpoint (`POST /api/interviews/schedule`) now **automatically prepends** candidate profile + resume to the system prompt before saving to Convex
-- AI bot now always has full candidate context at interview time
+### 1. Add Candidate Page (`/recruiter/add`) — Major Redesign
+- Form now has **all 15+ profile fields** in sections:
+  - Basic Info: Name*, Email*, Phone, Location
+  - Professional: Role, Current Company, Current Role, Experience, Current CTC, Expected CTC, Education
+  - Online Presence: LinkedIn, GitHub
+  - Skills: tag-based input
+  - Recruiter Notes
+  - **Resume Upload** (NEW): select PDF/DOC/DOCX right on the add form
+- Two-step submit: create candidate → upload resume → redirect to profile page
+- Candidate list shows company, experience, expected CTC
+- Actions: **Profile**, **Schedule**, Delete (no more inline modal editing)
+- Sidebar label changed from "Add Candidate" → "Candidates"
 
-### Frontend Changes (Partial — needs redesign, see below)
-- `frontend/app/recruiter/candidates/[id]/page.tsx` — redesigned with Profile tab + Timeline tab + Generate Prompt panel
-- `frontend/app/recruiter/schedule/page.tsx` — added "Generate from Resume" button, candidate snapshot, auto-fill role
+### 2. Candidate Profile Page (`/recruiter/candidates/[id]`) — Workflow Guide
+- New header card shows **workflow status chips**: Profile ✓ → Resume ✓/✗ → AI Prompt ✓/✗ → Schedule Interview
+- Resume upload is inline in the header (no separate card)
+- "Candidate Profile" and "Interview Timeline" tabs remain
+- "View Scorecards →" link added to tab bar
+- "Schedule Interview →" button prominent at top-right
+- AI Prompt section: shows "Saved to Profile" badge if prompt exists, button becomes "Regenerate Prompt"
+
+### 3. Schedule Interview Page (`/recruiter/schedule`) — Smart Auto-Flow
+- **Step indicators** (1 Select Candidate → 2 Interview Details → 3 Review & Send)
+- When candidate is selected:
+  - If they have a **saved AI prompt** → auto-loads it (badge: "From saved profile")
+  - If they have **no saved prompt** → **auto-generates it from resume + profile** (no manual click needed)
+  - Shows "Generating AI interview prompt..." loading state
+- Recruiter only needs to fill: Date & Time, Duration, Role (auto-filled), then submit
+- Candidate snapshot card shows: name, role, company, experience, resume status, AI prompt status
+- Dropdown shows all candidates with their status labels
+- Submit button disabled while prompt is generating
+
+### 4. Convex + Backend
+- `schema.ts` → added `generatedPrompt: v.optional(v.string())` to candidates table
+- `candidates.ts` → added `generatedPrompt` to update mutation
+- `main.py` → `generate-prompt` endpoint now **saves the prompt back to the candidate** automatically
 
 ---
 
 ## ⚠️ Pending Deployment Steps
 
-1. **Convex deploy** (MUST DO before profile saving works):
+1. **Convex deploy** (MUST DO — schema changed):
    ```
    cd backend
    npx convex deploy
    ```
 2. **Frontend** — rebuild + redeploy on Render (auto on git push)
 3. **Backend Python** — redeploy on Render (auto on git push)
-
----
-
-## ❌ What's NOT Done Yet — Needs Proper Flow Design
-
-### The Main Remaining Task
-The candidate profile + flow needs a **complete redesign**. The current implementation puts profile editing inside the Timeline page (tabbed). User said this is **not the right structure** and wants a **proper flow**.
-
-**User will describe the expected flow tomorrow.**
-
-Key questions to answer:
-- When recruiter clicks "Add Candidate" → what happens? (basic quick-add OR full profile form?)
-- After adding a candidate → where do they go next?
-- Where does the recruiter fill in: experience, education, projects, skills, CTC, resume?
-- What does the candidate list/card look like?
-- What does the candidate detail/profile page look like?
-- How does "Schedule Interview" connect from the candidate profile?
-- Is there a separate "Candidate Profile" page vs "Interview History" page?
 
 ---
 
@@ -79,12 +85,11 @@ Key questions to answer:
 | `backend/convex/candidates.ts` | Candidate CRUD mutations/queries |
 | `backend/convex/scheduledInterviews.ts` | Scheduled interview mutations/queries |
 | `backend/convex/timeline.ts` | Candidate event timeline |
-| `frontend/app/recruiter/add/page.tsx` | Add Candidate + candidate list |
-| `frontend/app/recruiter/candidates/[id]/page.tsx` | Candidate detail (profile + timeline) |
-| `frontend/app/recruiter/schedule/page.tsx` | Schedule interview form |
+| `frontend/app/recruiter/add/page.tsx` | Candidates list + comprehensive add form (with resume) |
+| `frontend/app/recruiter/candidates/[id]/page.tsx` | Candidate profile — edit, resume, AI prompt, timeline |
+| `frontend/app/recruiter/schedule/page.tsx` | Schedule — auto-generates AI prompt from candidate |
 | `frontend/app/recruiter/scorecards/page.tsx` | Scorecard dashboard |
-| `frontend/app/recruiter/prompts/page.tsx` | Generate + manage AI prompts |
-| `frontend/app/admin/page.tsx` | Admin panel (all candidates, analytics, settings) |
+| `frontend/components/RecruiterSidebar.tsx` | Recruiter nav sidebar |
 
 ---
 
@@ -93,31 +98,32 @@ Key questions to answer:
 ```
 Recruiter Login
     │
-    ├── Add Candidate (name, email, phone, role, notes)
-    │       └── Candidate List → Timeline / Edit / Delete
-    │               └── Candidate Detail Page
-    │                       ├── [Tab] Profile (editable profile fields)
-    │                       ├── [Tab] Timeline (interview history)
-    │                       ├── Resume Upload
-    │                       └── Generate AI Prompt → copy to Schedule
+    ├── Candidates (/recruiter/add)
+    │       ├── Add form: all profile fields + resume upload
+    │       ├── Submits → creates candidate → uploads resume → opens profile page
+    │       └── List: Profile | Schedule | Delete
     │
-    ├── Schedule Interview
-    │       ├── Select Candidate
-    │       ├── Pick Date/Time/Duration
-    │       ├── Enter Role
-    │       ├── Select/Generate System Prompt
-    │       └── → Creates Google Meet + sends email invite + schedules bot
+    ├── Candidate Profile (/recruiter/candidates/[id])
+    │       ├── Workflow status: Profile ✓ → Resume ✓ → AI Prompt ✓ → Schedule
+    │       ├── [Tab] Profile (all fields editable + save)
+    │       ├── [Tab] Timeline (interview history)
+    │       ├── Generate AI Prompt (saved to candidate, auto-used when scheduling)
+    │       └── "Schedule Interview →" button
     │
-    ├── Scorecards (results after interview)
+    ├── Schedule Interview (/recruiter/schedule)
+    │       ├── Select candidate (shows profile card + status)
+    │       ├── AI prompt auto-loads from saved OR auto-generates from resume
+    │       ├── Fill: Date/Time, Duration (role auto-filled)
+    │       └── Submit → Google Meet + email invite + schedules bot
     │
-    └── Generate Prompt (save reusable prompts)
+    └── Scorecards (/recruiter/scorecards)
+            ├── Stats: total, done, avg score, hire decisions
+            └── Table: per candidate with best score, recommendation, View button
 ```
 
 ---
 
-## 🐛 Known Issues / Observations
+## 🐛 Known Issues
 
-- `interviewStatus` for Nehal and Priyanshu still shows `attempt_1_0_scheduled` (the dot-in-status bug from before) — needs status cleanup
-- Scorecard shows "0 INTERVIEWS DONE" because the bot was not actually joining (now fixed with Recall event fix)
-- "Cooldown (7d)" for Dhruv Shere — was a no-show, cooldown will expire in 7 days
-- Admin analytics shows recruiter as "8a8se8" (raw ID) — recruiter name lookup may be broken
+- `interviewStatus` for some old candidates still shows `attempt_1_0_scheduled` — needs status cleanup
+- Admin analytics shows recruiter as raw ID — recruiter name lookup may need fixing

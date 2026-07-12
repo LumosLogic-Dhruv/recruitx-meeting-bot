@@ -64,6 +64,7 @@ export default function CandidatesPage() {
   const [form, setForm] = useState(emptyForm);
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [alert, setAlert] = useState<{ msg: string; type: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -92,8 +93,9 @@ export default function CandidatesPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setAlert({ msg: "Adding candidate...", type: "info" });
     try {
+      // Step 1: Create candidate profile
+      setAlert({ msg: "Creating candidate profile...", type: "info" });
       const res = await fetch(`${BASE}/api/candidates`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -101,11 +103,27 @@ export default function CandidatesPage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.detail || "Failed");
-      setAlert({ msg: `${d.name} added. Redirecting to profile...`, type: "success" });
+      const newId: string = d.id;
+
+      // Step 2: Upload resume if selected
+      if (resumeFile) {
+        setAlert({ msg: "Uploading resume...", type: "info" });
+        const fd = new FormData();
+        fd.append("file", resumeFile);
+        try {
+          await fetch(`${BASE}/api/candidates/${newId}/resume`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            body: fd,
+          });
+        } catch { /* non-fatal, recruiter can upload from profile */ }
+      }
+
+      setAlert({ msg: "Profile created! Opening candidate profile...", type: "success" });
       setForm(emptyForm);
       setSkills([]);
-      loadCandidates();
-      setTimeout(() => { window.location.href = `/recruiter/candidates/${d.id}`; }, 800);
+      setResumeFile(null);
+      setTimeout(() => { window.location.href = `/recruiter/candidates/${newId}`; }, 700);
     } catch (err: unknown) {
       setAlert({ msg: err instanceof Error ? err.message : "Error", type: "error" });
       setLoading(false);
@@ -246,21 +264,51 @@ export default function CandidatesPage() {
               onChange={e => setField("notes", e.target.value)}
             />
 
+            {/* Resume Upload */}
+            <p style={{ ...sectionTitle, marginTop: 16 }}>Resume / CV</p>
+            <div style={{ border: "2px dashed #ddd6fe", borderRadius: 10, padding: 16, background: "#faf5ff", textAlign: "center" }}>
+              {resumeFile ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>✓ {resumeFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setResumeFile(null)}
+                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize: 13, color: "#7c3aed", fontWeight: 600, margin: "0 0 8px" }}>
+                    Upload resume to enable AI-powered interview questions
+                  </p>
+                  <label style={{ display: "inline-block", padding: "8px 18px", background: "#7c3aed", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    Select Resume (PDF, DOC, DOCX)
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.doc,.docx"
+                      style={{ display: "none" }}
+                      onChange={e => setResumeFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <p style={{ fontSize: 11, color: "#a78bfa", margin: "6px 0 0" }}>Can also be uploaded later from the candidate profile</p>
+                </div>
+              )}
+            </div>
+
             {alert && (
-              <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 12, background: alertBg, color: alertText }}>
+              <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 12, marginTop: 12, background: alertBg, color: alertText }}>
                 {alert.msg}
               </div>
             )}
             <button
               type="submit"
               disabled={loading}
-              style={{ width: "100%", padding: "11px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.65 : 1 }}
+              style={{ width: "100%", padding: "12px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.65 : 1, marginTop: 12 }}
             >
-              {loading ? "Adding..." : "Add Candidate"}
+              {loading ? (resumeFile ? "Uploading resume..." : "Creating profile...") : "Add Candidate →"}
             </button>
-            <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 8 }}>
-              Resume and AI prompt can be uploaded on the candidate&apos;s profile page
-            </p>
           </form>
         </div>
 
