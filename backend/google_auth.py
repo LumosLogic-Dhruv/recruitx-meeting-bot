@@ -103,9 +103,49 @@ def _get_credentials(token_dict: dict) -> Credentials:
 def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: str,
                       scheduled_at: datetime, duration_minutes: int, role_name: str) -> dict:
     creds = _get_credentials(token_dict)
-    service = build("calendar", "v3", credentials=creds, cache_discovery=False)
-
     end_at = scheduled_at + timedelta(minutes=duration_minutes)
+
+    # ── Step 1: Create a Meet Space via the Meet API with OPEN access ──────────
+    # Creating the space FIRST (not via Calendar) means we OWN it under the
+    # meetings.space.created scope, so the patch is guaranteed to work.
+    # accessType=OPEN = anyone with the link joins without a waiting room,
+    # including the Recall.ai anonymous bot.
+    meet_url = ""
+    conference_data: dict = {}
+    try:
+        meet_service = build("meet", "v2", credentials=creds, cache_discovery=False)
+        space = meet_service.spaces().create(
+            body={"config": {"accessSettings": {"accessType": "OPEN"}}}
+        ).execute()
+        meet_url = space.get("meetingUri", "")
+        if meet_url:
+            meeting_code = meet_url.rstrip("/").split("/")[-1]
+            conference_data = {
+                "conferenceId": meeting_code,
+                "conferenceSolution": {"key": {"type": "hangoutsMeet"}, "name": "Google Meet"},
+                "entryPoints": [{"entryPointType": "video", "uri": meet_url,
+                                 "label": meet_url.replace("https://", "")}],
+            }
+            print(f"[Meet] Created OPEN space (no waiting room): {meet_url}")
+    except Exception as e:
+        print(f"[Meet] spaces.create failed — falling back to Calendar-generated link: {e}")
+
+    # ── Step 2: Fall back to Calendar-generated link if Meet API failed ─────────
+    if not meet_url:
+        conference_data = {
+            "createRequest": {
+                "requestId": str(uuid.uuid4()),
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        }
+
+    # ── Step 3: Create the Calendar event ───────────────────────────────────────
+    attendees = [{"email": candidate_email, "displayName": candidate_name}]
+    bot_email = os.getenv("BOT_GOOGLE_EMAIL", "").strip()
+    if bot_email:
+        attendees.append({"email": bot_email, "displayName": "RecruitX AI"})
+
+    cal_service = build("calendar", "v3", credentials=creds, cache_discovery=False)
     event = {
         "summary": f"Interview — {candidate_name} ({role_name})",
         "description": (
@@ -114,53 +154,20 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
         ),
         "start": {"dateTime": scheduled_at.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_at.isoformat(), "timeZone": "UTC"},
-        "conferenceData": {
-            "createRequest": {
-                "requestId": str(uuid.uuid4()),
-                "conferenceSolutionKey": {"type": "hangoutsMeet"},
-            }
-        },
-        "attendees": [
-            {"email": candidate_email, "displayName": candidate_name},
-            # Invite the bot's Google Workspace account so it is recognised as a
-            # calendar invitee when it joins — this bypasses the waiting room.
-            # Set BOT_GOOGLE_EMAIL to the email configured in Recall.ai Google Logins.
-            *([{"email": os.getenv("BOT_GOOGLE_EMAIL", ""), "displayName": "RecruitX AI"}]
-              if os.getenv("BOT_GOOGLE_EMAIL") else []),
-        ],
+        "conferenceData": conference_data,
+        "attendees": attendees,
     }
-    result = service.events().insert(
+    result = cal_service.events().insert(
         calendarId="primary",
         body=event,
         conferenceDataVersion=1,
-        sendUpdates="none",  # we send our own custom email
+        sendUpdates="none",
     ).execute()
-    meet_url = result.get("hangoutLink", "")
-    event_id = result.get("id", "")
 
-    # Disable the waiting room on the Meet space so the Recall.ai bot
-    # (which joins as an anonymous guest) is admitted automatically.
-    # accessType=OPEN means anyone with the link joins without knocking.
-    # The meetings.space.created scope (already in SCOPES) authorises this call.
-    if meet_url:
-        try:
-            # Meet link format: https://meet.google.com/abc-def-ghi
-            space_code = meet_url.rstrip("/").split("/")[-1]
-            meet_service = build("meet", "v2", credentials=creds, cache_discovery=False)
-            meet_service.spaces().patch(
-                name=f"spaces/{space_code}",
-                body={"config": {"accessSettings": {"accessType": "OPEN"}}},
-                updateMask="config.accessSettings.accessType",
-            ).execute()
-            print(f"[Meet] Space {space_code} — waiting room disabled (accessType=OPEN)")
-        except Exception as e:
-            # Non-fatal: meeting still works, bot may just land in waiting room
-            print(f"[Meet] Could not disable waiting room for {meet_url}: {e}")
-
-    return {
-        "meet_url": meet_url,
-        "event_id": event_id,
-    }
+    # Use our pre-created OPEN space URL if we have one; otherwise the Calendar
+    # response will contain a newly generated hangoutLink (may have waiting room).
+    final_url = meet_url or result.get("hangoutLink", "")
+    return {"meet_url": final_url, "event_id": result.get("id", "")}
 
 
 async def create_google_meet(token_dict: dict, candidate_name: str, candidate_email: str,
