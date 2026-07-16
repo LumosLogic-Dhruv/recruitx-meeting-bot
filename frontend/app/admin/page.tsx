@@ -396,7 +396,17 @@ export default function AdminPage() {
               <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 16 }}>Google Account</h3>
                 <div style={{ marginBottom: 12, fontSize: 14, color: googleConnected ? "#16a34a" : "#64748b" }}>{googleMsg}</div>
-                <button onClick={() => window.location.href = `${BASE}/api/auth/google`} style={{ padding: "10px 22px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Connect Google Account</button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${BASE}/api/auth/google`, { headers: { Authorization: auth() } });
+                      const d = await res.json();
+                      if (d.auth_url) window.location.href = d.auth_url;
+                      else setGoogleMsg(d.detail || "Failed to get auth URL");
+                    } catch { setGoogleMsg("Could not reach backend"); }
+                  }}
+                  style={{ padding: "10px 22px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+                >Connect Google Account</button>
               </div>
               {/* SMTP */}
               <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24 }}>
