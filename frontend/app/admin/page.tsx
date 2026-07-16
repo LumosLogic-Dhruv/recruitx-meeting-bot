@@ -12,7 +12,7 @@ interface Candidate {
   recruiterName?: string; interviewStatus?: string; attemptCount?: number; cooldownUntil?: number;
 }
 
-type Meeting = ScorecardMeeting & { recruiterId?: string; recruiterName?: string; interviewStatus?: string; };
+type Meeting = ScorecardMeeting & { recruiterId?: string; recruiterName?: string; interviewStatus?: string; transcript?: { speaker: string; text: string }[]; };
 
 type AdminTab = "weekly" | "candidates" | "recruiters" | "analytics" | "settings";
 

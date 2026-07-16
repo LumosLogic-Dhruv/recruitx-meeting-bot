@@ -7,6 +7,7 @@ import { logout, getUser } from "@/lib/api";
 const NAV = [
   { href: "/recruiter/add",        icon: "👤", label: "Candidates" },
   { href: "/recruiter/schedule",   icon: "📅", label: "Schedule Interview" },
+  { href: "/recruiter/live",       icon: "🔴", label: "Live Interview" },
   { href: "/recruiter/scorecards", icon: "📊", label: "Scorecards" },
   { href: "/recruiter/prompts",    icon: "✨", label: "Generate Prompt" },
 ];

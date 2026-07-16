@@ -26,6 +26,7 @@ export interface ScorecardMeeting {
   attemptNumber?: number;
   recordingUrl?: string;
   createdAt?: number;
+  transcript?: { speaker: string; text: string }[];
 }
 
 interface Props {
@@ -314,6 +315,36 @@ export default function ScorecardDetailModal({ meetings, onClose, dashboardUrl }
                 )}
               </div>
             </>
+          )}
+
+          {/* Full Transcript */}
+          {(m?.transcript?.length ?? 0) > 0 && (
+            <div style={{ marginTop: 28, borderTop: "1px solid #f1f5f9", paddingTop: 20 }}>
+              <h4 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", margin: "0 0 14px" }}>
+                Full Transcript <span style={{ fontWeight: 400, color: "#94a3b8" }}>({m!.transcript!.length} turns)</span>
+              </h4>
+              <div style={{ maxHeight: 440, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 12, padding: "16px 20px", background: "#f8fafc" }}>
+                {m!.transcript!.map((turn, i) => {
+                  const isBot = turn.speaker === "AI" || turn.speaker.toLowerCase().includes("recruit");
+                  return (
+                    <div key={i} style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: isBot ? "flex-end" : "flex-start" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isBot ? "#7c3aed" : "#2563eb", marginBottom: 3, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                        {isBot ? "AI Interviewer" : turn.speaker}
+                      </span>
+                      <div style={{
+                        maxWidth: "80%", padding: "10px 14px",
+                        borderRadius: isBot ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                        background: isBot ? "#ede9fe" : "#eff6ff",
+                        color: isBot ? "#4c1d95" : "#1e3a8a",
+                        fontSize: 13, lineHeight: 1.6,
+                      }}>
+                        {turn.text}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       </div>

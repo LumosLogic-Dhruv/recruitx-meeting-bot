@@ -185,6 +185,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         "candidate_was_absent": False,
         "candidate_ever_joined": False,
         "created_at": _time.time(),
+        "bot_status": "joining",
     }
     _url_to_bot[req.meeting_url] = bot_id
 
@@ -280,10 +281,22 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
     data = body.get("data", {})
     print(f"[Webhook] Event: {event}")
 
+    # Bot entered Google Meet waiting room — recruiter must admit it
+    if event == "bot.in_waiting_room":
+        bot_id = data.get("bot", {}).get("id", "")
+        session = _sessions.get(bot_id)
+        if session:
+            session["bot_status"] = "in_waiting_room"
+            _log_timeline(session.get("candidate_id", ""), "bot_waiting_room",
+                         metadata={"message": "Bot is in waiting room, recruiter must admit it"})
+            print(f"[Webhook] Bot {bot_id} is in WAITING ROOM — recruiter must admit it in Google Meet")
+
     # Bot joined the call — send greeting
     if event in ("bot.in_call_recording", "bot.in_call_not_recording"):
         bot_id = data.get("bot", {}).get("id", "")
         session = _sessions.get(bot_id)
+        if session:
+            session["bot_status"] = "in_call"
         if session and not session.get("greeted"):
             session["greeted"] = True
             background_tasks.add_task(_webhook_greeting, bot_id)
@@ -957,6 +970,29 @@ def get_transcript(bot_id: str, user: dict = Depends(get_current_user)):
     return {"transcript": pipeline.get_transcript_list() if pipeline else []}
 
 
+@app.get("/api/active-sessions")
+def get_active_sessions(user: dict = Depends(get_current_user)):
+    """Return all currently active bot sessions with live transcript and status."""
+    import time as _time
+    sessions_out = []
+    for bot_id, session in list(_sessions.items()):
+        pipeline: ConversationPipeline | None = session.get("pipeline")
+        transcript = pipeline.get_transcript_list() if pipeline else []
+        sessions_out.append({
+            "bot_id": bot_id,
+            "meeting_url": session.get("meeting_url", ""),
+            "candidate_name": session.get("candidate_name", ""),
+            "bot_name": session.get("bot_name", ""),
+            "bot_status": session.get("bot_status", "joining"),
+            "recruiter_id": session.get("recruiter_id", ""),
+            "candidate_id": session.get("candidate_id", ""),
+            "role_name": session.get("role_name", ""),
+            "transcript": transcript,
+            "elapsed_seconds": int(_time.time() - session.get("created_at", _time.time())),
+        })
+    return {"sessions": sessions_out}
+
+
 @app.get("/sessions")
 def list_sessions(user: dict = Depends(get_current_user)):
     return {"active": list(_url_to_bot.keys())}
@@ -1389,6 +1425,7 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
         "attempt_number": attempt_number,
         "scheduled_at_ms": 0,              # filled by schedule_interview caller
         "created_at": _time.time(),
+        "bot_status": "joining",
     }
     _url_to_bot[meeting_url] = bot_id
 
