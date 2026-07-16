@@ -81,10 +81,15 @@ export default function AdminPage() {
     if (u && u.role !== "admin") { window.location.href = "/recruiter"; return; }
 
     fetch(`${BASE}/api/auth/me`, { headers: { Authorization: auth() } })
-      .then(r => r.json()).then(d => {
-        if (!d.user || d.user.role !== "admin") { window.location.href = "/recruiter"; return; }
-        setUser(d.user);
-      }).catch(() => { window.location.href = "/login"; });
+      .then(r => {
+        if (r.status === 401) { window.location.href = "/login"; return; }
+        if (!r.ok) return; // 5xx / network issue — don't kick the user out
+        return r.json().then((d: { user?: { role?: string; name?: string; email?: string } }) => {
+          if (!d.user || d.user.role !== "admin") { window.location.href = "/recruiter"; return; }
+          setUser(d.user);
+        });
+      })
+      .catch(() => { /* network error — don't redirect, backend might be waking up */ });
 
     Promise.all([
       fetch(`${BASE}/api/candidates`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setCandidates(d.candidates || [])),
