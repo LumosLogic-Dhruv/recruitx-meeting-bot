@@ -152,10 +152,14 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     print(f"[Pipeline] Voice: {voice_id}")
 
     async def on_ai_response(text: str, audio_bytes: bytes):
-        try:
-            await recall.speak(bot_id, audio_bytes)
-        except Exception as e:
-            print(f"[Recall] Speak error: {e}")
+        for attempt in range(3):
+            try:
+                await recall.speak(bot_id, audio_bytes)
+                return
+            except Exception as e:
+                print(f"[Recall] Speak error attempt {attempt + 1}/3: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(3)
 
     pipeline.set_response_callback(on_ai_response)
 
@@ -227,17 +231,30 @@ async def _poll_and_greet(bot_id: str):
         print("[Poll] Timed out waiting for bot to join.")
         return
 
-    # Send greeting if webhook hasn't already done it
+    # Send greeting if webhook path hasn't delivered it yet.
+    # If webhook did TTS but speak failed, greeting_audio is stored so we can
+    # retry the speak without re-doing TTS (which would duplicate history).
     await asyncio.sleep(3)
     session = _sessions.get(bot_id)
     if session and not session.get("greeted"):
         session["greeted"] = True
-        print("[Poll] Sending greeting via polling path...")
-        try:
-            audio = await pipeline.send_greeting(bot_name)
-            await recall.speak(bot_id, audio)
-        except Exception as e:
-            print(f"[Poll] Greeting error: {e}")
+        stored_audio = session.pop("greeting_audio", None)
+        if stored_audio:
+            print("[Poll] Retrying greeting speak (webhook TTS already done)...")
+            try:
+                await recall.speak(bot_id, stored_audio)
+                print("[Poll] Greeting speak retry succeeded")
+            except Exception as e:
+                print(f"[Poll] Greeting speak retry error: {e}")
+        else:
+            print("[Poll] Sending greeting via polling path...")
+            try:
+                audio = await pipeline.send_greeting(bot_name)
+                print(f"[Poll] Greeting TTS ready: {len(audio)} bytes")
+                await recall.speak(bot_id, audio)
+                print("[Poll] Greeting delivered via poll path")
+            except Exception as e:
+                print(f"[Poll] Greeting error: {e}")
 
     # Health-check loop: poll bot status every 30 s to catch hung/dropped sessions.
     # Recall.ai webhooks are the primary signal; this is the safety net.
@@ -297,8 +314,10 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         session = _sessions.get(bot_id)
         if session:
             session["bot_status"] = "in_call"
-        if session and not session.get("greeted"):
-            session["greeted"] = True
+        # Use greeting_in_progress to prevent double-scheduling while NOT blocking
+        # the poll path from retrying if the webhook speak fails.
+        if session and not session.get("greeted") and not session.get("greeting_in_progress"):
+            session["greeting_in_progress"] = True
             background_tasks.add_task(_webhook_greeting, bot_id)
 
     # Meeting ended naturally — auto-end the session, generate scorecard, save recording
@@ -432,9 +451,27 @@ async def _webhook_greeting(bot_id: str):
     print(f"[Webhook] Sending greeting for bot {bot_id}...")
     try:
         audio = await pipeline.send_greeting(bot_name)
-        await recall.speak(bot_id, audio)
+        print(f"[Webhook] Greeting TTS ready: {len(audio)} bytes")
+        # Store audio so poll path can retry the speak without re-doing TTS
+        session["greeting_audio"] = audio
     except Exception as e:
-        print(f"[Webhook] Greeting error: {e}")
+        print(f"[Webhook] Greeting TTS error for bot {bot_id}: {e}")
+        return
+    for attempt in range(3):
+        s = _sessions.get(bot_id)
+        if not s:
+            return
+        try:
+            await recall.speak(bot_id, audio)
+            s["greeted"] = True
+            s.pop("greeting_audio", None)
+            print(f"[Webhook] Greeting delivered (attempt {attempt + 1}) for bot {bot_id}")
+            return
+        except Exception as e:
+            print(f"[Webhook] Speak attempt {attempt + 1}/3 for bot {bot_id}: {e}")
+            if attempt < 2:
+                await asyncio.sleep(5)
+    print(f"[Webhook] All greeting speak attempts failed for bot {bot_id} — poll path will retry")
 
 
 async def _send_recruiter_summary_email(
@@ -576,10 +613,22 @@ async def _send_rejoin_greeting(bot_id: str):
     try:
         nudge = "Welcome back — let's pick up where we left off."
         audio = await pipeline._tts(nudge)
-        if audio:
-            await recall.speak(bot_id, audio)
+        if not audio:
+            return
     except Exception as e:
-        print(f"[Webhook] Rejoin greeting error: {e}")
+        print(f"[Webhook] Rejoin TTS error: {e}")
+        return
+    for attempt in range(3):
+        s = _sessions.get(bot_id)
+        if not s:
+            return
+        try:
+            await recall.speak(bot_id, audio)
+            return
+        except Exception as e:
+            print(f"[Webhook] Rejoin speak attempt {attempt + 1}/3: {e}")
+            if attempt < 2:
+                await asyncio.sleep(3)
 
 
 async def _send_late_join_greeting(bot_id: str):
@@ -594,17 +643,29 @@ async def _send_late_join_greeting(bot_id: str):
     if not pipeline or not recall:
         return
     try:
-        # Re-send the full opening greeting so the candidate doesn't enter mid-silence
         greeting = (
             f"Hey, thanks for joining! I'm {bot_name}. "
             "So just to kick things off — tell me a bit about yourself and what you've been working on lately."
         )
         audio = await pipeline._tts(greeting)
-        if audio:
-            await recall.speak(bot_id, audio)
-        print(f"[Webhook] Late-join greeting sent for bot {bot_id}")
+        if not audio:
+            return
+        print(f"[Webhook] Late-join greeting TTS: {len(audio)} bytes for bot {bot_id}")
     except Exception as e:
-        print(f"[Webhook] Late-join greeting error: {e}")
+        print(f"[Webhook] Late-join TTS error: {e}")
+        return
+    for attempt in range(3):
+        s = _sessions.get(bot_id)
+        if not s:
+            return
+        try:
+            await recall.speak(bot_id, audio)
+            print(f"[Webhook] Late-join greeting delivered (attempt {attempt + 1})")
+            return
+        except Exception as e:
+            print(f"[Webhook] Late-join speak attempt {attempt + 1}/3: {e}")
+            if attempt < 2:
+                await asyncio.sleep(3)
 
 
 async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
@@ -1377,11 +1438,17 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
     bot_id_holder: list[str] = []
 
     async def on_ai_response(text: str, audio_bytes: bytes):
-        if bot_id_holder:
+        if not bot_id_holder:
+            return
+        bid = bot_id_holder[0]
+        for attempt in range(3):
             try:
-                await recall.speak(bot_id_holder[0], audio_bytes)
+                await recall.speak(bid, audio_bytes)
+                return
             except Exception as e:
-                print(f"[Scheduler] Speak error: {e}")
+                print(f"[Scheduler] Speak error attempt {attempt + 1}/3: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(3)
 
     pipeline.set_response_callback(on_ai_response)
 
