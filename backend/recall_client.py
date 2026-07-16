@@ -94,6 +94,15 @@ class RecallClient:
             "max_duration_minutes": 60,
         }
 
+        # Signed-in Google Meet bot: set RECALL_GOOGLE_LOGIN_GROUP_ID to the
+        # Login Group ID from Recall.ai → API Explorer → Google Logins → Groups.
+        # When set, the bot signs in as the configured Google Workspace account
+        # before joining — it is recognised as an invitee and skips the waiting room.
+        google_login_group_id = os.getenv("RECALL_GOOGLE_LOGIN_GROUP_ID", "").strip()
+        if google_login_group_id:
+            payload["google_meet"] = {"google_login_group_id": google_login_group_id}
+            print(f"[Recall] Using signed-in bot (login_group={google_login_group_id[:8]}...)")
+
         res = await self._client.post(
             f"{self.base_url}/bot/",
             json=payload,

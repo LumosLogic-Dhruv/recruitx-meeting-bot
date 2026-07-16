@@ -120,7 +120,14 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
                 "conferenceSolutionKey": {"type": "hangoutsMeet"},
             }
         },
-        "attendees": [{"email": candidate_email, "displayName": candidate_name}],
+        "attendees": [
+            {"email": candidate_email, "displayName": candidate_name},
+            # Invite the bot's Google Workspace account so it is recognised as a
+            # calendar invitee when it joins — this bypasses the waiting room.
+            # Set BOT_GOOGLE_EMAIL to the email configured in Recall.ai Google Logins.
+            *([{"email": os.getenv("BOT_GOOGLE_EMAIL", ""), "displayName": "RecruitX AI"}]
+              if os.getenv("BOT_GOOGLE_EMAIL") else []),
+        ],
     }
     result = service.events().insert(
         calendarId="primary",
@@ -128,9 +135,31 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
         conferenceDataVersion=1,
         sendUpdates="none",  # we send our own custom email
     ).execute()
+    meet_url = result.get("hangoutLink", "")
+    event_id = result.get("id", "")
+
+    # Disable the waiting room on the Meet space so the Recall.ai bot
+    # (which joins as an anonymous guest) is admitted automatically.
+    # accessType=OPEN means anyone with the link joins without knocking.
+    # The meetings.space.created scope (already in SCOPES) authorises this call.
+    if meet_url:
+        try:
+            # Meet link format: https://meet.google.com/abc-def-ghi
+            space_code = meet_url.rstrip("/").split("/")[-1]
+            meet_service = build("meet", "v2", credentials=creds, cache_discovery=False)
+            meet_service.spaces().patch(
+                name=f"spaces/{space_code}",
+                body={"config": {"accessSettings": {"accessType": "OPEN"}}},
+                updateMask="config.accessSettings.accessType",
+            ).execute()
+            print(f"[Meet] Space {space_code} — waiting room disabled (accessType=OPEN)")
+        except Exception as e:
+            # Non-fatal: meeting still works, bot may just land in waiting room
+            print(f"[Meet] Could not disable waiting room for {meet_url}: {e}")
+
     return {
-        "meet_url": result.get("hangoutLink", ""),
-        "event_id": result.get("id", ""),
+        "meet_url": meet_url,
+        "event_id": event_id,
     }
 
 
