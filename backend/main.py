@@ -117,9 +117,6 @@ def _make_recall() -> RecallClient:
     )
 
 
-def _deepgram_key() -> str:
-    return os.getenv("DEEPGRAM_API_KEY", "")
-
 
 def _webhook_url() -> str:
     base = os.getenv("RENDER_URL", "").rstrip("/")
@@ -167,7 +164,6 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         req.meeting_url,
         req.bot_name,
         webhook_url=_webhook_url(),
-        deepgram_api_key=_deepgram_key(),
     )
     bot_id = bot_data["id"]
     print(f"[Recall] Bot created: {bot_id}")
@@ -2078,12 +2074,13 @@ def _build_candidate_context(candidate: dict, base_prompt: str) -> str:
 
 class ScheduleInterviewRequest(BaseModel):
     candidate_id: str
-    platform: str = "google_meet"      # "google_meet" | "zoom" | "teams"
+    platform: str = "google_meet"      # "google_meet" | "manual"
     scheduled_at_iso: str              # ISO 8601 UTC e.g. "2026-07-15T10:00:00Z"
     duration_minutes: int = 30
     role_name: str = "Interview"
     system_prompt: str = ""
     bot_name: str = "RecruitX AI Interviewer"
+    meeting_url: str = ""              # Manual meeting link (skips Google Meet creation)
 
 
 @app.post("/api/interviews/schedule")
@@ -2109,7 +2106,12 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
         raise HTTPException(400, "Scheduled time must be in the future")
 
     # Platform routing
-    if req.platform == "google_meet":
+    calendar_event_id = ""
+    if req.meeting_url.strip():
+        # Manual URL provided — skip Google Meet creation entirely
+        meeting_url = req.meeting_url.strip()
+        print(f"[Schedule] Using manual meeting URL: {meeting_url}")
+    elif req.platform == "google_meet":
         tokens = convex_client.query("settings:get", {"key": "google_tokens"})
         if not tokens or not tokens.get("refresh_token"):
             raise HTTPException(400, "Google account not connected. Go to Settings → Connect Google.")
@@ -2127,9 +2129,9 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
         meeting_url = meet_result["meet_url"]
         calendar_event_id = meet_result["event_id"]
     elif req.platform == "zoom":
-        raise HTTPException(400, "Zoom integration not yet configured. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET env vars.")
+        raise HTTPException(400, "Zoom integration not yet configured.")
     elif req.platform == "teams":
-        raise HTTPException(400, "Microsoft Teams integration not yet configured. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET env vars.")
+        raise HTTPException(400, "Microsoft Teams integration not yet configured.")
     else:
         raise HTTPException(400, f"Unknown platform: {req.platform}")
 

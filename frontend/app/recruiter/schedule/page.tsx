@@ -31,6 +31,8 @@ export default function SchedulePage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [scheduled, setScheduled] = useState<ScheduledInterview[]>([]);
   const [form, setForm] = useState({ candidateId: "", datetime: "", duration: "30", role: "", promptText: "" });
+  const [meetingMode, setMeetingMode] = useState<"auto" | "manual">("auto");
+  const [manualUrl, setManualUrl] = useState("");
   const [alert, setAlert] = useState<{ msg: string; type: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
@@ -124,8 +126,11 @@ export default function SchedulePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (meetingMode === "manual" && !manualUrl.trim()) {
+      setAlert({ msg: "Please enter the Google Meet link", type: "error" }); return;
+    }
     setLoading(true);
-    setAlert({ msg: "Creating Google Meet and sending invite...", type: "info" });
+    setAlert({ msg: meetingMode === "manual" ? "Scheduling interview with your meeting link..." : "Creating Google Meet and sending invite...", type: "info" });
     try {
       const res = await fetch(`${BASE}/api/interviews/schedule`, {
         method: "POST",
@@ -136,13 +141,16 @@ export default function SchedulePage() {
           duration_minutes: parseInt(form.duration),
           role_name: form.role.trim() || "Interview",
           system_prompt: form.promptText.trim(),
-          platform: "google_meet",
+          platform: meetingMode === "manual" ? "manual" : "google_meet",
+          meeting_url: meetingMode === "manual" ? manualUrl.trim() : "",
         }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.detail || "Failed");
       setAlert({ msg: `Interview scheduled! Email invite ${d.email_sent ? "sent ✓" : "failed — check SMTP settings"}`, type: "success" });
       setForm({ candidateId: "", datetime: "", duration: "30", role: "", promptText: "" });
+      setManualUrl("");
+      setMeetingMode("auto");
       setSelectedCandidate(null);
       setPromptSource("");
       await Promise.all([loadCandidates(), loadScheduled()]);
@@ -274,6 +282,62 @@ export default function SchedulePage() {
                 <label style={lbl}>Role / Position *</label>
                 <input required style={inp} placeholder="e.g. Full Stack Developer" value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} />
               </div>
+            </div>
+
+            {/* STEP 2b: Meeting Link */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ ...lbl, marginBottom: 10 }}>Google Meet Link</label>
+              {/* Toggle */}
+              <div style={{ display: "flex", gap: 0, marginBottom: 14, border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+                {(["auto", "manual"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setMeetingMode(mode)}
+                    style={{
+                      flex: 1, padding: "8px 0", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
+                      background: meetingMode === mode ? "#7c3aed" : "#f8fafc",
+                      color: meetingMode === mode ? "#fff" : "#64748b",
+                      transition: "all .15s",
+                    }}
+                  >
+                    {mode === "auto" ? "Auto-generate (Google Calendar)" : "Paste my own link"}
+                  </button>
+                ))}
+              </div>
+
+              {meetingMode === "manual" ? (
+                <div>
+                  <input
+                    type="url"
+                    placeholder="https://meet.google.com/abc-def-ghi"
+                    value={manualUrl}
+                    onChange={e => setManualUrl(e.target.value)}
+                    style={inp}
+                  />
+                  {/* Quick Access guidance */}
+                  <div style={{ marginTop: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e", marginBottom: 8 }}>
+                      ⚡ Before the interview — disable the waiting room
+                    </div>
+                    <div style={{ fontSize: 12, color: "#78350f", lineHeight: 1.7 }}>
+                      <strong>Option A — Inside the meeting (easiest):</strong><br />
+                      Open the Meet link → join → click the <strong>shield/lock icon</strong> in the bottom bar → turn <strong>&quot;Quick access&quot; ON</strong>. Anyone with the link (including the bot) joins directly.
+                    </div>
+                    <div style={{ fontSize: 12, color: "#78350f", lineHeight: 1.7, marginTop: 8 }}>
+                      <strong>Option B — Meeting settings page:</strong><br />
+                      Open the Meet link → before joining, click the <strong>⋮ (three dots)</strong> next to &quot;Join now&quot; → <strong>Meeting settings</strong> → toggle <strong>&quot;Quick access&quot;</strong> ON.
+                    </div>
+                    <div style={{ fontSize: 11, color: "#92400e", marginTop: 8, fontStyle: "italic" }}>
+                      Quick access ON = bot joins automatically. Quick access OFF = bot waits and you must admit it manually.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#64748b", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px" }}>
+                  A Google Meet link will be generated automatically via your connected Google Calendar account. The bot will join at the scheduled time.
+                </div>
+              )}
             </div>
 
             {/* STEP 3: AI Prompt (auto-handled) */}

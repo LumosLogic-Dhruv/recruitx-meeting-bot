@@ -103,49 +103,15 @@ def _get_credentials(token_dict: dict) -> Credentials:
 def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: str,
                       scheduled_at: datetime, duration_minutes: int, role_name: str) -> dict:
     creds = _get_credentials(token_dict)
+    service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+
     end_at = scheduled_at + timedelta(minutes=duration_minutes)
 
-    # ── Step 1: Create a Meet Space via the Meet API with OPEN access ──────────
-    # Creating the space FIRST (not via Calendar) means we OWN it under the
-    # meetings.space.created scope, so the patch is guaranteed to work.
-    # accessType=OPEN = anyone with the link joins without a waiting room,
-    # including the Recall.ai anonymous bot.
-    meet_url = ""
-    conference_data: dict = {}
-    try:
-        meet_service = build("meet", "v2", credentials=creds, cache_discovery=False)
-        space = meet_service.spaces().create(
-            body={"config": {"accessSettings": {"accessType": "OPEN"}}}
-        ).execute()
-        meet_url = space.get("meetingUri", "")
-        if meet_url:
-            meeting_code = meet_url.rstrip("/").split("/")[-1]
-            conference_data = {
-                "conferenceId": meeting_code,
-                "conferenceSolution": {"key": {"type": "hangoutsMeet"}, "name": "Google Meet"},
-                "entryPoints": [{"entryPointType": "video", "uri": meet_url,
-                                 "label": meet_url.replace("https://", "")}],
-            }
-            print(f"[Meet] Created OPEN space (no waiting room): {meet_url}")
-    except Exception as e:
-        print(f"[Meet] spaces.create failed — falling back to Calendar-generated link: {e}")
-
-    # ── Step 2: Fall back to Calendar-generated link if Meet API failed ─────────
-    if not meet_url:
-        conference_data = {
-            "createRequest": {
-                "requestId": str(uuid.uuid4()),
-                "conferenceSolutionKey": {"type": "hangoutsMeet"},
-            }
-        }
-
-    # ── Step 3: Create the Calendar event ───────────────────────────────────────
     attendees = [{"email": candidate_email, "displayName": candidate_name}]
     bot_email = os.getenv("BOT_GOOGLE_EMAIL", "").strip()
     if bot_email:
         attendees.append({"email": bot_email, "displayName": "RecruitX AI"})
 
-    cal_service = build("calendar", "v3", credentials=creds, cache_discovery=False)
     event = {
         "summary": f"Interview — {candidate_name} ({role_name})",
         "description": (
@@ -154,20 +120,24 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
         ),
         "start": {"dateTime": scheduled_at.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_at.isoformat(), "timeZone": "UTC"},
-        "conferenceData": conference_data,
+        "conferenceData": {
+            "createRequest": {
+                "requestId": str(uuid.uuid4()),
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        },
         "attendees": attendees,
     }
-    result = cal_service.events().insert(
+    result = service.events().insert(
         calendarId="primary",
         body=event,
         conferenceDataVersion=1,
         sendUpdates="none",
     ).execute()
-
-    # Use our pre-created OPEN space URL if we have one; otherwise the Calendar
-    # response will contain a newly generated hangoutLink (may have waiting room).
-    final_url = meet_url or result.get("hangoutLink", "")
-    return {"meet_url": final_url, "event_id": result.get("id", "")}
+    return {
+        "meet_url": result.get("hangoutLink", ""),
+        "event_id": result.get("id", ""),
+    }
 
 
 async def create_google_meet(token_dict: dict, candidate_name: str, candidate_email: str,
@@ -183,8 +153,11 @@ async def create_google_meet(token_dict: dict, candidate_name: str, candidate_em
 
 def _build_email_html(candidate_name: str, meet_url: str, scheduled_at: datetime,
                       role_name: str, sender: str, duration_minutes: int) -> str:
-    date_str = scheduled_at.strftime("%A, %B %d, %Y")
-    time_str = scheduled_at.strftime("%I:%M %p UTC")
+    from datetime import timezone, timedelta
+    IST = timezone(timedelta(hours=5, minutes=30))
+    scheduled_ist = scheduled_at.replace(tzinfo=timezone.utc).astimezone(IST)
+    date_str = scheduled_ist.strftime("%A, %B %d, %Y")
+    time_str = scheduled_ist.strftime("%I:%M %p IST")
     company = COMPANY_NAME
     return f"""<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <body style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px 20px;color:#1e293b;background:#f8fafc;">

@@ -28,7 +28,6 @@ class RecallClient:
         meeting_url: str,
         bot_name: str = "AI Interviewer",
         webhook_url: str = "",
-        deepgram_api_key: str = "",
     ) -> dict:
         recording_config: dict = {
             "transcript": {
