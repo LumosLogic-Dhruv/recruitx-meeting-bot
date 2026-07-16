@@ -147,7 +147,12 @@ export default function SchedulePage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.detail || "Failed");
-      setAlert({ msg: `Interview scheduled! Email invite ${d.email_sent ? "sent ✓" : "failed — check SMTP settings"}`, type: "success" });
+      const emailNote = d.email_sent
+        ? "Email invite sent ✓"
+        : meetingMode === "manual"
+          ? "Email not sent — share the meeting link with the candidate manually (SMTP not configured)"
+          : "Email not sent — configure SMTP in Settings";
+      setAlert({ msg: `Interview scheduled! ${emailNote}`, type: d.email_sent ? "success" : "warning" });
       setForm({ candidateId: "", datetime: "", duration: "30", role: "", promptText: "" });
       setManualUrl("");
       setMeetingMode("auto");
@@ -410,7 +415,7 @@ export default function SchedulePage() {
             </div>
 
             {alert && (
-              <div style={{ padding: "11px 14px", borderRadius: 8, fontSize: 14, marginBottom: 14, background: alert.type === "success" ? "#f0fdf4" : alert.type === "error" ? "#fef2f2" : "#eff6ff", color: alert.type === "success" ? "#16a34a" : alert.type === "error" ? "#dc2626" : "#1d4ed8" }}>
+              <div style={{ padding: "11px 14px", borderRadius: 8, fontSize: 14, marginBottom: 14, background: alert.type === "success" ? "#f0fdf4" : alert.type === "error" ? "#fef2f2" : alert.type === "warning" ? "#fffbeb" : "#eff6ff", color: alert.type === "success" ? "#16a34a" : alert.type === "error" ? "#dc2626" : alert.type === "warning" ? "#92400e" : "#1d4ed8" }}>
                 {alert.msg}
               </div>
             )}

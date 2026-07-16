@@ -111,6 +111,9 @@ class EndInterviewRequest(BaseModel):
 
 
 def _make_recall() -> RecallClient:
+    # RECALL_API_URL must match your Recall.ai region.
+    # Default: us-east-1. If your dashboard is ap-northeast-1, set:
+    #   RECALL_API_URL=https://ap-northeast-1.recall.ai/api/v1
     return RecallClient(
         api_key=os.getenv("RECALL_API_KEY", ""),
         base_url=os.getenv("RECALL_API_URL", "https://us-east-1.recall.ai/api/v1"),
@@ -1453,7 +1456,6 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
             meeting_url,
             bot_name,
             webhook_url=_webhook_url(),
-            deepgram_api_key=_deepgram_key(),
         )
     except Exception as e:
         print(f"[Scheduler] create_bot error: {e}")
@@ -2160,8 +2162,9 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
         except Exception as e:
             print(f"[Schedule] SMTP email error (non-fatal): {e}")
 
-    # Fall back to Gmail API if SMTP didn't send
-    if not email_sent and req.platform == "google_meet" and tokens:
+    # Fall back to Gmail API if SMTP didn't send (works for both auto and manual links)
+    tokens = convex_client.query("settings:get", {"key": "google_tokens"}) if not email_sent else None
+    if not email_sent and tokens and tokens.get("refresh_token"):
         sender = smtp_config.get("user") or os.getenv("SMTP_USER", os.getenv("GOOGLE_SENDER_EMAIL", ""))
         if sender:
             try:
