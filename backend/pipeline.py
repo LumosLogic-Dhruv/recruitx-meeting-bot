@@ -42,6 +42,14 @@ _TRAILING_WORDS = {
     'uh', 'um', 'uhh', 'hmm',
 }
 
+# Sounds that background noise / breathing commonly gets transcribed as by Deepgram.
+# Segments made ENTIRELY of these are dropped before reaching the LLM so they
+# never trigger a bot response or inflate the transcript word count.
+_NOISE_WORDS = frozenset({
+    'uh', 'um', 'uhh', 'umm', 'hmm', 'hm', 'mm', 'mmm', 'mhm',
+    'ah', 'eh', 'oh', 'er', 'err', 'ugh', 'uh-huh',
+})
+
 BACKCHANNEL_WORD_THRESHOLD = 30   # words candidate must speak before first backchannel
 BACKCHANNEL_MIN_INTERVAL = 18.0  # minimum seconds between consecutive backchannels
 BACKCHANNELS = [
@@ -112,12 +120,17 @@ A real interviewer covers breadth, not just depth on one thing.
 
 7. Only ask about what the candidate JUST said. Never invent facts or assume anything.
 
-8. STT NOISE RULE — this is a real-time voice call and speech-to-text makes mistakes. \
-Background noise, accents, and fast speech all cause garbling. \
-If the transcript looks garbled or is very short (under 5 words), ask: \
-"Could you say that again?" or "Sorry, I didn't catch that — could you repeat?" \
-NEVER pretend you understood something you did not. \
-NEVER ask for clarification on the same point twice — after two attempts, move on.
+8. STT NOISE RULE — this is a real-time voice call. Background noise, accents, \
+and fast speech all cause garbling. Strict rules: \
+(a) If the WHOLE transcript is garbled (no recognizable content, under 4 words), ask ONCE: \
+"Sorry, I didn't quite catch that — could you say it again?" \
+(b) If only PART of the answer is garbled, infer meaning from context and ask a follow-up — \
+do NOT ask to repeat for partial garbling. \
+(c) Never ask for clarification more than once on the same point — move to a new topic after two failed attempts. \
+(d) If the candidate mentions background noise ("there's noise", "it's loud here"), \
+say "No worries, I can still hear you — please continue" and keep going. \
+(e) NEVER suggest the candidate move to a quieter location — adapt and continue the interview. \
+(f) Never repeat a garbled or unrecognized term back to the candidate verbatim.
 
 8b. CORRECTION RULE — If the candidate says "it's not X" or "I mean Y": \
 (a) Immediately acknowledge the corrected term: "Got it, MERN stack." \
@@ -253,6 +266,10 @@ class ConversationPipeline:
         self._last_activity_at: float = time.monotonic()
         self._keepalive_task: asyncio.Task | None = None
 
+        # Noisy-background support: async ASR cleaning task + noise event counter
+        self._pending_clean_task: asyncio.Task | None = None
+        self._noise_segments_filtered: int = 0
+
         # Interview state engine
         self._state = InterviewState()
         self._profile = CandidateProfile()
@@ -304,7 +321,15 @@ class ConversationPipeline:
 
     def on_transcript_update(self, text: str, speaker: str = "Candidate"):
         """Called on finalized transcript segments (transcript.data events)."""
-        self._last_activity_at = time.monotonic()  # candidate spoke — reset inactivity clock
+        self._last_activity_at = time.monotonic()
+
+        # Drop pure-noise segments (filler sounds / background noise bursts) before
+        # they reach the LLM or trigger a bot response.
+        if self._is_noise_only(text):
+            self._noise_segments_filtered += 1
+            print(f"[Pipeline] Noise segment #{self._noise_segments_filtered} filtered: '{text[:40]}'")
+            return
+
         self._pending_text = (self._pending_text + " " + text).strip()
         self._pending_speaker = speaker
 
@@ -312,6 +337,14 @@ class ConversationPipeline:
             self._was_interrupted = True
             print(f"[Pipeline] Interrupted — buffered: {text[:50]}")
             return
+
+        # Start async ASR cleaning while the silence timer counts down.
+        # By the time the timer fires (1-4s later), the cleaned text is ready — zero latency cost.
+        if self._pending_clean_task and not self._pending_clean_task.done():
+            self._pending_clean_task.cancel()
+        self._pending_clean_task = asyncio.create_task(
+            self._clean_transcript(self._pending_text)
+        )
 
         self._words_since_last_bot += len(text.split())
         self._maybe_schedule_backchannel()
@@ -479,6 +512,21 @@ class ConversationPipeline:
         ]
         return any(p in text.lower() for p in patterns)
 
+    def _is_noise_only(self, text: str) -> bool:
+        """Return True when a Deepgram segment is almost certainly background noise.
+        Filters: all-filler-sound segments, single-character tokens, empty text."""
+        words = text.lower().split()
+        if not words:
+            return True
+        stripped = [w.strip('.,!?-–—') for w in words]
+        # Entirely filler / noise sounds (uh, um, hmm, etc.)
+        if all(w in _NOISE_WORDS or w == '' for w in stripped):
+            return True
+        # Single token of 1 character (static clicks, keyboard taps)
+        if len(stripped) == 1 and len(stripped[0]) <= 1:
+            return True
+        return False
+
     async def _wait_for_silence(self):
         timeout = self._adaptive_timeout(self._pending_text)
         print(f"[Pipeline] Silence timer: {timeout}s ({len(self._pending_text.split())} words so far)")
@@ -492,6 +540,23 @@ class ConversationPipeline:
         self._was_interrupted = False
         if not text:
             return
+
+        # Use ASR-cleaned text if the background clean task finished during the silence timer.
+        # The timer runs 1-4s, the clean call takes ~300ms — it's almost always ready.
+        if self._pending_clean_task is not None:
+            try:
+                if not self._pending_clean_task.done():
+                    cleaned = await asyncio.wait_for(
+                        asyncio.shield(self._pending_clean_task), timeout=0.4
+                    )
+                else:
+                    cleaned = self._pending_clean_task.result()
+                if cleaned and cleaned.strip():
+                    text = cleaned.strip()
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                pass
+            self._pending_clean_task = None
+
         # Wake-up mode: after WAKEUP_AFTER_SILENCE seconds of bot silence, respond even
         # to single-word utterances like "Hello?" so the bot never stays unresponsive.
         silent_for = time.monotonic() - self._last_activity_at
@@ -1043,10 +1108,25 @@ class ConversationPipeline:
             except Exception:
                 pass
 
+        noise_notice = ""
+        if self._noise_segments_filtered >= 5:
+            noise_notice = (
+                f"\n⚠️  NOISY ENVIRONMENT ALERT: {self._noise_segments_filtered} background-noise "
+                f"segments were automatically filtered before reaching this transcript. "
+                f"The candidate's audio environment had significant noise (fan, traffic, AC, etc.). "
+                f"This means some answers may be shorter than usual (noise masked speech) or "
+                f"contain extra garbled words. Weight the candidate's technical knowledge and "
+                f"depth of answers more heavily than fluency or sentence completeness.\n"
+            )
+
         scorecard_prompt = f"""You are an expert recruiter evaluating a voice interview conducted by an AI bot.
 
 IMPORTANT — ASR TRANSCRIPT NOTICE:
-This transcript was produced by real-time speech-to-text (Deepgram). It may contain garbled technical terms, sentence fragments, and disfluencies. Read charitably — infer the most likely meaning from context. Do NOT penalise for transcript artefacts — only penalise for genuine lack of knowledge.
+This transcript was produced by real-time speech-to-text (Deepgram) on a live voice call. It WILL contain garbled technical terms, sentence fragments, filler words, and disfluencies — these are STT artefacts, NOT the candidate's fault. Rules for scoring:
+1. Read every answer charitably — infer the most plausible technical meaning from context.
+2. Do NOT penalise for garbled words, broken sentences, or repeated phrases from STT errors.
+3. If a tech term looks wrong (e.g. "next sales" = Next.js, "dog her" = Docker), use the correct term.
+4. Only penalise for genuine lack of knowledge — not for STT noise.{noise_notice}
 
 Candidate: {candidate_name}
 
@@ -1157,6 +1237,8 @@ Guidelines:
             self._eval_task.cancel()
         if self._keepalive_task and not self._keepalive_task.done():
             self._keepalive_task.cancel()
+        if self._pending_clean_task and not self._pending_clean_task.done():
+            self._pending_clean_task.cancel()
         if self._http_client:
             await self._http_client.aclose()
 

@@ -45,9 +45,14 @@ class RecallClient:
                         # Mid-sentence fragments still get accumulated by the silence
                         # timer before the LLM is called. Saves ~700ms per turn vs 1000ms.
                         "endpointing": 300,
+                        # filler_words=false (default) — suppresses "uh", "um", "hmm"
+                        # from Deepgram output so background noise filler doesn't reach
+                        # the pipeline and trigger bot responses.
+                        "filler_words": False,
                         # keyterms: biases nova-3 beam-search toward these tokens when
                         # acoustically plausible. No latency cost. Recall.ai passes
-                        # unknown fields through to Deepgram as-is.
+                        # unknown fields through to Deepgram as-is. Expanded for noisy
+                        # environments where tech terms are most commonly garbled.
                         "keyterms": [
                             "MERN", "React", "Node.js", "Express", "MongoDB", "Next.js",
                             "TypeScript", "JavaScript", "Python", "Django", "FastAPI",
@@ -55,6 +60,9 @@ class RecallClient:
                             "Docker", "Kubernetes", "AWS", "GCP", "Azure",
                             "white-label", "Gemini", "OpenAI", "LLM", "API",
                             "microservices", "REST", "GraphQL", "WebSocket",
+                            "Flutter", "Swift", "Kotlin", "Spring Boot", "Kafka",
+                            "Elasticsearch", "Terraform", "CI/CD", "Jenkins",
+                            "GitHub", "GitLab", "Figma", "Tailwind", "Redux",
                         ],
                     },
                 }
