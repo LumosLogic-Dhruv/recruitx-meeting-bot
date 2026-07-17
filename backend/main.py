@@ -2282,3 +2282,39 @@ def cancel_scheduled_interview(interview_id: str, user: dict = Depends(get_curre
         return {"status": "cancelled"}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+@app.post("/api/admin/candidates/{candidate_id}/reset")
+def admin_reset_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
+    """Admin-only: reset a candidate's interview state so they can be re-scheduled.
+    Clears status → never_invited, attempt count → 0, cooldown → null.
+    Also cancels any pending scheduled interviews for that candidate."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin only")
+    try:
+        # Cancel all non-terminal scheduled interviews for this candidate
+        all_scheduled = convex_client.query("scheduledInterviews:list") or []
+        cancelled_count = 0
+        for s in all_scheduled:
+            if s.get("candidateId") == candidate_id and s.get("status") not in ("completed", "cancelled"):
+                try:
+                    convex_client.mutation("scheduledInterviews:updateStatus", {
+                        "id": s["_id"], "status": "cancelled"
+                    })
+                    sched.cancel_interview(str(s["_id"]))
+                    cancelled_count += 1
+                except Exception as inner_e:
+                    print(f"[AdminReset] Could not cancel interview {s['_id']}: {inner_e}")
+
+        convex_client.mutation("candidates:updateStatus", {
+            "id": candidate_id,
+            "interviewStatus": "never_invited",
+            "attemptCount": 0,
+            "cooldownUntil": None,
+        })
+        _log_timeline(candidate_id, "interview_cancelled", actor=user.get("sub", "admin"),
+                      metadata={"reason": "Admin override reset",
+                                "cancelledInterviews": cancelled_count})
+        return {"status": "reset", "cancelled_interviews": cancelled_count}
+    except Exception as e:
+        raise HTTPException(500, str(e))

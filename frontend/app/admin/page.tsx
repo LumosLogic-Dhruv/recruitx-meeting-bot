@@ -12,9 +12,22 @@ interface Candidate {
   recruiterName?: string; interviewStatus?: string; attemptCount?: number; cooldownUntil?: number;
 }
 
+interface ScheduledInterview {
+  _id: string;
+  candidateId?: string;
+  candidateName: string;
+  roleName: string;
+  scheduledAt: number;
+  status: string;
+  recruiterId?: string;
+  attemptNumber?: number;
+  meetingUrl?: string;
+  emailSent?: boolean;
+}
+
 type Meeting = ScorecardMeeting & { recruiterId?: string; recruiterName?: string; interviewStatus?: string; transcript?: { speaker: string; text: string }[]; };
 
-type AdminTab = "weekly" | "candidates" | "recruiters" | "analytics" | "settings";
+type AdminTab = "weekly" | "candidates" | "scheduling" | "recruiters" | "analytics" | "settings";
 
 interface AnalyticsData {
   summary: {
@@ -32,7 +45,7 @@ function ScoreChip({ score }: { score: number }) {
 }
 
 function StatusBadge({ status, cooldownUntil }: { status?: string; cooldownUntil?: number }) {
-  const s = (status || "never_invited").replace(/\.\d+/g, ""); // strip any float remnants like "1.0"
+  const s = (status || "never_invited").replace(/\.\d+/g, "");
   const labelMap: Record<string, string> = {
     never_invited: "Not Invited",
     attempt_1_scheduled: "Interview 1 Scheduled",
@@ -58,14 +71,29 @@ function StatusBadge({ status, cooldownUntil }: { status?: string; cooldownUntil
   return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color: col }}>{label}</span>;
 }
 
+function SchedStatusBadge({ status }: { status: string }) {
+  const map: Record<string, [string, string, string]> = {
+    pending:    ["#eff6ff", "#1d4ed8", "Pending"],
+    scheduled:  ["#eff6ff", "#1d4ed8", "Scheduled"],
+    completed:  ["#f0fdf4", "#166534", "Completed"],
+    cancelled:  ["#f8fafc", "#64748b", "Cancelled"],
+    failed:     ["#fef2f2", "#dc2626", "Failed"],
+  };
+  const [bg, col, label] = map[status] || ["#f8fafc", "#64748b", status];
+  return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color: col }}>{label}</span>;
+}
+
 export default function AdminPage() {
   const [tab, setTab] = useState<AdminTab>("weekly");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [scheduledInterviews, setScheduledInterviews] = useState<ScheduledInterview[]>([]);
   const [user, setUser] = useState<{ name?: string; email?: string; role?: string } | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterRecruiter, setFilterRecruiter] = useState("");
+  const [schedSearch, setSchedSearch] = useState("");
+  const [schedStatusFilter, setSchedStatusFilter] = useState("");
   const [modal, setModal] = useState<Meeting | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [usersList, setUsersList] = useState<{ _id: string; name: string; email: string; role: string }[]>([]);
@@ -73,6 +101,9 @@ export default function AdminPage() {
   const [googleConnected, setGoogleConnected] = useState(false);
   const [smtpMsg, setSmtpMsg] = useState("");
   const [googleMsg, setGoogleMsg] = useState("Checking...");
+  const [resetLoading, setResetLoading] = useState<string | null>(null);
+  const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+  const [resetMsg, setResetMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -83,17 +114,18 @@ export default function AdminPage() {
     fetch(`${BASE}/api/auth/me`, { headers: { Authorization: auth() } })
       .then(r => {
         if (r.status === 401) { window.location.href = "/login"; return; }
-        if (!r.ok) return; // 5xx / network issue — don't kick the user out
+        if (!r.ok) return;
         return r.json().then((d: { user?: { role?: string; name?: string; email?: string } }) => {
           if (!d.user || d.user.role !== "admin") { window.location.href = "/recruiter"; return; }
           setUser(d.user);
         });
       })
-      .catch(() => { /* network error — don't redirect, backend might be waking up */ });
+      .catch(() => {});
 
     Promise.all([
       fetch(`${BASE}/api/candidates`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setCandidates(d.candidates || [])),
       fetch(`${BASE}/api/meetings`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setMeetings(d.meetings || [])),
+      fetch(`${BASE}/api/interviews/scheduled`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setScheduledInterviews(d.interviews || [])).catch(() => {}),
       fetch(`${BASE}/api/users`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => setUsersList(d.users || [])).catch(() => {}),
       fetch(`${BASE}/api/settings/smtp`, { headers: { Authorization: auth() } }).then(r => r.json()).then(d => {
         if (d.smtp_host) setSmtp({ host: d.smtp_host, port: String(d.smtp_port || 587), user: d.smtp_user || "", pass: "" });
@@ -105,7 +137,6 @@ export default function AdminPage() {
     ]);
   }, []);
 
-  // Build recruiter name map from actual users list (authoritative source)
   const recruiterMap: Record<string, string> = {};
   usersList.forEach(u => { recruiterMap[u._id] = u.name || u.email; });
 
@@ -118,6 +149,12 @@ export default function AdminPage() {
     if (filterRecruiter && c.recruiterId !== filterRecruiter) return false;
     return true;
   });
+
+  const filteredScheduled = scheduledInterviews.filter(s => {
+    if (schedSearch && !s.candidateName.toLowerCase().includes(schedSearch.toLowerCase()) && !s.roleName.toLowerCase().includes(schedSearch.toLowerCase())) return false;
+    if (schedStatusFilter && s.status !== schedStatusFilter) return false;
+    return true;
+  }).sort((a, b) => b.scheduledAt - a.scheduledAt);
 
   const recruiterStats: Record<string, { name: string; total: number; done: number; avgScore: number; scores: number[] }> = {};
   candidates.forEach(c => {
@@ -132,6 +169,56 @@ export default function AdminPage() {
   });
   Object.values(recruiterStats).forEach(r => { if (r.scores.length) r.avgScore = parseFloat((r.scores.reduce((a, b) => a + b, 0) / r.scores.length).toFixed(1)); });
 
+  async function refreshCandidates() {
+    const r = await fetch(`${BASE}/api/candidates`, { headers: { Authorization: auth() } });
+    const d = await r.json();
+    setCandidates(d.candidates || []);
+  }
+
+  async function refreshScheduled() {
+    try {
+      const r = await fetch(`${BASE}/api/interviews/scheduled`, { headers: { Authorization: auth() } });
+      const d = await r.json();
+      setScheduledInterviews(d.interviews || []);
+    } catch { /* ignore */ }
+  }
+
+  async function resetCandidate(candidateId: string, name: string) {
+    if (!confirm(`Reset interview state for ${name}?\n\nThis will:\n• Clear cooldown / locked status\n• Reset attempt count to 0\n• Cancel any pending scheduled interviews\n\nThe recruiter can then schedule a fresh interview.`)) return;
+    setResetLoading(candidateId);
+    setResetMsg(null);
+    try {
+      const res = await fetch(`${BASE}/api/admin/candidates/${candidateId}/reset`, {
+        method: "POST", headers: { Authorization: auth() },
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.detail || "Reset failed");
+      setResetMsg({ id: candidateId, text: `Reset done. ${d.cancelled_interviews} interview(s) cancelled.`, ok: true });
+      await Promise.all([refreshCandidates(), refreshScheduled()]);
+    } catch (e) {
+      setResetMsg({ id: candidateId, text: e instanceof Error ? e.message : "Reset failed", ok: false });
+    } finally {
+      setResetLoading(null);
+      setTimeout(() => setResetMsg(null), 4000);
+    }
+  }
+
+  async function cancelInterview(interviewId: string, candidateName: string) {
+    if (!confirm(`Cancel scheduled interview for ${candidateName}?`)) return;
+    setCancelLoading(interviewId);
+    try {
+      const res = await fetch(`${BASE}/api/interviews/${interviewId}/cancel`, {
+        method: "POST", headers: { Authorization: auth() },
+      });
+      if (!res.ok) throw new Error("Cancel failed");
+      await Promise.all([refreshScheduled(), refreshCandidates()]);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setCancelLoading(null);
+    }
+  }
+
   async function saveSmtp(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -143,9 +230,12 @@ export default function AdminPage() {
   }
 
   const tabs: { id: AdminTab; label: string }[] = [
-    { id: "weekly", label: "Weekly Top" }, { id: "candidates", label: "All Candidates" },
-    { id: "recruiters", label: "Recruiters" }, { id: "analytics", label: "Analytics" },
-    { id: "settings", label: "Settings" },
+    { id: "weekly",      label: "Weekly Top" },
+    { id: "candidates",  label: "All Candidates" },
+    { id: "scheduling",  label: "Scheduling" },
+    { id: "recruiters",  label: "Recruiters" },
+    { id: "analytics",   label: "Analytics" },
+    { id: "settings",    label: "Settings" },
   ];
 
   function loadAnalytics() {
@@ -156,6 +246,8 @@ export default function AdminPage() {
   const lbl: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 };
 
   const uniqueRecruiters = [...new Set(candidates.map(c => c.recruiterId).filter(Boolean))] as string[];
+
+  const pendingCount = scheduledInterviews.filter(s => !["completed", "cancelled"].includes(s.status)).length;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
@@ -175,15 +267,18 @@ export default function AdminPage() {
       {/* Nav tabs */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", padding: "0 24px", display: "flex", gap: 4 }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 20px", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, color: tab === t.id ? "#7c3aed" : "#64748b", border: "none", background: tab === t.id ? "#f1f0ff" : "transparent", transition: "all .2s" }}>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 20px", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, color: tab === t.id ? "#7c3aed" : "#64748b", border: "none", background: tab === t.id ? "#f1f0ff" : "transparent", transition: "all .2s", position: "relative" }}>
             {t.label}
+            {t.id === "scheduling" && pendingCount > 0 && (
+              <span style={{ position: "absolute", top: 4, right: 4, background: "#dc2626", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{pendingCount}</span>
+            )}
           </button>
         ))}
       </div>
 
       <main style={{ padding: 24, maxWidth: 1280, margin: "0 auto" }}>
 
-        {/* Weekly Top */}
+        {/* ── Weekly Top ── */}
         {tab === "weekly" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -196,7 +291,7 @@ export default function AdminPage() {
                 <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", borderRadius: 16, padding: 32, marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
                     <div>
-                      <p style={{ margin: "0 0 4px", fontSize: 13, opacity: .8, textTransform: "uppercase", letterSpacing: ".08em" }}>🏆 Top Candidate This Week</p>
+                      <p style={{ margin: "0 0 4px", fontSize: 13, opacity: .8, textTransform: "uppercase", letterSpacing: ".08em" }}>Top Candidate This Week</p>
                       <h2 style={{ margin: "0 0 8px", fontSize: 28, fontWeight: 800 }}>{weeklyMeetings[0].candidateName}</h2>
                       <p style={{ margin: 0, fontSize: 15, opacity: .85 }}>{weeklyMeetings[0].roleName || "Interview"}</p>
                     </div>
@@ -229,7 +324,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* All Candidates */}
+        {/* ── All Candidates ── */}
         {tab === "candidates" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -251,30 +346,166 @@ export default function AdminPage() {
                 </select>
               </div>
             </div>
+
+            {/* Global reset message */}
+            {resetMsg && (
+              <div style={{ marginBottom: 16, padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: resetMsg.ok ? "#f0fdf4" : "#fef2f2", color: resetMsg.ok ? "#166534" : "#dc2626", border: `1px solid ${resetMsg.ok ? "#bbf7d0" : "#fecaca"}` }}>
+                {resetMsg.text}
+              </div>
+            )}
+
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr>{["Name","Email","Role","Recruiter","Attempts","Status","Score","Actions"].map(h => <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>)}</tr></thead>
+              <thead>
+                <tr>{["Name","Email","Role","Recruiter","Attempts","Status","Score","Actions"].map(h => (
+                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
+                ))}</tr>
+              </thead>
               <tbody>
-                {filteredCandidates.length === 0 ? <tr><td colSpan={8} style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>No candidates match the filter</td></tr> :
-                  filteredCandidates.map(c => {
+                {filteredCandidates.length === 0
+                  ? <tr><td colSpan={8} style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>No candidates match the filter</td></tr>
+                  : filteredCandidates.map(c => {
                     const cMeetings = meetings.filter(m => m.candidateName === c.name && m.scorecard?.overall_score);
                     const bestScore = cMeetings.length ? Math.max(...cMeetings.map(m => m.scorecard!.overall_score!)) : null;
-                    return <tr key={c._id}>
-                      <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><strong>{c.name}</strong></td>
-                      <td style={{ padding: 12, color: "#64748b", fontSize: 13, borderBottom: "1px solid #f1f5f9" }}>{c.email}</td>
-                      <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{c.roleName || "—"}</td>
-                      <td style={{ padding: 12, color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>{c.recruiterId ? recruiterMap[c.recruiterId] || c.recruiterId.slice(-6) : "—"}</td>
-                      <td style={{ padding: 12, textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>{c.attemptCount || 0}/2</td>
-                      <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><StatusBadge status={c.interviewStatus} cooldownUntil={c.cooldownUntil} /></td>
-                      <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{bestScore ? <ScoreChip score={bestScore} /> : <span style={{ color: "#94a3b8" }}>—</span>}</td>
-                      <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{cMeetings.length ? <button onClick={() => setModal(cMeetings[0])} style={{ background: "#f1f5f9", color: "#374151", border: "none", padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Scorecard</button> : "—"}</td>
-                    </tr>;
+                    const canReset = !["never_invited"].includes(c.interviewStatus || "never_invited");
+                    return (
+                      <tr key={c._id}>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><strong>{c.name}</strong></td>
+                        <td style={{ padding: 12, color: "#64748b", fontSize: 13, borderBottom: "1px solid #f1f5f9" }}>{c.email}</td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{c.roleName || "—"}</td>
+                        <td style={{ padding: 12, color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>{c.recruiterId ? recruiterMap[c.recruiterId] || c.recruiterId.slice(-6) : "—"}</td>
+                        <td style={{ padding: 12, textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>{c.attemptCount || 0}/2</td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}><StatusBadge status={c.interviewStatus} cooldownUntil={c.cooldownUntil} /></td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>{bestScore ? <ScoreChip score={bestScore} /> : <span style={{ color: "#94a3b8" }}>—</span>}</td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {cMeetings.length > 0 && (
+                              <button onClick={() => setModal(cMeetings[0])} style={{ background: "#f1f5f9", color: "#374151", border: "none", padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Scorecard</button>
+                            )}
+                            {canReset && (
+                              <button
+                                onClick={() => resetCandidate(c._id, c.name)}
+                                disabled={resetLoading === c._id}
+                                title="Reset interview state — clears cooldown/lock, resets attempt count to 0, cancels pending interviews"
+                                style={{ background: resetLoading === c._id ? "#f1f5f9" : "#fff", color: "#dc2626", border: "1px solid #fca5a5", padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: resetLoading === c._id ? "not-allowed" : "pointer", opacity: resetLoading === c._id ? 0.6 : 1 }}
+                              >
+                                {resetLoading === c._id ? "Resetting..." : "Reset"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
                   })}
               </tbody>
             </table>
+
+            <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 12 }}>
+              Reset clears a candidate&apos;s cooldown/lock and resets attempt count to 0, allowing fresh scheduling. Admin only.
+            </p>
           </div>
         )}
 
-        {/* Recruiters */}
+        {/* ── Scheduling ── */}
+        {tab === "scheduling" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 4px" }}>Scheduled Interviews</h2>
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>{pendingCount} pending · {scheduledInterviews.length} total</p>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input value={schedSearch} onChange={e => setSchedSearch(e.target.value)} placeholder="Search candidate / role..." style={{ ...inp, width: 220 }} />
+                <select value={schedStatusFilter} onChange={e => setSchedStatusFilter(e.target.value)} style={{ ...inp, width: 160 }}>
+                  <option value="">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <button onClick={refreshScheduled} style={{ padding: "9px 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#374151" }}>
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Info banner */}
+            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#1d4ed8" }}>
+              <strong>Admin controls:</strong> Cancel any pending interview below. To fully reset a candidate (clear cooldown/lock + cancel all their interviews), use the <strong>Reset</strong> button in the <em>All Candidates</em> tab.
+            </div>
+
+            {filteredScheduled.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", background: "#fff", borderRadius: 14, border: "1px dashed #e2e8f0" }}>
+                No scheduled interviews found.
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>{["Candidate","Role","Scheduled At","Attempt","Recruiter","Status","Actions"].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {filteredScheduled.map(s => {
+                    const isPending = !["completed", "cancelled"].includes(s.status);
+                    const dt = new Date(s.scheduledAt);
+                    const isPast = dt < new Date();
+                    return (
+                      <tr key={s._id}>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <strong>{s.candidateName}</strong>
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", color: "#374151" }}>
+                          {s.roleName || "—"}
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: isPast && isPending ? "#dc2626" : "#0f172a" }}>
+                            {dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b" }}>
+                            {dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                            {isPast && isPending && <span style={{ marginLeft: 6, color: "#dc2626", fontWeight: 700 }}>Overdue</span>}
+                          </div>
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", textAlign: "center" }}>
+                          <span style={{ background: "#f5f3ff", color: "#7c3aed", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                            #{s.attemptNumber || 1}
+                          </span>
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9", color: "#64748b", fontSize: 13 }}>
+                          {s.recruiterId ? recruiterMap[s.recruiterId] || s.recruiterId.slice(-6) : "—"}
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <SchedStatusBadge status={s.status} />
+                        </td>
+                        <td style={{ padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {s.meetingUrl && (
+                              <a href={s.meetingUrl} target="_blank" rel="noreferrer" style={{ background: "#eff6ff", color: "#1d4ed8", border: "none", padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+                                Meet Link
+                              </a>
+                            )}
+                            {isPending && (
+                              <button
+                                onClick={() => cancelInterview(s._id, s.candidateName)}
+                                disabled={cancelLoading === s._id}
+                                style={{ background: "#fff", color: "#dc2626", border: "1px solid #fca5a5", padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: cancelLoading === s._id ? "not-allowed" : "pointer", opacity: cancelLoading === s._id ? 0.6 : 1 }}
+                              >
+                                {cancelLoading === s._id ? "Cancelling..." : "Cancel"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* ── Recruiters ── */}
         {tab === "recruiters" && (
           <div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 20 }}>Recruiter Overview</h2>
@@ -297,7 +528,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Analytics */}
+        {/* ── Analytics ── */}
         {tab === "analytics" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
@@ -312,7 +543,6 @@ export default function AdminPage() {
               </div>
             ) : (
               <>
-                {/* Summary KPIs */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 28 }}>
                   {[
                     { label: "Total Candidates",      val: analytics.summary.totalCandidates,      col: "#7c3aed" },
@@ -331,10 +561,9 @@ export default function AdminPage() {
                   ))}
                 </div>
 
-                {/* Weekly Top */}
                 {analytics.weeklyTop.length > 0 && (
                   <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, marginBottom: 24 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>🏆 Weekly Top Candidates</h3>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>Weekly Top Candidates</h3>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{["Rank","Candidate","Role","Score","Recommendation"].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#64748b", background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>{h}</th>)}</tr></thead>
                       <tbody>
@@ -353,7 +582,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Recruiter Performance */}
                 {analytics.recruiterPerformance.length > 0 && (
                   <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>Recruiter Performance</h3>
@@ -387,12 +615,11 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Settings */}
+        {/* ── Settings ── */}
         {tab === "settings" && (
           <div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 24 }}>System Settings</h2>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, maxWidth: 900 }}>
-              {/* Google */}
               <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 16 }}>Google Account</h3>
                 <div style={{ marginBottom: 12, fontSize: 14, color: googleConnected ? "#16a34a" : "#64748b" }}>{googleMsg}</div>
@@ -408,7 +635,6 @@ export default function AdminPage() {
                   style={{ padding: "10px 22px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
                 >Connect Google Account</button>
               </div>
-              {/* SMTP */}
               <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 16 }}>SMTP Email</h3>
                 <form onSubmit={saveSmtp}>
@@ -425,9 +651,9 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
       </main>
 
-      {/* Scorecard Modal */}
       {modal && (
         <ScorecardDetailModal
           meetings={[modal]}
