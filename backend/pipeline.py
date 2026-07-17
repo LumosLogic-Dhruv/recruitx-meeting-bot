@@ -21,7 +21,9 @@ SILENCE_XLONG      = 3.5   # 35+ words
 SILENCE_INCOMPLETE = 4.0   # sentence ends mid-thought ("and", "the", "so"…)
 SILENCE_INTERRUPTED = 0.5  # candidate spoke over bot — respond fast
 
-MIN_WORDS_TO_RESPOND = 4   # ignore stray fragments shorter than this
+MIN_WORDS_TO_RESPOND = 3   # ignore stray STT fragments shorter than this
+WAKEUP_MIN_WORDS = 1       # threshold used when bot has been silent for WAKEUP_AFTER_SILENCE seconds
+WAKEUP_AFTER_SILENCE = 35  # seconds of bot silence before lowering the word threshold
 
 # Only words that GENUINELY mean the sentence is unfinished in mid-utterance.
 # Removed: 'basically', 'okay', 'ok', 'yeah', 'like', 'just', 'also', 'then',
@@ -40,8 +42,8 @@ _TRAILING_WORDS = {
     'uh', 'um', 'uhh', 'hmm',
 }
 
-BACKCHANNEL_WORD_THRESHOLD = 15
-BACKCHANNEL_MIN_INTERVAL = 6.0
+BACKCHANNEL_WORD_THRESHOLD = 30   # words candidate must speak before first backchannel
+BACKCHANNEL_MIN_INTERVAL = 18.0  # minimum seconds between consecutive backchannels
 BACKCHANNELS = [
     "Right.", "Sure.", "I see.", "Okay.", "Mm-hmm.",
     "Right, right.", "Sure, sure.", "Got it.", "Okay, okay.", "Interesting.",
@@ -247,6 +249,10 @@ class ConversationPipeline:
         # Confusion loop prevention
         self._confusion_fallback_idx: int = 0
 
+        # Activity tracking for BUG_03 keepalive — last time bot OR candidate spoke
+        self._last_activity_at: float = time.monotonic()
+        self._keepalive_task: asyncio.Task | None = None
+
         # Interview state engine
         self._state = InterviewState()
         self._profile = CandidateProfile()
@@ -289,6 +295,7 @@ class ConversationPipeline:
             audio = await self._tts(greeting)
             self._history.append({"role": "assistant", "content": greeting})
             self._full_transcript.append({"speaker": "AI", "text": greeting})
+            self._last_activity_at = time.monotonic()
             print(f"[Pipeline] Greeting sent.")
             return audio
         finally:
@@ -297,6 +304,7 @@ class ConversationPipeline:
 
     def on_transcript_update(self, text: str, speaker: str = "Candidate"):
         """Called on finalized transcript segments (transcript.data events)."""
+        self._last_activity_at = time.monotonic()  # candidate spoke — reset inactivity clock
         self._pending_text = (self._pending_text + " " + text).strip()
         self._pending_speaker = speaker
 
@@ -395,6 +403,26 @@ class ConversationPipeline:
             if audio and self._on_response and not self._speaking:
                 await self._on_response(nudge, audio)
 
+    async def _keepalive_check(self):
+        """BUG_03 fix: if bot and candidate are both silent for WAKEUP_AFTER_SILENCE
+        seconds after any turn, send a gentle nudge. Prevents permanent freeze caused
+        by a stuck _speaking flag or missed transcript events."""
+        await asyncio.sleep(WAKEUP_AFTER_SILENCE)
+        if self._paused or self._speaking or self._pending_text or self._silence_task:
+            return
+        elapsed = time.monotonic() - self._last_activity_at
+        if elapsed < WAKEUP_AFTER_SILENCE - 2:
+            return  # activity happened after we started sleeping — no nudge needed
+        print(f"[Pipeline] Keepalive: {elapsed:.0f}s of silence — sending nudge")
+        nudge = "Are you still there? Please go ahead whenever you're ready."
+        try:
+            audio = await self._tts(nudge)
+            if audio and self._on_response and not self._speaking:
+                await self._on_response(nudge, audio)
+                self._last_activity_at = time.monotonic()
+        except Exception as e:
+            print(f"[Pipeline] Keepalive error: {e}")
+
     def _is_incomplete(self, text: str) -> bool:
         words = text.strip().split()
         if not words:
@@ -419,10 +447,11 @@ class ConversationPipeline:
             return SILENCE_INCOMPLETE
         words = len(text.split())
         ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
-        # With endpointing=300ms, breathing pauses fire mid-sentence segments that
-        # have no terminal punctuation. Add extra time so the next chunk arrives
-        # before the timer fires and we respond to an incomplete thought.
-        extra = 0.0 if ends_complete else 0.8
+        # Small buffer for non-punctuated endings: gives time for the next Deepgram
+        # partial to arrive and reset the timer if the candidate is still speaking.
+        # Reduced from 0.8 → 0.3 because on_partial_transcript now handles active
+        # speech detection, so we no longer need a long buffer here (BUG_04 fix).
+        extra = 0.0 if ends_complete else 0.3
         if words <= 5:
             return SILENCE_SHORT + extra
         elif words <= 15:
@@ -454,7 +483,6 @@ class ConversationPipeline:
         timeout = self._adaptive_timeout(self._pending_text)
         print(f"[Pipeline] Silence timer: {timeout}s ({len(self._pending_text.split())} words so far)")
         await asyncio.sleep(timeout)
-        # Do not respond if the candidate is not in the call
         if self._paused:
             print("[Pipeline] Silence timer fired but pipeline is paused — suppressing response")
             return
@@ -464,8 +492,12 @@ class ConversationPipeline:
         self._was_interrupted = False
         if not text:
             return
-        if len(text.split()) < MIN_WORDS_TO_RESPOND:
-            print(f"[Pipeline] Fragment too short ({len(text.split())} words): '{text}' — ignored")
+        # Wake-up mode: after WAKEUP_AFTER_SILENCE seconds of bot silence, respond even
+        # to single-word utterances like "Hello?" so the bot never stays unresponsive.
+        silent_for = time.monotonic() - self._last_activity_at
+        min_words = WAKEUP_MIN_WORDS if silent_for >= WAKEUP_AFTER_SILENCE else MIN_WORDS_TO_RESPOND
+        if len(text.split()) < min_words:
+            print(f"[Pipeline] Fragment too short ({len(text.split())} words, min={min_words}): '{text}' — ignored")
             return
         await self._process_turn(text, speaker)
 
@@ -837,16 +869,25 @@ class ConversationPipeline:
                     if audio and self._on_response:
                         await self._on_response(sentence, audio)
 
-            await asyncio.gather(
-                asyncio.create_task(llm_producer()),
-                asyncio.create_task(start_tts()),
-                asyncio.create_task(deliver_tts()),
-            )
+            # 20-second hard timeout prevents a hung OpenAI/ElevenLabs call from
+            # leaving _speaking=True forever, which was the root cause of BUG_03.
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        asyncio.create_task(llm_producer()),
+                        asyncio.create_task(start_tts()),
+                        asyncio.create_task(deliver_tts()),
+                    ),
+                    timeout=20.0,
+                )
+            except asyncio.TimeoutError:
+                print("[Pipeline] LLM/TTS timed out (20s) — aborting this turn")
 
             full_response = "".join(full_text)
             if full_response:
                 self._history.append({"role": "assistant", "content": full_response})
                 self._full_transcript.append({"speaker": "AI", "text": full_response})
+                self._last_activity_at = time.monotonic()  # bot spoke — reset inactivity clock
                 print(f"[Pipeline] AI complete: {full_response[:100]}")
 
                 if self._is_clarification_response(full_response):
@@ -877,6 +918,11 @@ class ConversationPipeline:
         finally:
             self._speaking = False
             self._flush_pending()
+            # Keepalive: if nothing happens for WAKEUP_AFTER_SILENCE seconds after this
+            # turn, send a gentle nudge so the bot never freezes permanently (BUG_03).
+            if self._keepalive_task and not self._keepalive_task.done():
+                self._keepalive_task.cancel()
+            self._keepalive_task = asyncio.create_task(self._keepalive_check())
 
     # ── TTS: ElevenLabs streaming with OpenAI fallback ─────────────────────────
 
@@ -1109,6 +1155,8 @@ Guidelines:
         """Cancel background tasks and release the HTTP client. Call on session end."""
         if self._eval_task and not self._eval_task.done():
             self._eval_task.cancel()
+        if self._keepalive_task and not self._keepalive_task.done():
+            self._keepalive_task.cancel()
         if self._http_client:
             await self._http_client.aclose()
 

@@ -413,14 +413,19 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             if is_final:
                 # Deduplicate final segments — Deepgram occasionally re-delivers a
                 # corrected version of the same utterance. Prevents double AI responses.
-                seen = _seen_segments.setdefault(bot_id, set())
-                segment_key = f"{speaker}:{text}"
-                if segment_key in seen:
-                    print(f"[Webhook] Duplicate final skipped: {text[:50]}")
-                    return {"ok": True}
-                seen.add(segment_key)
-                if len(seen) > 400:
-                    seen.clear()
+                # BUG_03 fix: short phrases (≤ 3 words, e.g. "Hello?", "Are you there?")
+                # are NOT deduplicated so the candidate can repeatedly say them to wake
+                # up an unresponsive bot. Long phrases are still deduplicated normally.
+                word_count_check = len(text.split())
+                if word_count_check > 3:
+                    seen = _seen_segments.setdefault(bot_id, set())
+                    segment_key = f"{speaker}:{text}"
+                    if segment_key in seen:
+                        print(f"[Webhook] Duplicate final skipped: {text[:50]}")
+                        return {"ok": True}
+                    seen.add(segment_key)
+                    if len(seen) > 400:
+                        seen.clear()
                 print(f"[Webhook] FINAL — {speaker}: {text}")
                 pipeline.on_transcript_update(text, speaker)
             else:
