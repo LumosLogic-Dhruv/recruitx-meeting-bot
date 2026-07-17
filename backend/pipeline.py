@@ -312,9 +312,13 @@ class ConversationPipeline:
     def on_partial_transcript(self, speaker: str = "Candidate"):
         """Called on interim transcript segments (transcript.partial_data events).
         Does NOT accumulate text — the final event delivers the clean version.
-        Only purpose: reset the silence timer so the AI knows the candidate is
-        still speaking and doesn't respond to an incomplete answer."""
+        Two purposes: (1) reset the silence timer so the AI knows the candidate is
+        still speaking; (2) cancel in-progress bot speech so the bot never talks
+        over a candidate who is mid-sentence."""
         if self._speaking:
+            # Candidate is speaking while bot is generating/playing a response —
+            # mark as interrupted so the TTS pipeline stops at the next checkpoint.
+            self._was_interrupted = True
             return
         if self._pending_text:
             self._reset_silence_timer()

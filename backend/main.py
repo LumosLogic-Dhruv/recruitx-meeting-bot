@@ -24,10 +24,7 @@ load_dotenv()
 CONVEX_URL = os.getenv("CONVEX_URL", "https://focused-poodle-713.eu-west-1.convex.cloud")
 convex_client = ConvexClient(CONVEX_URL)
 
-VOICE_OPTIONS = {
-    "custom": os.getenv("ELEVENLABS_VOICE_ID", "SNr51KAoFWjq7b0L9cRb"),
-    "nila": os.getenv("ELEVENLABS_VOICE_ID_NILA", "aGb0TwKthRLQTPThYRqI"),
-}
+CUSTOM_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "SNr51KAoFWjq7b0L9cRb")
 
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-me")
 
@@ -101,7 +98,6 @@ class StartInterviewRequest(BaseModel):
     meeting_url: str
     system_prompt: str
     bot_name: str = "RecruitX AI Interviewer"
-    voice_id: str = ""
     candidate_name: str = "Candidate"
 
 
@@ -142,14 +138,13 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         raise HTTPException(400, "Interview already active for this meeting URL")
 
     recall = _make_recall()
-    voice_id = VOICE_OPTIONS.get(req.voice_id, VOICE_OPTIONS["custom"])
     pipeline = ConversationPipeline(
         system_prompt=req.system_prompt,
         openai_key=os.getenv("OPENAI_API_KEY", ""),
         elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
-        voice_id=voice_id,
+        voice_id=CUSTOM_VOICE_ID,
     )
-    print(f"[Pipeline] Voice: {voice_id}")
+    print(f"[Pipeline] Voice: {CUSTOM_VOICE_ID}")
 
     async def on_ai_response(text: str, audio_bytes: bytes):
         for attempt in range(3):
@@ -1431,7 +1426,7 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
         system_prompt=system_prompt,
         openai_key=os.getenv("OPENAI_API_KEY", ""),
         elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
-        voice_id=VOICE_OPTIONS["custom"],
+        voice_id=CUSTOM_VOICE_ID,
     )
 
     bot_id_holder: list[str] = []
