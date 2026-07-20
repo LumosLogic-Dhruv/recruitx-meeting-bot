@@ -13,7 +13,7 @@ const card: React.CSSProperties = {
 const inp: React.CSSProperties = {
   width: "100%", padding: "10px 13px", fontSize: 13, border: `1px solid ${G}0.12)`,
   borderRadius: 8, outline: "none", background: `${G}0.07)`, color: "#f1f5f9",
-  fontFamily: "inherit", boxSizing: "border-box",
+  fontFamily: "inherit", boxSizing: "border-box", colorScheme: "dark",
 };
 const lbl: React.CSSProperties = {
   display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 4,

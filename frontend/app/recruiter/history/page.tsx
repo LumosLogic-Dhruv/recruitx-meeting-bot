@@ -241,7 +241,7 @@ export default function HistoryPage() {
               <select
                 value={scoreFilter}
                 onChange={e => setScoreFilter(e.target.value)}
-                style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, outline: "none", background: "rgba(255,255,255,0.07)", color: "#f1f5f9" }}
+                style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, outline: "none", background: "rgba(255,255,255,0.07)", color: "#f1f5f9", colorScheme: "dark" }}
               >
                 <option value="">All scores</option>
                 <option value="high">High (7-10)</option>
@@ -252,7 +252,7 @@ export default function HistoryPage() {
               <select
                 value={dateFilter}
                 onChange={e => setDateFilter(e.target.value)}
-                style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, outline: "none", background: "rgba(255,255,255,0.07)", color: "#f1f5f9" }}
+                style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, outline: "none", background: "rgba(255,255,255,0.07)", color: "#f1f5f9", colorScheme: "dark" }}
               >
                 <option value="">All time</option>
                 <option value="today">Today</option>

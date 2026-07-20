@@ -15,7 +15,7 @@ const card: React.CSSProperties = {
 const inp: React.CSSProperties = {
   width: "100%", padding: "9px 12px", fontSize: 13,
   border: `1px solid ${G}0.12)`, borderRadius: 8, outline: "none",
-  background: `${G}0.07)`, color: "#f1f5f9", fontFamily: "inherit", boxSizing: "border-box",
+  background: `${G}0.07)`, color: "#f1f5f9", fontFamily: "inherit", boxSizing: "border-box", colorScheme: "dark",
 };
 const lbl: React.CSSProperties = { display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" };
 
