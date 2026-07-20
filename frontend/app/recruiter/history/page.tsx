@@ -39,6 +39,51 @@ function scoreColor(score: number): [string, string] {
   return ["rgba(248,113,113,0.15)", "#f87171"];
 }
 
+// Single color string (for gauge / bars)
+function sc(score: number): string {
+  if (score >= 8) return "#22c55e";
+  if (score >= 6) return "#8b5cf6";
+  if (score >= 4) return "#f59e0b";
+  return "#ef4444";
+}
+
+function recStyle(rec: string): { label: string; color: string } {
+  const r = rec.toUpperCase();
+  if (r.includes("STRONG HIRE")) return { label: "Strong Hire", color: "#22c55e" };
+  if (r === "HIRE")              return { label: "Hire",        color: "#8b5cf6" };
+  if (r === "MAYBE")             return { label: "Maybe",       color: "#f59e0b" };
+  return                                { label: "No Hire",     color: "#ef4444" };
+}
+
+// Conic-gradient gauge
+function ScoreGaugeSmall({ score }: { score: number }) {
+  const pct = Math.max(0, Math.min(1, score / 10));
+  const col = sc(score);
+  return (
+    <div style={{ position: "relative", width: 80, height: 80, flexShrink: 0 }}>
+      <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: `conic-gradient(${col} ${pct * 360}deg, rgba(255,255,255,0.07) 0deg)` }} />
+      <div style={{ position: "absolute", inset: 5, borderRadius: "50%", background: "rgba(8,8,17,0.98)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 20, fontWeight: 800, color: col, lineHeight: 1 }}>{score.toFixed(1)}</span>
+        <span style={{ fontSize: 9, color: "#64748b", marginTop: 1 }}>/ 10</span>
+      </div>
+    </div>
+  );
+}
+
+// Score bar with pass-threshold tick
+function ScoreBarInline({ score }: { score: number }) {
+  const col = sc(score);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", position: "relative", overflow: "hidden" }}>
+        <div style={{ height: "100%", borderRadius: 99, background: col, width: `${(score / 10) * 100}%`, transition: "width .4s ease" }} />
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: "60%", width: 1, background: "rgba(255,255,255,0.25)" }} />
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 800, color: col, minWidth: 20, textAlign: "right" }}>{score}</span>
+    </div>
+  );
+}
+
 // ── Sub components ────────────────────────────────────────────────────────
 function TranscriptView({ transcript }: { transcript: { speaker: string; text: string }[] }) {
   const isBot = (s: string) => s === "AI" || s.toLowerCase().includes("recruit");
@@ -335,88 +380,140 @@ export default function HistoryPage() {
               {/* Tab content */}
               <div style={{ flex: 1, overflowY: "auto" }}>
 
-                {/* Scorecard Tab */}
+                {/* ── Scorecard Tab (caller-x style) ── */}
                 {activeTab === "scorecard" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    {!selected.scorecard ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {!selected.scorecard?.overall_score ? (
                       <div style={{ ...card, padding: 40, textAlign: "center" }}>
                         <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
                         <p style={{ color: "#94a3b8", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No scorecard available</p>
-                        <p style={{ color: "#64748b", fontSize: 12 }}>Scorecard is generated after the AI interview completes</p>
+                        <p style={{ color: "#64748b", fontSize: 12 }}>Generated after the AI interview completes</p>
                       </div>
-                    ) : (
-                      <>
-                        {/* Score overview */}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-                          {[
-                            { label: "Overall Score", val: `${selected.scorecard.overall_score || "—"}/10`, col: selected.scorecard.overall_score ? scoreColor(selected.scorecard.overall_score)[1] : "#94a3b8" },
-                            { label: "Recommendation", val: selected.scorecard.recommendation || "—", col: ["HIRE","STRONG HIRE"].includes(selected.scorecard.recommendation || "") ? "#34d399" : "#f87171" },
-                            { label: "Attempt", val: `#${selected.attemptNumber || 1}`, col: "#a78bfa" },
-                          ].map(s => (
-                            <div key={s.label} style={{ ...card, padding: "14px 16px", textAlign: "center" }}>
-                              <div style={{ fontSize: 20, fontWeight: 800, color: s.col }}>{s.val}</div>
-                              <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 3 }}>{s.label}</div>
-                            </div>
-                          ))}
-                        </div>
+                    ) : (() => {
+                      const s = selected.scorecard!;
+                      const rec = s.recommendation ? recStyle(s.recommendation) : null;
+                      const skillsList = s.skill_breakdown?.length
+                        ? s.skill_breakdown
+                        : s.skill_scores
+                        ? Object.entries(s.skill_scores).map(([name, score]) => ({ name, score, description: undefined }))
+                        : [];
+                      const sorted = [...skillsList].sort((a, b) => b.score - a.score);
+                      const topS = s.top_strengths?.length ? s.top_strengths : sorted.slice(0, 2).map(x => ({ name: x.name, score: x.score }));
+                      const topG = s.top_gaps?.length ? s.top_gaps : sorted.slice(-2).reverse().map(x => ({ name: x.name, score: x.score }));
+                      const greenFlags = [...(s.green_flags || []), ...(s.strengths || [])];
+                      const redFlags = s.red_flags || [];
+                      const improvements = s.areas_for_improvement || [];
 
-                        {/* Skill breakdown */}
-                        {selected.scorecard.skill_scores && Object.keys(selected.scorecard.skill_scores).length > 0 && (
+                      return (
+                        <>
+                          {/* Hero: gauge + name + recommendation + summary */}
                           <div style={{ ...card, padding: 20 }}>
-                            <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Skill Scores</h3>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                              {Object.entries(selected.scorecard.skill_scores).map(([skill, score]) => {
-                                const s = typeof score === "number" ? score : 0;
-                                const [bg, col] = scoreColor(s);
-                                return (
-                                  <div key={skill}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                      <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 600 }}>{skill}</span>
-                                      <span style={{ background: bg, color: col, padding: "1px 8px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{s}/10</span>
-                                    </div>
-                                    <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 99 }}>
-                                      <div style={{ height: 4, width: `${(s / 10) * 100}%`, background: col, borderRadius: 99 }} />
-                                    </div>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                              <ScoreGaugeSmall score={s.overall_score!} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                                  <span style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9" }}>{selected.candidateName}</span>
+                                  {rec && <span style={{ background: `${rec.color}18`, color: rec.color, border: `1px solid ${rec.color}30`, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{rec.label}</span>}
+                                </div>
+                                {s.summary && (
+                                  <p style={{ margin: 0, fontSize: 12, color: "#94a3b8", lineHeight: 1.6, borderLeft: `2px solid ${rec?.color || "#8b5cf6"}`, paddingLeft: 10, fontStyle: "italic" }}>
+                                    {s.summary}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            {/* Snapshot */}
+                            {(topS.length > 0 || topG.length > 0) && (
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                                {topS.length > 0 && (
+                                  <div>
+                                    <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "#64748b" }}>Top Strengths</p>
+                                    {topS.map((x, i) => (
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
+                                        <span style={{ color: "#e2e8f0" }}>{x.name}</span>
+                                        <span style={{ fontWeight: 800, color: sc(x.score) }}>{x.score}</span>
+                                      </div>
+                                    ))}
                                   </div>
-                                );
-                              })}
-                            </div>
+                                )}
+                                {topG.length > 0 && (
+                                  <div>
+                                    <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "#64748b" }}>Top Gaps</p>
+                                    {topG.map((x, i) => (
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
+                                        <span style={{ color: "#e2e8f0" }}>{x.name}</span>
+                                        <span style={{ fontWeight: 800, color: sc(x.score) }}>{x.score}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        )}
 
-                        {/* Strengths / Red flags */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                          {selected.scorecard.strengths && selected.scorecard.strengths.length > 0 && (
-                            <div style={{ ...card, padding: 16, borderColor: "rgba(16,185,129,0.2)", background: "rgba(16,185,129,0.04)" }}>
-                              <h3 style={{ fontSize: 12, fontWeight: 700, color: "#34d399", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Strengths</h3>
-                              <ul style={{ margin: 0, padding: "0 0 0 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-                                {selected.scorecard.strengths.map((s: string, i: number) => (
-                                  <li key={i} style={{ fontSize: 12, color: "#94a3b8" }}>{s}</li>
-                                ))}
-                              </ul>
+                          {/* Green / Red Flags */}
+                          {(greenFlags.length > 0 || redFlags.length > 0) && (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                              {greenFlags.length > 0 && (
+                                <div style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.18)", borderRadius: 12, padding: 16 }}>
+                                  <h4 style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#22c55e", display: "flex", alignItems: "center", gap: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e" }} />Green Flags
+                                  </h4>
+                                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {greenFlags.map((f, i) => <li key={i} style={{ fontSize: 12, color: "#94a3b8", display: "flex", gap: 6 }}><span style={{ color: "#22c55e" }}>+</span>{f}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                              {redFlags.length > 0 && (
+                                <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: 12, padding: 16 }}>
+                                  <h4 style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#ef4444", display: "flex", alignItems: "center", gap: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444" }} />Red Flags
+                                  </h4>
+                                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {redFlags.map((f, i) => <li key={i} style={{ fontSize: 12, color: "#94a3b8", display: "flex", gap: 6 }}><span style={{ color: "#ef4444" }}>−</span>{f}</li>)}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
                           )}
-                          {selected.scorecard.red_flags && selected.scorecard.red_flags.length > 0 && (
-                            <div style={{ ...card, padding: 16, borderColor: "rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.04)" }}>
-                              <h3 style={{ fontSize: 12, fontWeight: 700, color: "#f87171", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Areas to Improve</h3>
-                              <ul style={{ margin: 0, padding: "0 0 0 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-                                {selected.scorecard.red_flags.map((s: string, i: number) => (
-                                  <li key={i} style={{ fontSize: 12, color: "#94a3b8" }}>{s}</li>
+
+                          {/* Skill Breakdown */}
+                          {skillsList.length > 0 && (
+                            <div style={{ ...card, padding: 18 }}>
+                              <h4 style={{ margin: "0 0 14px", fontSize: 11, fontWeight: 700, color: "#e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" }}>Skill Breakdown</h4>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                {skillsList.map((sk, i) => (
+                                  <div key={i}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                                      <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{sk.name}</span>
+                                    </div>
+                                    <ScoreBarInline score={sk.score} />
+                                    {(sk as { description?: string }).description && <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>{(sk as { description?: string }).description}</p>}
+                                  </div>
                                 ))}
-                              </ul>
+                              </div>
                             </div>
                           )}
-                        </div>
 
-                        {/* Summary */}
-                        {selected.scorecard.summary && (
-                          <div style={{ ...card, padding: 16 }}>
-                            <h3 style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>AI Summary</h3>
-                            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0, lineHeight: 1.6 }}>{selected.scorecard.summary}</p>
-                          </div>
-                        )}
-                      </>
-                    )}
+                          {/* Areas for Improvement */}
+                          {improvements.length > 0 && (
+                            <div style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: 12, padding: 16 }}>
+                              <h4 style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#f59e0b", display: "flex", alignItems: "center", gap: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} />Areas for Improvement
+                              </h4>
+                              <ol style={{ margin: 0, padding: "0 0 0 16px", display: "flex", flexDirection: "column", gap: 5 }}>
+                                {improvements.map((a, i) => <li key={i} style={{ fontSize: 12, color: "#94a3b8" }}>{a}</li>)}
+                              </ol>
+                            </div>
+                          )}
+
+                          {/* Open full report button */}
+                          <button onClick={() => setModal(true)} style={{ padding: "10px 20px", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", alignSelf: "flex-start" }}>
+                            Open Full Report (with Radar)
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
