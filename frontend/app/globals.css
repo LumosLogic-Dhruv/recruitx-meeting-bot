@@ -44,3 +44,15 @@ body {
 input, textarea, select, option {
   color-scheme: dark;
 }
+
+/* Fix native select dropdown popup — white bg + white text = invisible on Chrome/Windows */
+select option {
+  background-color: #0d0d1a;
+  color: #f1f5f9;
+}
+select option:hover,
+select option:focus,
+select option:checked {
+  background-color: #1e1b4b;
+  color: #e2e8f0;
+}
