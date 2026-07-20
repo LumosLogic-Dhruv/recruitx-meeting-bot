@@ -33,9 +33,9 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   }, []);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "#07070f" }}>
       <RecruiterSidebar />
-      <main style={{ marginLeft: 220, flex: 1, padding: 32 }}>
+      <main style={{ marginLeft: 220, flex: 1, padding: 32, minHeight: "100vh" }}>
         {children}
       </main>
     </div>

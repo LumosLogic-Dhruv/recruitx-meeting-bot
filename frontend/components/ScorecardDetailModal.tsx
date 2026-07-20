@@ -16,6 +16,8 @@ export interface ScorecardData {
   red_flags?: string[];
   skill_breakdown?: SkillItem[];
   areas_for_improvement?: string[];
+  strengths?: string[];
+  skill_scores?: Record<string, number>;
 }
 
 export interface ScorecardMeeting {
