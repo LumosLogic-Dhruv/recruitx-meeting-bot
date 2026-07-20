@@ -6,6 +6,13 @@ import Image from "next/image";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
+const darkPage: React.CSSProperties = {
+  display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh",
+  background: "#07070f",
+  backgroundImage: "radial-gradient(ellipse 80% 60% at 10% 10%, rgba(139,92,246,0.18) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 90% 90%, rgba(99,102,241,0.12) 0%, transparent 60%)",
+  padding: 20,
+};
+
 function ResetForm() {
   const params = useSearchParams();
   const token = params.get("token") || "";
@@ -41,15 +48,22 @@ function ResetForm() {
     } finally { setLoading(false); }
   }
 
-  const inp: React.CSSProperties = { width: "100%", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, color: "#0f172a", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit" };
-  const lbl: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 };
+  const inp: React.CSSProperties = {
+    width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 10, color: "#f1f5f9", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit",
+  };
+  const lbl: React.CSSProperties = {
+    display: "block", fontSize: 12, fontWeight: 600, color: "#94a3b8",
+    textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8,
+  };
+  const statusColor = (type: string) => type === "success" ? "#34d399" : type === "error" ? "#f87171" : "#c4b5fd";
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "radial-gradient(circle at top right, rgba(139,92,246,0.08), transparent 40%), #f8fafc", padding: 20 }}>
-      <div style={{ background: "rgba(255,255,255,0.8)", backdropFilter: "blur(16px)", border: "1px solid #e2e8f0", borderRadius: 24, padding: 40, width: "100%", maxWidth: 460, boxShadow: "0 10px 40px rgba(0,0,0,0.05)" }}>
+    <div style={darkPage}>
+      <div style={{ background: "rgba(255,255,255,0.05)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 24, padding: 40, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <Image src="/LogoWithoutName.svg" alt="RecruitX" width={48} height={48} style={{ objectFit: "contain", marginBottom: 16 }} />
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>Set New Password</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#f1f5f9", marginBottom: 8 }}>Set New Password</h1>
           <p style={{ color: "#64748b", fontSize: 14 }}>Choose a strong password for your account.</p>
         </div>
 
@@ -70,7 +84,7 @@ function ResetForm() {
         )}
 
         {status && (
-          <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, fontSize: 13, background: status.type === "success" ? "rgba(16,185,129,0.1)" : status.type === "error" ? "rgba(239,68,68,0.1)" : "rgba(139,92,246,0.1)", border: `1px solid ${status.type === "success" ? "#10b981" : status.type === "error" ? "#ef4444" : "#8b5cf6"}`, color: status.type === "success" ? "#065f46" : status.type === "error" ? "#991b1b" : "#6b21a8" }}>
+          <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, fontSize: 13, background: status.type === "success" ? "rgba(16,185,129,0.1)" : status.type === "error" ? "rgba(239,68,68,0.1)" : "rgba(139,92,246,0.1)", border: `1px solid ${status.type === "success" ? "rgba(16,185,129,0.3)" : status.type === "error" ? "rgba(239,68,68,0.3)" : "rgba(139,92,246,0.3)"}`, color: statusColor(status.type) }}>
             {status.msg}
           </div>
         )}

@@ -10,16 +10,31 @@ import httpx
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
 # Deepgram endpointing=300ms fires a segment after 300ms of audio silence.
-# At 300ms, breathing pauses and mid-clause gaps also trigger segments, so our
-# timer must be long enough to accumulate all the fragments of one answer.
-# Target: respond ~1.5s after the candidate stops speaking.
-# Total per turn = endpointing(300ms) + our timer + LLM(~300ms) + TTS(~75ms).
-SILENCE_SHORT      = 0.8   # 1–5 words   → total ~1.1s after candidate stops
-SILENCE_MEDIUM     = 1.2   # 6–15 words  → total ~1.5s
-SILENCE_LONG       = 2.0   # 16–35 words → total ~2.3s
-SILENCE_XLONG      = 3.5   # 35+ words
-SILENCE_INCOMPLETE = 4.0   # sentence ends mid-thought ("and", "the", "so"…)
-SILENCE_INTERRUPTED = 0.5  # candidate spoke over bot — respond fast
+# These timers start AFTER Deepgram fires a final segment — so they run on top
+# of whatever natural pauses already existed in the speech.
+# Increased thresholds (Jul-20 fix): 0.8/1.2 were triggering on natural
+# mid-sentence pauses in Indian English, causing the bot to process half-answers
+# and then double-respond with a second question when the rest arrived.
+SILENCE_SHORT      = 1.5   # 1–5 words   → wait a full breath before responding
+SILENCE_MEDIUM     = 2.0   # 6–15 words  → let them finish the thought
+SILENCE_LONG       = 2.8   # 16–35 words → long answers need more settle time
+SILENCE_XLONG      = 4.0   # 35+ words
+SILENCE_INCOMPLETE = 4.5   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_INTERRUPTED = 0.8  # candidate spoke over bot — respond fast but not instant
+
+# Minimum words before SILENCE_SHORT fires — prevents 1-2 word fragments from
+# triggering a full LLM response before the candidate has barely started speaking.
+MIN_WORDS_FOR_SHORT_SILENCE = 8
+
+# Thinking pause added before LLM call — makes bot feel like a human pausing
+# to absorb the answer before asking the next question.
+THINKING_PAUSE = 1.0
+
+# Delay before processing text buffered during bot speech (flush_pending).
+# Prevents double-responses: when bot finishes Q1, buffered fragments from
+# the candidate speaking during Q1's audio get restarted with this delay,
+# giving them time to arrive as a complete thought rather than firing immediately.
+FLUSH_PENDING_DELAY = 2.0
 
 MIN_WORDS_TO_RESPOND = 3   # ignore stray STT fragments shorter than this
 WAKEUP_MIN_WORDS = 1       # threshold used when bot has been silent for WAKEUP_AFTER_SILENCE seconds
@@ -404,23 +419,31 @@ class ConversationPipeline:
         word_count = len(self._pending_text.split())
         # Text accumulated DURING bot speech (interruption) is often reflexive noise —
         # "hmm", "okay sure", "yeah" — too short to be a real answer. Require 8 words
-        # minimum to avoid rapid double-responses where the bot repeats the same
-        # clarification phrase back-to-back (the "double prompting" stuttering bug).
+        # minimum to avoid rapid double-responses.
         if self._was_interrupted and word_count < 8:
             print(
                 f"[Pipeline] Post-speech buffer too short ({word_count} words) — discarding"
             )
             self._pending_text = ""
             self._was_interrupted = False
-            # Schedule a re-prompt so the bot doesn't freeze if no new speech arrives.
             asyncio.create_task(self._reprompt_if_silent(delay=5.0))
             return
         print(f"[Pipeline] Flushing buffered text after bot speech: {self._pending_text[:60]}")
-        # Reset interruption flag BEFORE starting the timer so _adaptive_timeout uses
-        # the normal word-count window (0.8s+), not the 0.5s SILENCE_INTERRUPTED shortcut
-        # that causes rapid LLM re-triggers with the same clarification response.
         self._was_interrupted = False
-        self._reset_silence_timer()
+        # Delay before restarting the silence timer — gives the candidate time to finish
+        # their complete thought rather than firing immediately on the buffered fragment.
+        # This prevents the double-response where bot asks Q2 then immediately asks Q3
+        # from the second half of the answer that arrived while Q2 was playing.
+        asyncio.create_task(self._delayed_flush(FLUSH_PENDING_DELAY))
+
+    async def _delayed_flush(self, delay: float):
+        """Wait `delay` seconds, then restart the silence timer if there's still pending text.
+        Called from _flush_pending() to give the candidate time to finish speaking
+        before the pipeline fires on buffered fragments from mid-bot-speech transcripts."""
+        await asyncio.sleep(delay)
+        if self._pending_text and not self._speaking and not self._paused:
+            print(f"[Pipeline] Delayed flush: restarting silence timer with {len(self._pending_text.split())} words")
+            self._reset_silence_timer()
 
     async def _reprompt_if_silent(self, delay: float):
         """After discarding a short post-speech fragment, wait `delay` seconds.
@@ -471,7 +494,7 @@ class ConversationPipeline:
         if self._was_interrupted:
             return SILENCE_INTERRUPTED
         # Enumeration promise check BEFORE _is_incomplete — needs the longer XLONG window,
-        # not just the 1.8s incomplete timer, because listing multiple items has longer pauses.
+        # not just the incomplete timer, because listing multiple items has longer pauses.
         if _ENUM_PROMISE.search(text):
             print(f"[Pipeline] Enumeration in progress — waiting {SILENCE_XLONG}s")
             return SILENCE_XLONG
@@ -480,12 +503,13 @@ class ConversationPipeline:
             return SILENCE_INCOMPLETE
         words = len(text.split())
         ends_complete = text.rstrip()[-1:] in '.!?' if text.strip() else False
-        # Small buffer for non-punctuated endings: gives time for the next Deepgram
-        # partial to arrive and reset the timer if the candidate is still speaking.
-        # Reduced from 0.8 → 0.3 because on_partial_transcript now handles active
-        # speech detection, so we no longer need a long buffer here (BUG_04 fix).
-        extra = 0.0 if ends_complete else 0.3
+        extra = 0.0 if ends_complete else 0.4
         if words <= 5:
+            # Very short fragments — if below word threshold, bump up to MEDIUM
+            # so we don't fire on breathing pauses or sentence-starters.
+            if words < MIN_WORDS_FOR_SHORT_SILENCE:
+                print(f"[Pipeline] Fragment too short for SILENCE_SHORT ({words} words) — using MEDIUM")
+                return SILENCE_MEDIUM + extra
             return SILENCE_SHORT + extra
         elif words <= 15:
             return SILENCE_MEDIUM + extra
@@ -815,10 +839,17 @@ class ConversationPipeline:
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
 
+        # Mark as speaking immediately so any transcripts that arrive during the
+        # thinking pause are buffered as interruptions, not new turns.
         self._speaking = True
         self._words_since_last_bot = 0
         self._was_interrupted = False
         self._state.questions_asked += 1
+
+        # Natural thinking pause — simulates a human interviewer absorbing the
+        # answer before formulating the next question. Also prevents rapid-fire
+        # responses when the silence timer fires slightly early.
+        await asyncio.sleep(THINKING_PAUSE)
 
         if self._backchannel_task and not self._backchannel_task.done():
             self._backchannel_task.cancel()

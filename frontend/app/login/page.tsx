@@ -46,8 +46,8 @@ export default function LoginPage() {
   }
 
   const inputStyle: React.CSSProperties = {
-    width: "100%", background: "#fff", border: "1px solid #e2e8f0",
-    borderRadius: 10, color: "#0f172a", fontSize: 14,
+    width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 10, color: "#f1f5f9", fontSize: 14,
     padding: "12px 14px", outline: "none", fontFamily: "inherit",
     boxSizing: "border-box",
   };
@@ -56,20 +56,21 @@ export default function LoginPage() {
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "center",
       minHeight: "100vh", width: "100vw",
-      background: "radial-gradient(circle at top right, rgba(139,92,246,0.08), transparent 40%), radial-gradient(circle at bottom left, rgba(76,29,149,0.06), transparent 45%), #f8fafc",
+      background: "#07070f",
+      backgroundImage: "radial-gradient(ellipse 80% 60% at 10% 10%, rgba(139,92,246,0.18) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 90% 90%, rgba(99,102,241,0.12) 0%, transparent 60%)",
       padding: 20,
     }}>
       <div style={{
-        background: "rgba(255,255,255,0.8)", backdropFilter: "blur(16px)",
-        border: "1px solid #e2e8f0", borderRadius: 24, padding: 40,
+        background: "rgba(255,255,255,0.05)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
+        border: "1px solid rgba(255,255,255,0.10)", borderRadius: 24, padding: 40,
         width: "100%", maxWidth: 460,
-        boxShadow: "0 10px 40px rgba(0,0,0,0.05)",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
       }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <Link href="/">
             <Image src="/LogoWithoutName.svg" alt="RecruitX" width={48} height={48} style={{ objectFit: "contain", marginBottom: 16 }} />
           </Link>
-          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#0f172a", marginBottom: 8 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#f1f5f9", marginBottom: 8 }}>
             Welcome Back
           </h1>
           <p style={{ color: "#64748b", fontSize: 14 }}>Sign in to orchestrate interview bots &amp; view transcripts</p>
@@ -77,7 +78,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
               Email Address
             </label>
             <input
@@ -88,7 +89,7 @@ export default function LoginPage() {
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
               Password
             </label>
             <div style={{ position: "relative" }}>
@@ -146,14 +147,14 @@ export default function LoginPage() {
             marginTop: 16, padding: "12px 16px", borderRadius: 10, fontSize: 13, lineHeight: 1.5,
             background: status.type === "success" ? "rgba(16,185,129,0.1)" : status.type === "error" ? "rgba(239,68,68,0.1)" : "rgba(139,92,246,0.1)",
             border: `1px solid ${status.type === "success" ? "#10b981" : status.type === "error" ? "#ef4444" : "#8b5cf6"}`,
-            color: status.type === "success" ? "#065f46" : status.type === "error" ? "#991b1b" : "#6b21a8",
+            color: status.type === "success" ? "#34d399" : status.type === "error" ? "#f87171" : "#c4b5fd",
           }}>
             {status.msg}
           </div>
         )}
 
         <div style={{ textAlign: "center", marginTop: 16, fontSize: 13 }}>
-          <Link href="/forgot-password" style={{ color: "#64748b", textDecoration: "none" }}>Forgot your password?</Link>
+          <Link href="/forgot-password" style={{ color: "#94a3b8", textDecoration: "none" }}>Forgot your password?</Link>
         </div>
         <div style={{ textAlign: "center", marginTop: 12, fontSize: 14, color: "#64748b" }}>
           Don&apos;t have an account?{" "}
