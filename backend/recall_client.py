@@ -101,6 +101,12 @@ class RecallClient:
             "max_duration_minutes": 60,
         }
 
+        # Top-level webhook_url receives all bot lifecycle events:
+        # bot.done, bot.fatal, bot.in_call_recording, participant.join, participant.leave, etc.
+        # This is SEPARATE from realtime_endpoints which only handles transcript streaming.
+        if webhook_url:
+            payload["webhook_url"] = webhook_url
+
         # Signed-in Google Meet bot: set RECALL_GOOGLE_LOGIN_GROUP_ID to the
         # Login Group ID from Recall.ai → API Explorer → Google Logins → Groups.
         # When set, the bot signs in as the configured Google Workspace account

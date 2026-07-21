@@ -204,6 +204,7 @@ async def _poll_and_greet(bot_id: str):
     recall: RecallClient = session["recall"]
     pipeline: ConversationPipeline = session["pipeline"]
     bot_name: str = session["bot_name"]
+    candidate_name: str = session.get("candidate_name", "Candidate")
     stop_event: asyncio.Event = session["stop_event"]
 
     # Wait until bot is in the call
