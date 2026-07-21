@@ -418,19 +418,22 @@ class ConversationPipeline:
             self._backchannel_task = asyncio.create_task(self._play_backchannel())
 
     async def _play_backchannel(self):
-        # Wait for a natural pause before playing — avoids talking over candidate mid-sentence.
-        # If the candidate is still speaking (pending_text building up), the task will be
-        # cancelled by the next on_transcript_update call anyway.
-        await asyncio.sleep(2.5)
-        # Only fire if candidate has genuinely paused (no buffered text, bot not speaking)
-        if self._pending_text or self._speaking or self._paused:
-            return
+        # No sleep delay here — the backchannel should fire WHILE the candidate is still
+        # speaking (as a listening cue), not after they've stopped. Adding a delay (e.g.
+        # 2.5s) caused a race: backchannel fires at t=2.5s, silence timer fires at t=2.8s
+        # (SILENCE_MEDIUM), producing two recall.speak calls back-to-back — dual-voice bug.
+        #
+        # Guard: _pending_text non-empty means the silence timer hasn't fired yet (candidate
+        # turn is still in progress). Once _wait_for_silence clears _pending_text and calls
+        # _process_turn, this check suppresses any late-arriving backchannel task.
         bc = BACKCHANNELS[self._backchannel_idx % len(BACKCHANNELS)]
         self._backchannel_idx += 1
         try:
             audio = await self._tts(bc)
-            # Re-check after TTS synthesis (takes ~150ms) — candidate may have resumed
-            if audio and self._on_response and not self._speaking and not self._pending_text:
+            if (audio and self._on_response
+                    and self._pending_text   # candidate turn still in-flight
+                    and not self._speaking   # bot not already responding
+                    and not self._paused):   # candidate not absent
                 print(f"[Pipeline] Backchannel: {bc}")
                 await self._on_response(bc, audio)
         except asyncio.CancelledError:
