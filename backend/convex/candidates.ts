@@ -121,11 +121,14 @@ export const updateStatus = mutation({
     id: v.string(),
     interviewStatus: v.optional(v.string()),
     attemptCount: v.optional(v.number()),
-    cooldownUntil: v.optional(v.number()),
+    // Accept null in addition to number so Python callers can pass None to clear the field.
+    // The cooldown query uses `?? Infinity` which correctly treats both null and undefined
+    // as "no cooldown", so storing null is functionally equivalent to removing the field.
+    cooldownUntil: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     const { id, ...patch } = args;
-    // Remove undefined keys so we don't accidentally null out fields
+    // Skip undefined keys. null is passed through intentionally to clear cooldownUntil.
     const clean: Record<string, any> = {};
     for (const [k, val] of Object.entries(patch)) {
       if (val !== undefined) clean[k] = val;
