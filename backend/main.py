@@ -338,6 +338,15 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             print(f"[Webhook] {event} — auto-ending session {bot_id} for {candidate_name}")
             background_tasks.add_task(_auto_end_session, bot_id, session, candidate_name)
 
+    # Recording module — handle Recall.ai recording-ready events independently.
+    # Never blocks the webhook. Always safe to fail.
+    if event in ("bot.recording_ready", "recording.complete", "bot.media_shortcuts_updated"):
+        try:
+            from recording import handle_recording_webhook
+            background_tasks.add_task(handle_recording_webhook, convex_client, body)
+        except Exception as _rec_err:
+            print(f"[Webhook] Recording module hook error (non-fatal): {_rec_err}")
+
     # Participant joined the call — resume pipeline, greet first-timers or re-greet rejoinders
     if event == "participant.join":
         bot_id = data.get("bot", {}).get("id", "")
@@ -1278,6 +1287,18 @@ def get_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user
         raise
     except Exception as e:
         raise HTTPException(500, f"Convex error: {str(e)}")
+
+
+@app.get("/api/meetings/{meeting_id}/recording/status")
+def get_recording_status(meeting_id: str, user: dict = Depends(get_current_user)):
+    """Return lightweight recording status from the MeetingRecording module.
+    Frontend polls this to decide when to show the video player."""
+    try:
+        from recording import get_recording_status as _get_status
+        return _get_status(convex_client, meeting_id)
+    except Exception as e:
+        print(f"[API] /recording/status error (non-fatal): {e}")
+        return {"status": "unavailable", "available": False}
 
 
 @app.post("/api/meetings/{meeting_id}/fetch-recording")

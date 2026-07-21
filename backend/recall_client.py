@@ -30,7 +30,13 @@ class RecallClient:
         webhook_url: str = "",
     ) -> dict:
         recording_config: dict = {
+            # Include the AI bot's own audio track inside the mixed recording.
+            # Without this, only the candidate's audio is captured.
+            "include_bot_in_recording": {"audio": True},
             "transcript": {
+                # Enable speaker diarization using separate streams when available.
+                # This allows clean per-speaker transcript attribution in the recording.
+                "diarization": {"use_separate_streams_when_available": True},
                 "provider": {
                     "deepgram_streaming": {
                         "model": os.getenv("DEEPGRAM_MODEL", "nova-3"),

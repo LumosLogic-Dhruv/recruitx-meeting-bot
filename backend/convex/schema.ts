@@ -94,6 +94,30 @@ export default defineSchema({
     value: v.any(),
   }).index("by_key", ["key"]),
 
+  // ── Meeting Recording Module ─────────────────────────────────────────────────
+  // Independent table — never modifies the meetings table.
+  // Stores Recall.ai recording metadata only (URLs, duration, status).
+  // No video blobs are stored here.
+  meetingRecordings: defineTable({
+    meetingId:              v.optional(v.string()),  // Convex meetings._id (may be empty for unlinked bots)
+    botId:                  v.string(),              // Recall.ai bot ID — upsert key
+    recordingId:            v.optional(v.string()),  // Recall.ai recording ID
+    recordingUrl:           v.optional(v.string()),  // signed download URL (https only)
+    transcriptUrl:          v.optional(v.string()),  // transcript download URL
+    thumbnailUrl:           v.optional(v.string()),  // thumbnail (if available)
+    durationSeconds:        v.optional(v.number()),
+    status:                 v.string(),              // pending | processing | available | failed
+    startedAt:              v.optional(v.string()),  // ISO timestamp from Recall
+    endedAt:                v.optional(v.string()),  // ISO timestamp from Recall
+    botIncludedInRecording: v.optional(v.boolean()), // always true — flag for dashboard
+    diarizationEnabled:     v.optional(v.boolean()), // always true — flag for dashboard
+    createdAt:              v.number(),              // UTC epoch ms
+    updatedAt:              v.number(),              // UTC epoch ms
+  })
+    .index("by_bot",     ["botId"])
+    .index("by_meeting", ["meetingId"])
+    .index("by_status",  ["status"]),
+
   // Immutable event log — one row per lifecycle event per candidate
   timeline_events: defineTable({
     candidateId: v.string(),               // candidates table _id

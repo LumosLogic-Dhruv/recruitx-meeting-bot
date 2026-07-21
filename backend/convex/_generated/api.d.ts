@@ -9,6 +9,7 @@
  */
 
 import type * as candidates from "../candidates.js";
+import type * as meetingRecordings from "../meetingRecordings.js";
 import type * as meetings from "../meetings.js";
 import type * as prompts from "../prompts.js";
 import type * as scheduledInterviews from "../scheduledInterviews.js";
@@ -24,6 +25,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   candidates: typeof candidates;
+  meetingRecordings: typeof meetingRecordings;
   meetings: typeof meetings;
   prompts: typeof prompts;
   scheduledInterviews: typeof scheduledInterviews;
