@@ -41,10 +41,10 @@ class RecallClient:
                         # smart_format=true supersedes punctuate — handles punctuation,
                         # dates, currency, phones, URLs. Do NOT add punctuate=true.
                         "smart_format": True,
-                        # 300ms: fires fast so the pipeline receives text sooner.
-                        # Mid-sentence fragments still get accumulated by the silence
-                        # timer before the LLM is called. Saves ~700ms per turn vs 1000ms.
-                        "endpointing": 300,
+                        # 500ms: balanced between responsiveness and preventing false
+                        # VAD fires on breath pauses. 300ms was too aggressive for
+                        # Indian English with natural mid-sentence breath breaks.
+                        "endpointing": 500,
                         # filler_words=false (default) — suppresses "uh", "um", "hmm"
                         # from Deepgram output so background noise filler doesn't reach
                         # the pipeline and trigger bot responses.
@@ -125,7 +125,7 @@ class RecallClient:
             print(f"[Recall] create_bot failed {res.status_code}: {res.text}")
             res.raise_for_status()
         print(
-            f"[Recall] Bot created — Deepgram endpointing=300ms, nova-3 multi, "
+            f"[Recall] Bot created — Deepgram endpointing=500ms, nova-3 multi, "
             f"keyterms active (endpoint: {webhook_url or 'none'})"
         )
         return res.json()

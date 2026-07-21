@@ -31,6 +31,8 @@ export default defineSchema({
     recruiterId: v.optional(v.string()),
     roleName: v.optional(v.string()),
     attemptNumber: v.optional(v.number()),
+    transcriptText: v.optional(v.string()),   // full transcript as plain text for search/display
+    wordCount: v.optional(v.number()),        // total word count for quick filtering
   }),
 
   rolePrompts: defineTable({

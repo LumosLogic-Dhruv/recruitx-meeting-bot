@@ -18,6 +18,8 @@ export const create = mutation({
     recruiterId: v.optional(v.string()),
     roleName: v.optional(v.string()),
     attemptNumber: v.optional(v.number()),
+    transcriptText: v.optional(v.string()),   // full transcript as plain text
+    wordCount: v.optional(v.number()),        // total word count
   },
   handler: async (ctx, args) => {
     const meetingId = await ctx.db.insert("meetings", {
@@ -32,6 +34,8 @@ export const create = mutation({
       recruiterId: args.recruiterId,
       roleName: args.roleName,
       attemptNumber: args.attemptNumber,
+      transcriptText: args.transcriptText,
+      wordCount: args.wordCount,
     });
     return meetingId;
   },

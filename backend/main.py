@@ -187,6 +187,17 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     }
     _url_to_bot[req.meeting_url] = bot_id
 
+    # Wire up auto-end callback: fires when pipeline detects the bot said goodbye
+    async def _on_pipeline_session_end():
+        session_data = _sessions.pop(bot_id, None)
+        if session_data:
+            _url_to_bot.pop(session_data.get("meeting_url", ""), None)
+            _seen_segments.pop(bot_id, None)
+            print(f"[Pipeline] Goodbye detected — auto-ending session {bot_id}")
+            asyncio.create_task(_auto_end_session(bot_id, session_data, req.candidate_name))
+
+    pipeline.set_session_end_callback(_on_pipeline_session_end)
+
     # Always start a polling task as a fallback in case webhooks aren't configured
     # in the Recall.ai dashboard. The pipeline's _speaking flag prevents double-processing.
     task = asyncio.create_task(_poll_and_greet(bot_id))
@@ -730,6 +741,8 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
                 "candidateName": candidate_name,
                 "botName": session.get("bot_name") or "RecruitX AI Interviewer",
                 "transcript": transcript_list,
+                "transcriptText": transcript_text,
+                "wordCount": word_count,
                 "scorecard": scorecard,
                 "botId": bot_id,
                 "interviewStatus": interview_status,
@@ -975,8 +988,16 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
     transcript_list = pipeline.get_transcript_list() if pipeline else []
     transcript_text = pipeline.get_transcript_text() if pipeline else ""
 
+    word_count = len(transcript_text.split()) if transcript_text else 0
+    if word_count >= 200:
+        interview_status = "completed"
+    elif word_count >= 100:
+        interview_status = "partial"
+    else:
+        interview_status = "no_show"
+
     scorecard = {}
-    if pipeline and transcript_text:
+    if pipeline and word_count >= 100:
         print("[Scorecard] Generating...")
         try:
             scorecard = await pipeline.generate_scorecard(req.candidate_name)
@@ -1001,8 +1022,14 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
                 "candidateName": req.candidate_name,
                 "botName": session.get("bot_name") or "RecruitX AI Interviewer",
                 "transcript": transcript_list,
+                "transcriptText": transcript_text,
+                "wordCount": word_count,
                 "scorecard": scorecard,
                 "botId": bot_id,
+                "interviewStatus": interview_status,
+                "recruiterId": session.get("recruiter_id") or "",
+                "roleName": session.get("role_name") or "Interview",
+                "attemptNumber": session.get("attempt_number") or 1,
             }
         )
         print(f"[Convex] Meeting stored: {meeting_id}")

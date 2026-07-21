@@ -15,16 +15,16 @@ import httpx
 # Increased thresholds (Jul-20 fix): 0.8/1.2 were triggering on natural
 # mid-sentence pauses in Indian English, causing the bot to process half-answers
 # and then double-respond with a second question when the rest arrived.
-SILENCE_SHORT      = 1.5   # 1–5 words   → wait a full breath before responding
-SILENCE_MEDIUM     = 2.0   # 6–15 words  → let them finish the thought
-SILENCE_LONG       = 2.8   # 16–35 words → long answers need more settle time
-SILENCE_XLONG      = 4.0   # 35+ words
-SILENCE_INCOMPLETE = 4.5   # sentence ends mid-thought ("and", "the", "so"…)
+SILENCE_SHORT      = 2.0   # 1–5 words   → wait a full breath before responding
+SILENCE_MEDIUM     = 2.8   # 6–15 words  → let them finish the thought
+SILENCE_LONG       = 3.8   # 16–35 words → long answers need more settle time
+SILENCE_XLONG      = 5.0   # 35+ words
+SILENCE_INCOMPLETE = 5.5   # sentence ends mid-thought ("and", "the", "so"…)
 SILENCE_INTERRUPTED = 0.8  # candidate spoke over bot — respond fast but not instant
 
 # Minimum words before SILENCE_SHORT fires — prevents 1-2 word fragments from
 # triggering a full LLM response before the candidate has barely started speaking.
-MIN_WORDS_FOR_SHORT_SILENCE = 8
+MIN_WORDS_FOR_SHORT_SILENCE = 10
 
 # Thinking pause added before LLM call — makes bot feel like a human pausing
 # to absorb the answer before asking the next question.
@@ -159,6 +159,20 @@ If you can infer the meaning, proceed without asking the candidate to repeat. \
 Only ask for clarification if the meaning is completely lost. \
 NEVER repeat an unusual or garbled-sounding term back to the candidate verbatim.
 
+10. ACKNOWLEDGE BEFORE MOVING ON — always react to something SPECIFIC the candidate \
+just said before transitioning to the next question. \
+Say what you understood, reference a detail they gave, then bridge to the next question. \
+Example: "Got it — so you built the HRMS on Firebase initially. How did that hold up \
+under load when the team scaled?" \
+NEVER jump straight to an unrelated question as if you didn't hear the answer.
+
+11. CLOSING — when you have covered all topics and are ready to end, you MUST: \
+(a) briefly acknowledge their final answer, \
+(b) thank them genuinely ("Thank you for sharing your experience"), \
+(c) clearly state next steps ("We will be in touch regarding the next steps"), \
+(d) wish them well and say goodbye ("Have a great day!"). \
+A proper closing is mandatory — never trail off or end mid-conversation.
+
 """
 
 # Context window constants
@@ -291,10 +305,20 @@ class ConversationPipeline:
         self._eval_task: asyncio.Task | None = None
         self._topics_initialized: bool = False
 
+        # Session end callback — called when pipeline detects interview is complete
+        # (bot said goodbye). Wired up by main.py to trigger auto-end + scorecard.
+        self._session_end_callback: Callable[[], Awaitable[None]] | None = None
+        self._session_end_triggered: bool = False  # prevents double-trigger
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
         self._on_response = callback
+
+    def set_session_end_callback(self, callback: Callable[[], Awaitable[None]]):
+        """Wire up a callback that fires when the bot says goodbye.
+        main.py uses this to auto-end the Recall.ai session and generate the scorecard."""
+        self._session_end_callback = callback
 
     def pause(self):
         """Suspend all AI responses — call when candidate leaves the meeting."""
@@ -394,11 +418,19 @@ class ConversationPipeline:
             self._backchannel_task = asyncio.create_task(self._play_backchannel())
 
     async def _play_backchannel(self):
+        # Wait for a natural pause before playing — avoids talking over candidate mid-sentence.
+        # If the candidate is still speaking (pending_text building up), the task will be
+        # cancelled by the next on_transcript_update call anyway.
+        await asyncio.sleep(2.5)
+        # Only fire if candidate has genuinely paused (no buffered text, bot not speaking)
+        if self._pending_text or self._speaking or self._paused:
+            return
         bc = BACKCHANNELS[self._backchannel_idx % len(BACKCHANNELS)]
         self._backchannel_idx += 1
         try:
             audio = await self._tts(bc)
-            if audio and self._on_response and not self._speaking:
+            # Re-check after TTS synthesis (takes ~150ms) — candidate may have resumed
+            if audio and self._on_response and not self._speaking and not self._pending_text:
                 print(f"[Pipeline] Backchannel: {bc}")
                 await self._on_response(bc, audio)
         except asyncio.CancelledError:
@@ -778,6 +810,15 @@ class ConversationPipeline:
                 f"depth={p.answer_depth_score:.1f}/5  "
                 f"communication={p.communication_score:.1f}/5"
             )
+
+        if s.current_phase == "wrap_up":
+            lines.append(
+                "WRAP-UP PHASE — you have covered all required topics. "
+                "Acknowledge the candidate's final answer, thank them for their time, "
+                "mention next steps ('We will be in touch regarding the next steps'), "
+                "and say a warm proper goodbye. This must be your CLOSING message — "
+                "do not ask any more questions after this."
+            )
         lines.append("")
         return "\n".join(lines)
 
@@ -909,7 +950,7 @@ class ConversationPipeline:
                     model=self._model,
                     messages=messages,
                     temperature=0.5,
-                    max_tokens=120,
+                    max_tokens=200,
                     stream=True,
                 )
                 async for chunk in stream:
@@ -965,8 +1006,9 @@ class ConversationPipeline:
                     if audio and self._on_response:
                         await self._on_response(sentence, audio)
 
-            # 20-second hard timeout prevents a hung OpenAI/ElevenLabs call from
-            # leaving _speaking=True forever, which was the root cause of BUG_03.
+            # 30-second hard timeout prevents a hung OpenAI/ElevenLabs call from
+            # leaving _speaking=True forever. Increased from 20s to accommodate
+            # longer closing messages and multi-sentence responses (max_tokens=200).
             try:
                 await asyncio.wait_for(
                     asyncio.gather(
@@ -974,10 +1016,10 @@ class ConversationPipeline:
                         asyncio.create_task(start_tts()),
                         asyncio.create_task(deliver_tts()),
                     ),
-                    timeout=20.0,
+                    timeout=30.0,
                 )
             except asyncio.TimeoutError:
-                print("[Pipeline] LLM/TTS timed out (20s) — aborting this turn")
+                print("[Pipeline] LLM/TTS timed out (30s) — aborting this turn")
 
             full_response = "".join(full_text)
             if full_response:
@@ -991,6 +1033,14 @@ class ConversationPipeline:
                     print(f"[Pipeline] Clarification #{self._state.consecutive_confusion_count}")
                 else:
                     self._state.consecutive_confusion_count = 0
+
+                # Auto-end session when bot says goodbye — triggers scorecard + cleanup
+                if (self._session_end_callback
+                        and not self._session_end_triggered
+                        and self._is_interview_closing(full_response)):
+                    self._session_end_triggered = True
+                    print(f"[Pipeline] Goodbye detected in response — scheduling auto-end")
+                    asyncio.create_task(self._trigger_session_end())
             elif not self._was_interrupted:
                 # LLM returned nothing and we weren't interrupted — emit a safe fallback
                 # so the bot doesn't silently freeze mid-interview.
@@ -1261,6 +1311,39 @@ Guidelines:
                 "error": f"Failed to parse scorecard: {e}",
                 "raw": response.choices[0].message.content,
             }
+
+    def _is_interview_closing(self, text: str) -> bool:
+        """Detect if the bot just said goodbye — triggers auto-leave + scorecard generation.
+        Uses a tiered signal approach: one strong signal OR two weak signals."""
+        t = text.lower()
+        strong_signals = [
+            "we will be in touch", "we'll be in touch",
+            "we'll reach out", "we will reach out",
+            "thank you for your time", "thanks for your time",
+            "that concludes our interview",
+            "we'll let you know", "we will let you know",
+        ]
+        weak_signals = [
+            "best of luck", "all the best", "good luck",
+            "goodbye", "good bye", "take care",
+            "have a great day", "have a good day",
+            "thank you for sharing", "thanks for sharing",
+        ]
+        strong_count = sum(1 for p in strong_signals if p in t)
+        weak_count = sum(1 for p in weak_signals if p in t)
+        return strong_count >= 1 or weak_count >= 2
+
+    async def _trigger_session_end(self):
+        """Wait for goodbye audio to finish playing, then fire the session end callback.
+        The 5-second delay gives ElevenLabs time to finish streaming and Recall.ai
+        time to play the audio before the bot leaves the call."""
+        await asyncio.sleep(5.0)
+        if self._session_end_callback:
+            try:
+                print("[Pipeline] Firing session end callback (goodbye complete)")
+                await self._session_end_callback()
+            except Exception as e:
+                print(f"[Pipeline] Session end callback error: {e}")
 
     async def aclose(self):
         """Cancel background tasks and release the HTTP client. Call on session end."""
