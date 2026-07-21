@@ -362,18 +362,35 @@ def cancel_interview(interview_id: str):
 # ── Recurring background jobs ─────────────────────────────────────────────────
 
 async def _force_kill_stale_sessions():
-    """Every 5 min: kill sessions older than 75 minutes."""
+    """Every 5 min: safety-net for sessions running longer than 90 minutes.
+    Normally the bot leaves on its own once the interview is complete (goodbye detection).
+    This job is only a fallback for cases where goodbye was never triggered."""
     if not _sessions_ref or not _auto_end_fn:
         return
     now = datetime.now(timezone.utc).timestamp()
     stale = []
     for bot_id, session in list(_sessions_ref.items()):
         created_at = session.get("created_at", now)
-        if (now - created_at) / 60 > 75:
+        if (now - created_at) / 60 > 90:
             stale.append((bot_id, session))
     for bot_id, session in stale:
         age_m = int((now - session.get("created_at", now)) / 60)
-        print(f"[Scheduler] Force-killing stale session {bot_id} (age={age_m}m)")
+        print(f"[Scheduler] Force-killing stale session {bot_id} (age={age_m}m) — goodbye not detected")
+        pipeline = session.get("pipeline")
+        if pipeline and not getattr(pipeline, "_session_end_triggered", False):
+            # Attempt a graceful goodbye TTS before pulling the bot out
+            farewell = (
+                "Thank you so much for your time today. "
+                "Our team will be in touch with you shortly regarding the next steps. "
+                "You can now leave the call — have a great day!"
+            )
+            try:
+                audio = await pipeline._tts(farewell)
+                if audio and pipeline._on_response:
+                    await pipeline._on_response(farewell, audio)
+                await asyncio.sleep(6)  # let audio play before bot leaves
+            except Exception as e:
+                print(f"[Scheduler] Force-kill farewell TTS error (non-fatal): {e}")
         _sessions_ref.pop(bot_id, None)
         asyncio.create_task(
             _auto_end_fn(bot_id, session, session.get("candidate_name", "Candidate"))

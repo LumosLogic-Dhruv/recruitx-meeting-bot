@@ -166,12 +166,13 @@ Example: "Got it — so you built the HRMS on Firebase initially. How did that h
 under load when the team scaled?" \
 NEVER jump straight to an unrelated question as if you didn't hear the answer.
 
-11. CLOSING — when you have covered all topics and are ready to end, you MUST: \
+11. CLOSING — when you have covered all topics and are ready to end, you MUST say ALL of: \
 (a) briefly acknowledge their final answer, \
-(b) thank them genuinely ("Thank you for sharing your experience"), \
-(c) clearly state next steps ("We will be in touch regarding the next steps"), \
-(d) wish them well and say goodbye ("Have a great day!"). \
-A proper closing is mandatory — never trail off or end mid-conversation.
+(b) thank them genuinely ("Thank you for your time and for sharing your experience"), \
+(c) state next steps ("Our team will be in touch with you shortly regarding the next steps"), \
+(d) tell them they are free to go ("You can now leave the call — have a great day!"). \
+This exact phrasing ensures the system detects the interview has ended and the bot will \
+automatically leave the call. A proper closing is mandatory — never trail off.
 
 """
 
@@ -1320,7 +1321,10 @@ Guidelines:
         Uses a tiered signal approach: one strong signal OR two weak signals."""
         t = text.lower()
         strong_signals = [
+            "you can now leave the call", "you can leave the call",
+            "feel free to leave", "feel free to close",
             "we will be in touch", "we'll be in touch",
+            "our team will be in touch", "team will be in touch",
             "we'll reach out", "we will reach out",
             "thank you for your time", "thanks for your time",
             "that concludes our interview",

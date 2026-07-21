@@ -1522,6 +1522,18 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
     }
     _url_to_bot[meeting_url] = bot_id
 
+    # Wire up auto-end callback — same as start_interview path.
+    # Without this, scheduled sessions never auto-leave on goodbye detection.
+    async def _on_scheduled_session_end():
+        session_data = _sessions.pop(bot_id, None)
+        if session_data:
+            _url_to_bot.pop(session_data.get("meeting_url", ""), None)
+            _seen_segments.pop(bot_id, None)
+            print(f"[Pipeline] Goodbye detected (scheduled) — auto-ending session {bot_id}")
+            asyncio.create_task(_auto_end_session(bot_id, session_data, candidate_name))
+
+    pipeline.set_session_end_callback(_on_scheduled_session_end)
+
     task = asyncio.create_task(_poll_and_greet(bot_id))
     _sessions[bot_id]["task"] = task
 
