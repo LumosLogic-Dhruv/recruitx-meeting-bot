@@ -387,7 +387,6 @@ class ConversationPipeline:
         )
 
         self._words_since_last_bot += len(text.split())
-        self._maybe_schedule_backchannel()
         self._reset_silence_timer()
 
     def on_partial_transcript(self, speaker: str = "Candidate"):
@@ -404,43 +403,19 @@ class ConversationPipeline:
         if self._pending_text:
             self._reset_silence_timer()
 
-    # ── Backchannel ────────────────────────────────────────────────────────────
+    # ── Backchannel (DISABLED) ─────────────────────────────────────────────────
+    # Backchannels ("I see", "Got it", etc.) are disabled because ElevenLabs TTS
+    # latency (~150ms) means the audio always arrives AFTER the candidate has paused,
+    # not during their speech. This caused two recall.speak() calls to queue in Recall.ai
+    # back-to-back: the backchannel then the main response, producing a dual-voice/dual-
+    # tone effect. The raised silence thresholds already make the bot feel natural without
+    # these listening cues.
 
     def _maybe_schedule_backchannel(self):
-        now = time.monotonic()
-        if (
-            self._words_since_last_bot >= BACKCHANNEL_WORD_THRESHOLD
-            and now - self._last_backchannel_time >= BACKCHANNEL_MIN_INTERVAL
-        ):
-            self._last_backchannel_time = now
-            self._words_since_last_bot = 0
-            if self._backchannel_task and not self._backchannel_task.done():
-                self._backchannel_task.cancel()
-            self._backchannel_task = asyncio.create_task(self._play_backchannel())
+        pass  # disabled — see comment above
 
     async def _play_backchannel(self):
-        # No sleep delay here — the backchannel should fire WHILE the candidate is still
-        # speaking (as a listening cue), not after they've stopped. Adding a delay (e.g.
-        # 2.5s) caused a race: backchannel fires at t=2.5s, silence timer fires at t=2.8s
-        # (SILENCE_MEDIUM), producing two recall.speak calls back-to-back — dual-voice bug.
-        #
-        # Guard: _pending_text non-empty means the silence timer hasn't fired yet (candidate
-        # turn is still in progress). Once _wait_for_silence clears _pending_text and calls
-        # _process_turn, this check suppresses any late-arriving backchannel task.
-        bc = BACKCHANNELS[self._backchannel_idx % len(BACKCHANNELS)]
-        self._backchannel_idx += 1
-        try:
-            audio = await self._tts(bc)
-            if (audio and self._on_response
-                    and self._pending_text   # candidate turn still in-flight
-                    and not self._speaking   # bot not already responding
-                    and not self._paused):   # candidate not absent
-                print(f"[Pipeline] Backchannel: {bc}")
-                await self._on_response(bc, audio)
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print(f"[Pipeline] Backchannel error: {e}")
+        pass  # disabled — see comment above
 
     # ── Silence timer ──────────────────────────────────────────────────────────
 
