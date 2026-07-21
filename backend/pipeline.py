@@ -302,6 +302,12 @@ class ConversationPipeline:
         self._session_end_callback: Callable[[], Awaitable[None]] | None = None
         self._session_end_triggered: bool = False  # prevents double-trigger
 
+        # Intelligence helpers — four background observers (never block the interview)
+        self._intel_memory:   dict = {}
+        self._intel_evidence: dict = {}
+        self._intel_curiosity_log: list = []
+        self._intel_profile:  dict = {}
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
@@ -1189,6 +1195,10 @@ class ConversationPipeline:
             self._full_transcript.append({"speaker": speaker, "text": user_text})
             self._history.append({"role": "user", "content": user_text})
 
+            # Fire intelligence helpers as a fire-and-forget background task.
+            # They never block the interview — results are stored for future turns.
+            asyncio.create_task(self._run_intelligence_helpers(user_text))
+
             # Correction detection — update profile before LLM sees this turn's context
             correction = self._detect_correction(user_text)
             if correction:
@@ -1639,6 +1649,32 @@ Guidelines:
                 await self._session_end_callback()
             except Exception as e:
                 print(f"[Pipeline] Session end callback error: {e}")
+
+    async def _run_intelligence_helpers(self, user_text: str) -> None:
+        """Fire-and-forget background task — runs all four intelligence helpers
+        in parallel after each candidate turn. Never blocks the interview.
+        Results are stored on the pipeline instance for future turns."""
+        try:
+            from intelligence import run_all as _intel_run_all
+        except ImportError:
+            return  # intelligence package not installed — skip silently
+        try:
+            results = await _intel_run_all(
+                openai_client=self._openai,
+                model=self._model,
+                answer=user_text,
+                existing_memory=self._intel_memory,
+                existing_evidence=self._intel_evidence,
+                existing_profile=self._intel_profile,
+            )
+            self._intel_memory   = results.get("memory",   self._intel_memory)
+            self._intel_evidence = results.get("evidence", self._intel_evidence)
+            self._intel_profile  = results.get("profile",  self._intel_profile)
+            curiosity = results.get("curiosity", {})
+            if isinstance(curiosity, dict) and curiosity.get("interesting"):
+                self._intel_curiosity_log.append(curiosity)
+        except Exception as e:
+            print(f"[Intelligence] Background task error (non-fatal): {e}")
 
     async def aclose(self):
         """Cancel background tasks and release the HTTP client. Call on session end."""
