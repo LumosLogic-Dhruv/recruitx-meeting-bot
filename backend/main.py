@@ -2296,6 +2296,7 @@ class RecoverInterviewRequest(BaseModel):
     role_name: str = "Interview"
     attempt_number: int = 1
     meeting_url: str = ""
+    manual_transcript: str = ""  # paste raw transcript text from Recall.ai dashboard as fallback
 
 
 @app.post("/api/interviews/recover")
@@ -2306,25 +2307,39 @@ async def recover_interview(req: RecoverInterviewRequest, user: dict = Depends(g
 
     recall = _make_recall()
     try:
-        # 1. Fetch raw transcript from Recall.ai
-        try:
-            raw_transcript = await recall.get_transcript(req.bot_id)
-        except Exception as e:
-            raise HTTPException(500, f"Could not fetch transcript from Recall.ai: {e}")
-
-        if not raw_transcript:
-            raise HTTPException(404, "No transcript found for this bot ID. The interview may not have started or the bot ID is wrong.")
-
-        # 2. Convert Recall.ai transcript format → conversation text
-        # Recall returns: [{"speaker": 0, "words": [...], "participant": {"name": "..."}}, ...]
+        # 1. Fetch transcript — try Recall.ai API first, fall back to manual paste
         transcript_list = []
-        for utterance in raw_transcript:
-            participant = utterance.get("participant") or {}
-            speaker_name = participant.get("name") or "Candidate"
-            words = utterance.get("words") or []
-            text = " ".join(w.get("text", "") for w in words).strip()
-            if text:
-                transcript_list.append({"speaker": speaker_name, "text": text})
+
+        if req.manual_transcript:
+            # Manual paste path: parse "SPEAKER: text" lines from Recall.ai dashboard copy-paste
+            print(f"[Recover] Using manual transcript ({len(req.manual_transcript)} chars)")
+            for line in req.manual_transcript.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if ":" in line:
+                    speaker, _, text = line.partition(":")
+                    text = text.strip()
+                    speaker = speaker.strip()
+                    if text:
+                        transcript_list.append({"speaker": speaker, "text": text})
+                else:
+                    if transcript_list:
+                        transcript_list[-1]["text"] += " " + line
+        else:
+            # Auto-fetch from Recall.ai API
+            try:
+                raw_transcript = await recall.get_transcript(req.bot_id)
+                for utterance in raw_transcript:
+                    participant = utterance.get("participant") or {}
+                    speaker_name = participant.get("name") or "Candidate"
+                    words = utterance.get("words") or []
+                    text = " ".join(w.get("text", "") for w in words).strip()
+                    if text:
+                        transcript_list.append({"speaker": speaker_name, "text": text})
+            except Exception as e:
+                raise HTTPException(500, f"Could not fetch transcript from Recall.ai: {e}. "
+                                        f"Try passing 'manual_transcript' with text copied from the Recall.ai dashboard.")
 
         if not transcript_list:
             raise HTTPException(404, "Transcript is empty — no speech was captured.")
