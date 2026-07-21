@@ -50,7 +50,7 @@ def update_status(convex: ConvexClient, bot_id: str, status: str) -> bool:
 def delete_recording(convex: ConvexClient, recording_id: str) -> bool:
     """Delete recording metadata by Convex document ID. Does not delete the video."""
     try:
-        convex.mutation("meetingRecordings:delete", {"id": recording_id})
+        convex.mutation("meetingRecordings:deleteRecording", {"id": recording_id})
         return True
     except Exception as e:
         print(f"[RecordingStorage] delete error (non-fatal): {e}")
