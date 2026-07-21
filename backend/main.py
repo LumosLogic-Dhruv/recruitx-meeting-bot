@@ -764,30 +764,50 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
     except Exception as e:
         print(f"[AutoEnd] Convex save error: {e}")
 
-    # Send appropriate email to candidate (non-blocking, fire-and-forget)
+    # ── Emails — send immediately, fire-and-forget ───────────────────────────────
     candidate_email = session.get("candidate_email", "")
+    recruiter_id    = session.get("recruiter_id", "")
+    role_name       = session.get("role_name", "Interview")
+    attempt_number  = session.get("attempt_number", 1)
+    candidate_id_   = session.get("candidate_id", "")
+
     if candidate_email and scorecard and word_count >= 100:
-        # Completed/partial interview → send scorecard
+        # Candidate scorecard email
         asyncio.create_task(
             _send_scorecard_email(
                 candidate_name=candidate_name,
                 candidate_email=candidate_email,
                 scorecard=scorecard,
-                role_name=session.get("role_name", "Interview"),
-                attempt_number=session.get("attempt_number", 1),
-                candidate_id=session.get("candidate_id", ""),
+                role_name=role_name,
+                attempt_number=attempt_number,
+                candidate_id=candidate_id_,
             )
         )
+        # Recruiter summary email — sent NOW (not after recording which can take 2-5 min
+        # and sometimes never arrives). Recording URL is checked on the dashboard.
+        if recruiter_id:
+            asyncio.create_task(
+                _send_recruiter_summary_email(
+                    recruiter_id=recruiter_id,
+                    candidate_name=candidate_name,
+                    role_name=role_name,
+                    attempt_number=attempt_number,
+                    scorecard=scorecard,
+                    interview_status=interview_status,
+                    recording_url="",         # recording not ready yet — recruiter checks dashboard
+                    meeting_id=str(meeting_id) if meeting_id else "",
+                )
+            )
     elif candidate_email and interview_status == "no_show":
         # No-show → notify candidate so they know they missed it
         asyncio.create_task(
             _send_no_show_email(
                 candidate_name=candidate_name,
                 candidate_email=candidate_email,
-                role_name=session.get("role_name", "Interview"),
-                attempt_number=session.get("attempt_number", 1),
-                candidate_id=session.get("candidate_id", ""),
-                recruiter_id=session.get("recruiter_id", ""),
+                role_name=role_name,
+                attempt_number=attempt_number,
+                candidate_id=candidate_id_,
+                recruiter_id=recruiter_id,
                 scheduled_at_ms=session.get("scheduled_at_ms", 0),
             )
         )
@@ -899,34 +919,17 @@ async def _fetch_and_store_recording(
     print(f"[Recording] Waiting for recording of bot {bot_id}...")
     recall = _make_recall()
     try:
-        # Wait for the full mixed recording to be ready (up to 5 min).
-        recording = await recall.poll_bot_recording(bot_id, max_wait=300)
-        if not recording:
+        # poll_bot_recording returns the full bot dict once media_shortcuts.video_mixed_mp4
+        # status == "done". extract_recording_urls then pulls all artefact URLs from it.
+        bot_data = await recall.poll_bot_recording(bot_id, max_wait=300)
+        if not bot_data:
             print(f"[Recording] Gave up waiting for bot {bot_id}")
             return
 
-        recording_id = recording.get("id")
-
-        # Extract full mixed video URL.
-        shortcuts = recording.get("media_shortcuts") or {}
-        video_mixed = shortcuts.get("video_mixed") or {}
-        recording_url = (video_mixed.get("data") or {}).get("download_url")
-
-        # Fetch per-participant separate audio (bot track + candidate track).
-        bot_audio_url = None
-        candidate_audio_url = None
-        if recording_id:
-            tracks = await recall.get_separate_audio(recording_id, max_wait=120)
-            for track in tracks:
-                participant = track.get("participant") or {}
-                url = (track.get("data") or {}).get("download_url")
-                if not url:
-                    continue
-                # Recall.ai bots join as non-hosts; the meeting owner (candidate) is the host.
-                if participant.get("is_host"):
-                    candidate_audio_url = url
-                else:
-                    bot_audio_url = url
+        urls = recall.extract_recording_urls(bot_data)
+        recording_url       = urls["recording_url"]
+        bot_audio_url       = urls["bot_audio_url"]
+        candidate_audio_url = urls["candidate_audio_url"]
 
         try:
             convex_client.mutation(
@@ -946,20 +949,9 @@ async def _fetch_and_store_recording(
         except Exception as e:
             print(f"[Recording] Failed to update Convex: {e}")
 
-        # Send recruiter summary email now that recording URL is available
-        if recruiter_id and scorecard is not None:
-            asyncio.create_task(
-                _send_recruiter_summary_email(
-                    recruiter_id=recruiter_id,
-                    candidate_name=candidate_name,
-                    role_name=role_name,
-                    attempt_number=attempt_number,
-                    scorecard=scorecard or {},
-                    interview_status=interview_status,
-                    recording_url=recording_url or "",
-                    meeting_id=meeting_id,
-                )
-            )
+        # Recruiter summary email is now sent directly from _auto_end_session
+        # (immediately after interview, not gated on recording availability).
+        # Sending it here a second time after recording was ready caused double emails.
     finally:
         await recall.aclose()
 
