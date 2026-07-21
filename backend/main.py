@@ -2290,6 +2290,183 @@ def cancel_scheduled_interview(interview_id: str, user: dict = Depends(get_curre
         raise HTTPException(500, str(e))
 
 
+class RecoverInterviewRequest(BaseModel):
+    bot_id: str
+    candidate_id: str
+    role_name: str = "Interview"
+    attempt_number: int = 1
+    meeting_url: str = ""
+
+
+@app.post("/api/interviews/recover")
+async def recover_interview(req: RecoverInterviewRequest, user: dict = Depends(get_current_user)):
+    """Recover a lost interview: fetch transcript from Recall.ai, generate scorecard, save to Convex.
+    Use when bot.done webhook was never received and the in-memory session is gone."""
+    from openai import AsyncOpenAI
+
+    recall = _make_recall()
+    try:
+        # 1. Fetch raw transcript from Recall.ai
+        try:
+            raw_transcript = await recall.get_transcript(req.bot_id)
+        except Exception as e:
+            raise HTTPException(500, f"Could not fetch transcript from Recall.ai: {e}")
+
+        if not raw_transcript:
+            raise HTTPException(404, "No transcript found for this bot ID. The interview may not have started or the bot ID is wrong.")
+
+        # 2. Convert Recall.ai transcript format → conversation text
+        # Recall returns: [{"speaker": 0, "words": [...], "participant": {"name": "..."}}, ...]
+        transcript_list = []
+        for utterance in raw_transcript:
+            participant = utterance.get("participant") or {}
+            speaker_name = participant.get("name") or "Candidate"
+            words = utterance.get("words") or []
+            text = " ".join(w.get("text", "") for w in words).strip()
+            if text:
+                transcript_list.append({"speaker": speaker_name, "text": text})
+
+        if not transcript_list:
+            raise HTTPException(404, "Transcript is empty — no speech was captured.")
+
+        transcript_text = "\n".join(f"{e['speaker']}: {e['text']}" for e in transcript_list)
+        word_count = len(transcript_text.split())
+        print(f"[Recover] Bot {req.bot_id}: {len(transcript_list)} utterances, {word_count} words")
+
+        # 3. Determine interview status
+        if word_count >= 200:
+            interview_status = "completed"
+        elif word_count >= 100:
+            interview_status = "partial"
+        else:
+            interview_status = "no_show"
+
+        # 4. Fetch candidate info
+        try:
+            candidate = convex_client.query("candidates:get", {"id": req.candidate_id})
+        except Exception as e:
+            raise HTTPException(500, f"Could not fetch candidate: {e}")
+        if not candidate:
+            raise HTTPException(404, "Candidate not found")
+
+        candidate_name = candidate.get("name", "Candidate")
+        recruiter_id = candidate.get("recruiterId", "")
+
+        # 5. Generate scorecard via OpenAI (standalone, no in-memory pipeline state)
+        scorecard = {}
+        if word_count >= 100:
+            openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+            scorecard_prompt = f"""You are an expert recruiter evaluating a voice interview conducted by an AI bot.
+
+IMPORTANT — ASR TRANSCRIPT NOTICE:
+This transcript was produced by real-time speech-to-text on a live voice call. It may contain garbled technical terms, sentence fragments, and disfluencies — these are STT artefacts. Read every answer charitably. Do NOT penalise for garbled words or broken sentences. Only penalise for genuine lack of knowledge.
+
+Candidate: {candidate_name}
+Role: {req.role_name}
+
+Interview Transcript:
+{transcript_text[:6000]}
+
+Generate a comprehensive JSON scorecard. Return ONLY valid JSON, no extra text:
+{{
+  "candidate_name": "{candidate_name}",
+  "overall_score": <1-10 integer>,
+  "recommendation": "<Strong Hire | Hire | Maybe | No Hire>",
+  "summary": "<2-3 sentence overall assessment>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "concerns": ["<concern 1>", "<concern 2>"],
+  "categories": {{
+    "technical_knowledge": {{"score": <1-10>, "notes": "<brief note>"}},
+    "communication": {{"score": <1-10>, "notes": "<brief note>"}},
+    "problem_solving": {{"score": <1-10>, "notes": "<brief note>"}},
+    "cultural_fit": {{"score": <1-10>, "notes": "<brief note>"}}
+  }}
+}}"""
+            try:
+                model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+                resp = await openai_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": scorecard_prompt}],
+                    max_tokens=800,
+                    temperature=0.2,
+                    response_format={"type": "json_object"},
+                )
+                import json as _json
+                scorecard = _json.loads(resp.choices[0].message.content or "{}")
+                print(f"[Recover] Scorecard generated: score={scorecard.get('overall_score')}")
+            except Exception as e:
+                print(f"[Recover] Scorecard generation error: {e}")
+
+        # 6. Save meeting to Convex
+        try:
+            meeting_id = convex_client.mutation("meetings:create", {
+                "meetingUrl": req.meeting_url or f"recovered/bot/{req.bot_id}",
+                "candidateName": candidate_name,
+                "botName": "RecruitX AI Interviewer",
+                "transcript": transcript_list,
+                "scorecard": scorecard,
+                "botId": req.bot_id,
+                "interviewStatus": interview_status,
+                "recruiterId": recruiter_id,
+                "roleName": req.role_name,
+                "attemptNumber": req.attempt_number,
+            })
+            print(f"[Recover] Meeting saved: {meeting_id}")
+        except Exception as e:
+            raise HTTPException(500, f"Failed to save meeting to Convex: {e}")
+
+        # 7. Update candidate status
+        try:
+            import time as _time
+            if interview_status in ("completed", "partial"):
+                if req.attempt_number == 1:
+                    cooldown_until = int(_time.time() * 1000) + 7 * 24 * 60 * 60 * 1000
+                    convex_client.mutation("candidates:updateStatus", {
+                        "id": req.candidate_id,
+                        "interviewStatus": "cooldown",
+                        "attemptCount": 1,
+                        "cooldownUntil": cooldown_until,
+                    })
+                else:
+                    convex_client.mutation("candidates:updateStatus", {
+                        "id": req.candidate_id,
+                        "interviewStatus": "locked",
+                        "attemptCount": 2,
+                        "cooldownUntil": None,
+                    })
+        except Exception as e:
+            print(f"[Recover] Candidate status update error (non-fatal): {e}")
+
+        # 8. Mark scheduled interview as completed if one exists
+        try:
+            all_scheduled = convex_client.query("scheduledInterviews:list") or []
+            for s in all_scheduled:
+                if s.get("candidateId") == req.candidate_id and s.get("status") == "active":
+                    convex_client.mutation("scheduledInterviews:updateStatus", {
+                        "id": s["_id"], "status": "completed",
+                        "meetingId": str(meeting_id),
+                    })
+                    break
+        except Exception as e:
+            print(f"[Recover] Scheduled interview update error (non-fatal): {e}")
+
+        _log_timeline(req.candidate_id, "interview_ended", metadata={
+            "status": interview_status, "wordCount": word_count,
+            "attemptNumber": req.attempt_number, "recoveredFromBotId": req.bot_id,
+        })
+
+        return {
+            "status": "recovered",
+            "meeting_id": str(meeting_id),
+            "interview_status": interview_status,
+            "word_count": word_count,
+            "utterances": len(transcript_list),
+            "scorecard": scorecard,
+        }
+    finally:
+        await recall.aclose()
+
+
 @app.post("/api/admin/candidates/{candidate_id}/reset")
 def admin_reset_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
     """Admin-only: reset a candidate's interview state so they can be re-scheduled.
