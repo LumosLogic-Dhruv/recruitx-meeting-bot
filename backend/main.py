@@ -764,30 +764,50 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
     except Exception as e:
         print(f"[AutoEnd] Convex save error: {e}")
 
-    # Send appropriate email to candidate (non-blocking, fire-and-forget)
+    # ── Emails — send immediately, fire-and-forget ───────────────────────────────
     candidate_email = session.get("candidate_email", "")
+    recruiter_id    = session.get("recruiter_id", "")
+    role_name       = session.get("role_name", "Interview")
+    attempt_number  = session.get("attempt_number", 1)
+    candidate_id_   = session.get("candidate_id", "")
+
     if candidate_email and scorecard and word_count >= 100:
-        # Completed/partial interview → send scorecard
+        # Candidate scorecard email
         asyncio.create_task(
             _send_scorecard_email(
                 candidate_name=candidate_name,
                 candidate_email=candidate_email,
                 scorecard=scorecard,
-                role_name=session.get("role_name", "Interview"),
-                attempt_number=session.get("attempt_number", 1),
-                candidate_id=session.get("candidate_id", ""),
+                role_name=role_name,
+                attempt_number=attempt_number,
+                candidate_id=candidate_id_,
             )
         )
+        # Recruiter summary email — sent NOW (not after recording which can take 2-5 min
+        # and sometimes never arrives). Recording URL is checked on the dashboard.
+        if recruiter_id:
+            asyncio.create_task(
+                _send_recruiter_summary_email(
+                    recruiter_id=recruiter_id,
+                    candidate_name=candidate_name,
+                    role_name=role_name,
+                    attempt_number=attempt_number,
+                    scorecard=scorecard,
+                    interview_status=interview_status,
+                    recording_url="",         # recording not ready yet — recruiter checks dashboard
+                    meeting_id=str(meeting_id) if meeting_id else "",
+                )
+            )
     elif candidate_email and interview_status == "no_show":
         # No-show → notify candidate so they know they missed it
         asyncio.create_task(
             _send_no_show_email(
                 candidate_name=candidate_name,
                 candidate_email=candidate_email,
-                role_name=session.get("role_name", "Interview"),
-                attempt_number=session.get("attempt_number", 1),
-                candidate_id=session.get("candidate_id", ""),
-                recruiter_id=session.get("recruiter_id", ""),
+                role_name=role_name,
+                attempt_number=attempt_number,
+                candidate_id=candidate_id_,
+                recruiter_id=recruiter_id,
                 scheduled_at_ms=session.get("scheduled_at_ms", 0),
             )
         )
@@ -899,34 +919,17 @@ async def _fetch_and_store_recording(
     print(f"[Recording] Waiting for recording of bot {bot_id}...")
     recall = _make_recall()
     try:
-        # Wait for the full mixed recording to be ready (up to 5 min).
-        recording = await recall.poll_bot_recording(bot_id, max_wait=300)
-        if not recording:
+        # poll_bot_recording returns the full bot dict once media_shortcuts.video_mixed_mp4
+        # status == "done". extract_recording_urls then pulls all artefact URLs from it.
+        bot_data = await recall.poll_bot_recording(bot_id, max_wait=300)
+        if not bot_data:
             print(f"[Recording] Gave up waiting for bot {bot_id}")
             return
 
-        recording_id = recording.get("id")
-
-        # Extract full mixed video URL.
-        shortcuts = recording.get("media_shortcuts") or {}
-        video_mixed = shortcuts.get("video_mixed") or {}
-        recording_url = (video_mixed.get("data") or {}).get("download_url")
-
-        # Fetch per-participant separate audio (bot track + candidate track).
-        bot_audio_url = None
-        candidate_audio_url = None
-        if recording_id:
-            tracks = await recall.get_separate_audio(recording_id, max_wait=120)
-            for track in tracks:
-                participant = track.get("participant") or {}
-                url = (track.get("data") or {}).get("download_url")
-                if not url:
-                    continue
-                # Recall.ai bots join as non-hosts; the meeting owner (candidate) is the host.
-                if participant.get("is_host"):
-                    candidate_audio_url = url
-                else:
-                    bot_audio_url = url
+        urls = recall.extract_recording_urls(bot_data)
+        recording_url       = urls["recording_url"]
+        bot_audio_url       = urls["bot_audio_url"]
+        candidate_audio_url = urls["candidate_audio_url"]
 
         try:
             convex_client.mutation(
@@ -946,20 +949,9 @@ async def _fetch_and_store_recording(
         except Exception as e:
             print(f"[Recording] Failed to update Convex: {e}")
 
-        # Send recruiter summary email now that recording URL is available
-        if recruiter_id and scorecard is not None:
-            asyncio.create_task(
-                _send_recruiter_summary_email(
-                    recruiter_id=recruiter_id,
-                    candidate_name=candidate_name,
-                    role_name=role_name,
-                    attempt_number=attempt_number,
-                    scorecard=scorecard or {},
-                    interview_status=interview_status,
-                    recording_url=recording_url or "",
-                    meeting_id=meeting_id,
-                )
-            )
+        # Recruiter summary email is now sent directly from _auto_end_session
+        # (immediately after interview, not gated on recording availability).
+        # Sending it here a second time after recording was ready caused double emails.
     finally:
         await recall.aclose()
 
@@ -1323,6 +1315,56 @@ async def fetch_recording_for_meeting(meeting_id: str, user: dict = Depends(get_
         "message": "Recording fetch started in background. Poll GET /api/meetings/{meeting_id}/recording in 2–5 minutes.",
         "bot_id": bot_id,
     }
+
+
+@app.post("/api/meetings/{meeting_id}/recording/retry")
+async def retry_recording_fetch(meeting_id: str, user: dict = Depends(get_current_user)):
+    """
+    Trigger the RecordingManager retry pipeline for a meeting's recording.
+    Uses exponential backoff: 15 s → 30 s → 60 s → 120 s → 5 min.
+    Returns immediately — the retry runs in the background.
+    """
+    try:
+        meeting = convex_client.query("meetings:get", {"id": meeting_id})
+        if not meeting:
+            raise HTTPException(404, "Meeting not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+    bot_id = meeting.get("botId")
+    if not bot_id:
+        raise HTTPException(400, "Meeting has no botId")
+
+    async def _retry_task():
+        try:
+            from recording_manager import RecordingManager
+            mgr = RecordingManager()
+            await mgr.retry_until_available(convex_client, bot_id, meeting_id)
+        except Exception as _e:
+            print(f"[RecordingManager] retry_recording_fetch task error (non-fatal): {_e}")
+
+    asyncio.create_task(_retry_task())
+    return {
+        "status": "retrying",
+        "message": "Recording retry started in background with exponential backoff.",
+        "bot_id": bot_id,
+    }
+
+
+@app.get("/api/meetings/{meeting_id}/recording/validate")
+async def validate_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user)):
+    """
+    Validate the recording URL for a meeting using the RecordingManager.
+    Checks: HTTPS, reachability, non-zero content. Updates status if valid.
+    """
+    try:
+        from recording_manager import validate_recording
+        result = await validate_recording(convex_client, meeting_id)
+        return result
+    except Exception as e:
+        return {"valid": False, "status": "error", "reason": str(e)}
 
 
 @app.get("/api/prompts")
@@ -2198,7 +2240,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     else:
         raise HTTPException(400, f"Unknown platform: {req.platform}")
 
-    # Send email invite — try SMTP first, fall back to Gmail API
+    # Send email invite — calendar invite (ICS) first, then SMTP fallback, then Gmail API
     email_sent = False
     smtp_config = {}
     try:
@@ -2209,7 +2251,36 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
     smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
 
+    # Primary path: enhanced calendar invitation with ICS attachment and calendar buttons
     if smtp_user and smtp_pass:
+        try:
+            from interview_calendar import CalendarEventData, send_calendar_invite
+            from datetime import timezone as _tz
+            _recruiter_name = user.get("name", os.getenv("COMPANY_NAME", "LumosLogic"))
+            _cal_event = CalendarEventData(
+                title=f"Interview — {candidate['name']} ({req.role_name})",
+                candidate_name=candidate["name"],
+                candidate_email=candidate["email"],
+                job_title=req.role_name,
+                recruiter_name=_recruiter_name,
+                organizer_email=smtp_user,
+                start=scheduled_dt.replace(tzinfo=_tz.utc),
+                duration_minutes=req.duration_minutes,
+                meet_url=meeting_url,
+                timezone_name="UTC",
+            )
+            email_sent = await send_calendar_invite(
+                event=_cal_event,
+                candidate_email=candidate["email"],
+                smtp_config=smtp_config,
+            )
+            if email_sent:
+                print("[Schedule] Calendar invite with ICS sent successfully")
+        except Exception as e:
+            print(f"[Schedule] Calendar invite error (non-fatal): {e}")
+
+    # Fallback: plain SMTP email (no ICS) if calendar invite failed
+    if not email_sent and smtp_user and smtp_pass:
         try:
             email_sent = await gauth.send_interview_email_smtp(
                 candidate_name=candidate["name"],
@@ -2220,10 +2291,12 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 duration_minutes=req.duration_minutes,
                 smtp_config=smtp_config,
             )
+            if email_sent:
+                print("[Schedule] Fallback SMTP email sent")
         except Exception as e:
             print(f"[Schedule] SMTP email error (non-fatal): {e}")
 
-    # Fall back to Gmail API if SMTP didn't send (works for both auto and manual links)
+    # Final fallback: Gmail API (works for both auto and manual links)
     tokens = convex_client.query("settings:get", {"key": "google_tokens"}) if not email_sent else None
     if not email_sent and tokens and tokens.get("refresh_token"):
         sender = smtp_config.get("user") or os.getenv("SMTP_USER", os.getenv("GOOGLE_SENDER_EMAIL", ""))

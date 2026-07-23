@@ -174,65 +174,87 @@ class RecallClient:
             res.raise_for_status()
 
     async def poll_bot_recording(self, bot_id: str, max_wait: int = 300) -> dict:
-        """Poll GET /bot/{id}/ until recording is done. Returns the recording object."""
+        """Poll GET /bot/{id}/ until the mixed-video recording is ready.
+
+        Recall.ai stores recording artefacts in bot.media_shortcuts, keyed by the
+        recording_config field names (video_mixed_mp4, audio_separate_mp3, transcript).
+        The old code looked for bot.recording / bot.recordings which do not exist in
+        the current Recall.ai API — that is why recordings were never being stored.
+
+        Returns the full bot dict (so callers can pull any shortcut they need),
+        or {} if the recording never becomes ready within max_wait seconds.
+        """
         interval = 15
-        elapsed = 0
+        elapsed  = 0
         while elapsed < max_wait:
             await asyncio.sleep(interval)
             elapsed += interval
             try:
-                bot = await self.get_bot(bot_id)
-                print(f"[Recall] Bot keys: {list(bot.keys())}")
+                bot      = await self.get_bot(bot_id)
+                shortcuts = bot.get("media_shortcuts") or {}
 
-                # Recall.ai may return 'recording' (object), 'recordings' (list), or both.
-                candidates: list[dict] = []
-                r = bot.get("recording")
-                if isinstance(r, list):
-                    candidates = r
-                elif isinstance(r, dict):
-                    candidates = [r]
-                rs = bot.get("recordings")
-                if isinstance(rs, list):
-                    candidates += rs
-                elif isinstance(rs, dict):
-                    candidates.append(rs)
+                # Check both possible key names — Recall.ai uses the same key as
+                # the recording_config entry (video_mixed_mp4) but some regions/plans
+                # may expose it as video_mixed. Check both to be safe.
+                video_info = (
+                    shortcuts.get("video_mixed_mp4")
+                    or shortcuts.get("video_mixed")
+                    or {}
+                )
+                status = video_info.get("status", "")
+                print(f"[Recall] Recording status={status!r} (bot {bot_id})")
 
-                print(f"[Recall] Recording candidates: {len(candidates)}")
-                for rec in candidates:
-                    status_code = (rec.get("status") or {}).get("code", "")
-                    print(f"[Recall] Recording id={rec.get('id')} status={status_code}")
-                    if status_code == "done":
-                        print(f"[Recall] Recording done: id={rec.get('id')}")
-                        return rec
+                if status == "done":
+                    url = (video_info.get("data") or {}).get("download_url", "")
+                    print(f"[Recall] Recording ready — url={'yes' if url else 'no'}")
+                    return bot   # return full bot so caller can extract any artefact
+
             except Exception as e:
                 print(f"[Recall] Recording poll error: {e}")
+
         print(f"[Recall] Recording not ready after {max_wait}s for bot {bot_id}")
         return {}
 
-    async def get_separate_audio(self, recording_id: str, max_wait: int = 120) -> list:
-        """Poll until all separate audio tracks are done. Returns results list."""
-        interval = 10
-        elapsed = 0
-        while elapsed < max_wait:
-            try:
-                res = await self._client.get(
-                    f"{self.base_url}/audio_separate/",
-                    params={"recording_id": recording_id},
-                    timeout=15.0,
-                )
-                res.raise_for_status()
-                results = res.json().get("results", [])
-                if results and all(
-                    (r.get("status") or {}).get("code") == "done" for r in results
-                ):
-                    print(f"[Recall] Separate audio ready: {len(results)} track(s)")
-                    return results
-            except Exception as e:
-                print(f"[Recall] Separate audio poll error: {e}")
-            await asyncio.sleep(interval)
-            elapsed += interval
-        print(
-            f"[Recall] Separate audio not ready after {max_wait}s "
-            f"for recording {recording_id}"
+    def extract_recording_urls(self, bot: dict) -> dict:
+        """Pull all recording artefact URLs out of a bot dict returned by poll_bot_recording.
+        Returns a dict with keys: recording_url, bot_audio_url, candidate_audio_url.
+        All values default to None if the artefact is missing or not yet ready."""
+        shortcuts = bot.get("media_shortcuts") or {}
+
+        # ── Mixed video ────────────────────────────────────────────────────────
+        video_info = (
+            shortcuts.get("video_mixed_mp4")
+            or shortcuts.get("video_mixed")
+            or {}
         )
-        return []
+        recording_url = (video_info.get("data") or {}).get("download_url")
+
+        # ── Separate audio tracks ──────────────────────────────────────────────
+        # Recall.ai returns audio_separate_mp3 as a LIST of per-participant objects.
+        audio_tracks = (
+            shortcuts.get("audio_separate_mp3")
+            or shortcuts.get("audio_separate")
+            or []
+        )
+        if isinstance(audio_tracks, dict):
+            # Some API versions return a dict keyed by participant_id
+            audio_tracks = list(audio_tracks.values())
+
+        bot_audio_url       = None
+        candidate_audio_url = None
+        for track in audio_tracks:
+            url         = (track.get("data") or {}).get("download_url")
+            participant = track.get("participant") or {}
+            if not url:
+                continue
+            # Recall.ai bots join as non-hosts; the candidate is typically the host.
+            if participant.get("is_host"):
+                candidate_audio_url = url
+            else:
+                bot_audio_url = url
+
+        return {
+            "recording_url":       recording_url,
+            "bot_audio_url":       bot_audio_url,
+            "candidate_audio_url": candidate_audio_url,
+        }

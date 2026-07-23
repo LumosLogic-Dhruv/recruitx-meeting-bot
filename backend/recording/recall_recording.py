@@ -40,7 +40,13 @@ def _extract(bot: dict) -> dict:
 
     # ── Video URL ──────────────────────────────────────────────────────────────
     shortcuts = bot.get("media_shortcuts") or {}
-    video_mixed = shortcuts.get("video_mixed") or {}
+    # Check both possible key names — recording_config uses video_mixed_mp4 but some
+    # Recall.ai regions/plans may surface it as video_mixed.
+    video_mixed = (
+        shortcuts.get("video_mixed_mp4")
+        or shortcuts.get("video_mixed")
+        or {}
+    )
     if isinstance(video_mixed, dict):
         vdata = video_mixed.get("data") or {}
         recording_url = vdata.get("download_url") or vdata.get("url") or ""
