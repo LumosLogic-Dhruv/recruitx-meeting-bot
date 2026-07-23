@@ -16,6 +16,8 @@ Architecture notes
 - All public functions are safe to call from background tasks (never raise).
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import smtplib
@@ -26,6 +28,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Optional
 
 from .ics_generator import generate_ics as _build_ics
 from .calendar_links import (
@@ -238,7 +241,7 @@ def _send_sync(
 async def send_calendar_invite(
     event: CalendarEventData,
     candidate_email: str,
-    smtp_config: dict | None = None,
+    smtp_config: Optional[dict] = None,
 ) -> bool:
     """
     Generate and send a calendar invitation email with ICS attachment.
