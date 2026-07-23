@@ -115,8 +115,11 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
     event = {
         "summary": f"Interview — {candidate_name} ({role_name})",
         "description": (
-            f"AI-conducted interview for {candidate_name} applying for {role_name}.\n"
-            "The RecruitX AI Interviewer will join and begin automatically."
+            f"You have been invited for an AI-conducted interview for the {role_name} position.\n\n"
+            f"The RecruitX AI Interviewer will join and begin the conversation automatically "
+            f"when you enter the meeting.\n\n"
+            "Please join from a quiet place with a stable internet connection.\n"
+            "Use Chrome or Edge browser for the best Google Meet experience."
         ),
         "start": {"dateTime": scheduled_at.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_at.isoformat(), "timeZone": "UTC"},
@@ -127,12 +130,25 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
             }
         },
         "attendees": attendees,
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "email",  "minutes": 60},
+                {"method": "popup",  "minutes": 30},
+            ],
+        },
+        "guestsCanModifyEvent": False,
+        "guestsCanSeeOtherGuests": False,
     }
+    # sendUpdates="all" → Google Calendar emails a calendar invite to every attendee
+    # and adds the event directly to their calendar. This is the standard approach
+    # used by Calendly, Ashby, and Lever. Our SMTP email also goes separately with
+    # full interview details and the ICS attachment.
     result = service.events().insert(
         calendarId="primary",
         body=event,
         conferenceDataVersion=1,
-        sendUpdates="none",
+        sendUpdates="all",
     ).execute()
     return {
         "meet_url": result.get("hangoutLink", ""),
