@@ -2281,6 +2281,9 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 role_name=req.role_name,
             )
         except Exception as e:
+            err_str = str(e)
+            if "invalid_grant" in err_str or "Token has been expired" in err_str or "revoked" in err_str:
+                raise HTTPException(400, "GOOGLE_TOKEN_EXPIRED")
             raise HTTPException(500, f"Google Meet creation failed: {e}")
         meeting_url = meet_result["meet_url"]
         calendar_event_id = meet_result["event_id"]

@@ -136,7 +136,15 @@ export default function SchedulePage() {
         }),
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.detail || "Failed");
+      if (!res.ok) {
+        const detail = d.detail || "Failed";
+        if (detail === "GOOGLE_TOKEN_EXPIRED") {
+          setAlert({ msg: "GOOGLE_TOKEN_EXPIRED", type: "error" });
+        } else {
+          throw new Error(detail);
+        }
+        return;
+      }
       const emailNote = d.email_sent ? "Email invite sent ✓"
         : meetingMode === "manual" ? "Share meeting link with candidate manually"
         : "Configure SMTP in Settings to send emails";
@@ -295,11 +303,31 @@ export default function SchedulePage() {
               <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>Candidate profile and resume context is automatically prepended.</p>
             </div>
 
-            {alert && (
+            {alert && alert.msg === "GOOGLE_TOKEN_EXPIRED" ? (
+              <div style={{ padding: "14px 16px", borderRadius: 10, fontSize: 13, marginBottom: 14, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Google account token expired</div>
+                <div style={{ fontSize: 12, color: "#fca5a5", marginBottom: 10, lineHeight: 1.6 }}>
+                  Your Google Calendar connection has expired or been revoked.<br />
+                  Reconnect it in Settings to auto-generate Google Meet links.
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Link href="/recruiter/schedule" style={{ flex: 1 }}>
+                    <button type="button" onClick={() => { setMeetingMode("manual"); setAlert(null); }} style={{ width: "100%", padding: "8px 0", fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,0.07)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, cursor: "pointer" }}>
+                      Use manual link instead
+                    </button>
+                  </Link>
+                  <Link href="/admin" style={{ flex: 1 }}>
+                    <button type="button" style={{ width: "100%", padding: "8px 0", fontSize: 12, fontWeight: 700, background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer" }}>
+                      Go to Settings →
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            ) : alert ? (
               <div style={{ padding: "11px 14px", borderRadius: 8, fontSize: 13, marginBottom: 14, ...(alertColors[alert.type] ? { background: alertColors[alert.type][0], color: alertColors[alert.type][1] } : {}) }}>
                 {alert.msg}
               </div>
-            )}
+            ) : null}
             <button type="submit" disabled={loading || generatingPrompt} style={{ width: "100%", padding: "12px 22px", background: (loading || generatingPrompt) ? "rgba(139,92,246,0.3)" : "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: (loading || generatingPrompt) ? "not-allowed" : "pointer" }}>
               {loading ? "Scheduling..." : generatingPrompt ? "Wait — generating prompt..." : "Schedule & Send Invite →"}
             </button>
@@ -326,7 +354,7 @@ export default function SchedulePage() {
                   <tr key={iv._id}>
                     <td style={{ padding: "12px", fontSize: 13, borderBottom: `1px solid ${G}0.05)`, color: "#f1f5f9", fontWeight: 600 }}>{iv.candidateName}</td>
                     <td style={{ padding: "12px", fontSize: 12, borderBottom: `1px solid ${G}0.05)`, color: "#94a3b8" }}>{iv.roleName}</td>
-                    <td style={{ padding: "12px", fontSize: 11, color: "#64748b", borderBottom: `1px solid ${G}0.05)` }}>{new Date(iv.scheduledAt).toLocaleString()}</td>
+                    <td style={{ padding: "12px", fontSize: 11, color: "#64748b", borderBottom: `1px solid ${G}0.05)` }}>{new Date(iv.scheduledAt).toISOString().replace("T", " ").slice(0, 16)} UTC</td>
                     <td style={{ padding: "12px", textAlign: "center", borderBottom: `1px solid ${G}0.05)`, color: "#94a3b8", fontSize: 12 }}>#{iv.attemptNumber || 1}</td>
                     <td style={{ padding: "12px", borderBottom: `1px solid ${G}0.05)` }}>
                       <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: sbg, color: scol }}>{iv.status}</span>
