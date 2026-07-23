@@ -338,14 +338,25 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             print(f"[Webhook] {event} — auto-ending session {bot_id} for {candidate_name}")
             background_tasks.add_task(_auto_end_session, bot_id, session, candidate_name)
 
-    # Recording module — handle Recall.ai recording-ready events independently.
-    # Never blocks the webhook. Always safe to fail.
-    if event in ("bot.recording_ready", "recording.complete", "bot.media_shortcuts_updated"):
+    # recording.done — Recall.ai fires this when ALL media objects for the recording
+    # are fully processed and the download_url is ready. This is the authoritative signal.
+    # Also handle bot.media_shortcuts_updated which fires when shortcuts are refreshed.
+    if event in ("recording.done", "bot.media_shortcuts_updated"):
         try:
             from recording import handle_recording_webhook
             background_tasks.add_task(handle_recording_webhook, convex_client, body)
         except Exception as _rec_err:
             print(f"[Webhook] Recording module hook error (non-fatal): {_rec_err}")
+
+        # Additionally: immediately fetch and store the recording URL in the meetings table
+        # using the bot_id from the payload so the history page shows it right away.
+        _rec_bot_id = (
+            (body.get("data") or {}).get("bot", {}).get("id")
+            or (body.get("data") or {}).get("data", {}).get("bot", {}).get("id")
+            or ""
+        )
+        if _rec_bot_id:
+            background_tasks.add_task(_fetch_recording_on_webhook, _rec_bot_id)
 
     # Participant joined the call — resume pipeline, greet first-timers or re-greet rejoinders
     if event == "participant.join":
@@ -903,6 +914,46 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
                 "overallScore": scorecard.get("overall_score") if scorecard else None,
                 "recommendation": scorecard.get("recommendation", "") if scorecard else "",
             })
+
+
+async def _fetch_recording_on_webhook(bot_id: str) -> None:
+    """
+    Triggered by recording.done / bot.media_shortcuts_updated webhook.
+    Looks up the meeting by bot_id and immediately stores the recording URL.
+    This is a fast path — the URL is ready, no polling needed.
+    """
+    if not bot_id:
+        return
+    try:
+        # Find the meeting that owns this bot_id
+        meeting = convex_client.query("meetings:getByBotId", {"botId": bot_id})
+        if not meeting:
+            print(f"[Recording/webhook] No meeting found for bot {bot_id} — skipping fast path")
+            return
+        meeting_id = str(meeting.get("_id", ""))
+        if not meeting_id:
+            return
+
+        # Don't overwrite a URL we've already stored
+        if meeting.get("recordingUrl"):
+            print(f"[Recording/webhook] recordingUrl already set for meeting {meeting_id}")
+            return
+
+        recall = _make_recall()
+        try:
+            rec_url = await recall.fetch_recording_by_bot(bot_id)
+            if rec_url:
+                convex_client.mutation("meetings:updateRecording", {
+                    "id": meeting_id,
+                    "recordingUrl": rec_url,
+                })
+                print(f"[Recording/webhook] Fast-path URL stored for meeting {meeting_id}")
+            else:
+                print(f"[Recording/webhook] recording.done fired but URL still not ready — _fetch_and_store_recording will retry")
+        finally:
+            await recall.aclose()
+    except Exception as e:
+        print(f"[Recording/webhook] _fetch_recording_on_webhook error (non-fatal): {e}")
 
 
 async def _fetch_and_store_recording(

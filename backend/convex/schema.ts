@@ -33,7 +33,7 @@ export default defineSchema({
     attemptNumber: v.optional(v.number()),
     transcriptText: v.optional(v.string()),   // full transcript as plain text for search/display
     wordCount: v.optional(v.number()),        // total word count for quick filtering
-  }),
+  }).index("by_bot_id", ["botId"]),
 
   rolePrompts: defineTable({
     roleName: v.string(),

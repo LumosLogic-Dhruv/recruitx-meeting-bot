@@ -94,3 +94,13 @@ export const get = query({
     return await ctx.db.get(args.id as any);
   },
 });
+
+export const getByBotId = query({
+  args: { botId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("meetings")
+      .withIndex("by_bot_id", (q) => q.eq("botId", args.botId))
+      .first();
+  },
+});
