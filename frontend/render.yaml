@@ -7,6 +7,6 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://your-fastapi-backend.onrender.com
+        value: https://recruitx-backend-bmvx.onrender.com
       - key: NODE_VERSION
         value: 20

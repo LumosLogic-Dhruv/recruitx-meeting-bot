@@ -33,7 +33,7 @@ def _redirect_uri() -> str:
     base = os.getenv("RENDER_URL", "").strip().rstrip("/")
     if base:
         return f"{base}/api/auth/google/callback"
-    return "https://recruitx-meeting-bot.onrender.com/api/auth/google/callback"
+    return "https://recruitx-backend-bmvx.onrender.com/api/auth/google/callback"
 
 
 def _client_config() -> dict:
