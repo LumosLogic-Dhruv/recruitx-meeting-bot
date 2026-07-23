@@ -1317,6 +1317,56 @@ async def fetch_recording_for_meeting(meeting_id: str, user: dict = Depends(get_
     }
 
 
+@app.post("/api/meetings/{meeting_id}/recording/retry")
+async def retry_recording_fetch(meeting_id: str, user: dict = Depends(get_current_user)):
+    """
+    Trigger the RecordingManager retry pipeline for a meeting's recording.
+    Uses exponential backoff: 15 s → 30 s → 60 s → 120 s → 5 min.
+    Returns immediately — the retry runs in the background.
+    """
+    try:
+        meeting = convex_client.query("meetings:get", {"id": meeting_id})
+        if not meeting:
+            raise HTTPException(404, "Meeting not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Convex error: {str(e)}")
+
+    bot_id = meeting.get("botId")
+    if not bot_id:
+        raise HTTPException(400, "Meeting has no botId")
+
+    async def _retry_task():
+        try:
+            from recording_manager import RecordingManager
+            mgr = RecordingManager()
+            await mgr.retry_until_available(convex_client, bot_id, meeting_id)
+        except Exception as _e:
+            print(f"[RecordingManager] retry_recording_fetch task error (non-fatal): {_e}")
+
+    asyncio.create_task(_retry_task())
+    return {
+        "status": "retrying",
+        "message": "Recording retry started in background with exponential backoff.",
+        "bot_id": bot_id,
+    }
+
+
+@app.get("/api/meetings/{meeting_id}/recording/validate")
+async def validate_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user)):
+    """
+    Validate the recording URL for a meeting using the RecordingManager.
+    Checks: HTTPS, reachability, non-zero content. Updates status if valid.
+    """
+    try:
+        from recording_manager import validate_recording
+        result = await validate_recording(convex_client, meeting_id)
+        return result
+    except Exception as e:
+        return {"valid": False, "status": "error", "reason": str(e)}
+
+
 @app.get("/api/prompts")
 def list_prompts(user: dict = Depends(get_current_user)):
     try:
@@ -2190,7 +2240,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     else:
         raise HTTPException(400, f"Unknown platform: {req.platform}")
 
-    # Send email invite — try SMTP first, fall back to Gmail API
+    # Send email invite — calendar invite (ICS) first, then SMTP fallback, then Gmail API
     email_sent = False
     smtp_config = {}
     try:
@@ -2201,7 +2251,36 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
     smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
 
+    # Primary path: enhanced calendar invitation with ICS attachment and calendar buttons
     if smtp_user and smtp_pass:
+        try:
+            from interview_calendar import CalendarEventData, send_calendar_invite
+            from datetime import timezone as _tz
+            _recruiter_name = user.get("name", os.getenv("COMPANY_NAME", "LumosLogic"))
+            _cal_event = CalendarEventData(
+                title=f"Interview — {candidate['name']} ({req.role_name})",
+                candidate_name=candidate["name"],
+                candidate_email=candidate["email"],
+                job_title=req.role_name,
+                recruiter_name=_recruiter_name,
+                organizer_email=smtp_user,
+                start=scheduled_dt.replace(tzinfo=_tz.utc),
+                duration_minutes=req.duration_minutes,
+                meet_url=meeting_url,
+                timezone_name="UTC",
+            )
+            email_sent = await send_calendar_invite(
+                event=_cal_event,
+                candidate_email=candidate["email"],
+                smtp_config=smtp_config,
+            )
+            if email_sent:
+                print("[Schedule] Calendar invite with ICS sent successfully")
+        except Exception as e:
+            print(f"[Schedule] Calendar invite error (non-fatal): {e}")
+
+    # Fallback: plain SMTP email (no ICS) if calendar invite failed
+    if not email_sent and smtp_user and smtp_pass:
         try:
             email_sent = await gauth.send_interview_email_smtp(
                 candidate_name=candidate["name"],
@@ -2212,10 +2291,12 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 duration_minutes=req.duration_minutes,
                 smtp_config=smtp_config,
             )
+            if email_sent:
+                print("[Schedule] Fallback SMTP email sent")
         except Exception as e:
             print(f"[Schedule] SMTP email error (non-fatal): {e}")
 
-    # Fall back to Gmail API if SMTP didn't send (works for both auto and manual links)
+    # Final fallback: Gmail API (works for both auto and manual links)
     tokens = convex_client.query("settings:get", {"key": "google_tokens"}) if not email_sent else None
     if not email_sent and tokens and tokens.get("refresh_token"):
         sender = smtp_config.get("user") or os.getenv("SMTP_USER", os.getenv("GOOGLE_SENDER_EMAIL", ""))
