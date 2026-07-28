@@ -565,6 +565,27 @@ class ConversationPipeline:
             return True
         return False
 
+    def _compute_thinking_pause(self, user_text: str) -> float:
+        """Adaptive thinking pause — scales with answer length to mirror how a human
+        interviewer naturally absorbs a response before speaking.
+        Pure helper: no network calls, no state mutations, no side effects.
+        Falls back to THINKING_PAUSE on any error so the interview is never affected."""
+        try:
+            words = len(user_text.split())
+            if words <= 3:
+                pause = 0.35
+            elif words <= 12:
+                pause = 0.50
+            elif words <= 35:
+                pause = 0.70
+            elif words <= 80:
+                pause = 0.95
+            else:
+                pause = 1.15
+            return max(0.30, min(1.20, pause))
+        except Exception:
+            return THINKING_PAUSE
+
     async def _wait_for_silence(self):
         timeout = self._adaptive_timeout(self._pending_text)
         print(f"[Pipeline] Silence timer: {timeout}s ({len(self._pending_text.split())} words so far)")
@@ -1189,10 +1210,10 @@ class ConversationPipeline:
         # If they run slightly over, we wait up to 4s more before proceeding.
         plan_dir_task = asyncio.create_task(self._run_plan_and_direct(user_text))
 
-        # Natural thinking pause — simulates a human interviewer absorbing the
-        # answer before formulating the next question. Also prevents rapid-fire
-        # responses when the silence timer fires slightly early.
-        await asyncio.sleep(THINKING_PAUSE)
+        # Adaptive thinking pause — duration scales with answer length to match
+        # how a human interviewer naturally absorbs a response. Falls back to
+        # THINKING_PAUSE (0.6s) on any error. Planner continues in parallel.
+        await asyncio.sleep(self._compute_thinking_pause(user_text))
 
         if self._backchannel_task and not self._backchannel_task.done():
             self._backchannel_task.cancel()
