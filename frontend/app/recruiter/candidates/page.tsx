@@ -649,7 +649,7 @@ export default function CandidatesPage() {
                       {m.recordingUrl && (
                         <div style={{ marginTop: 10 }}>
                           <p style={{ fontSize: 11, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Recording</p>
-                          <audio controls src={m.recordingUrl} style={{ width: "100%", height: 36 }} />
+                          <video controls playsInline src={m.recordingUrl} style={{ width: "100%", borderRadius: 8, background: "rgba(0,0,0,0.2)" }} />
                         </div>
                       )}
                     </div>

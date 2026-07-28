@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { logout, getUser } from "@/lib/api";
+import { useEffect, useState } from "react";
 
 const NAV = [
   { href: "/recruiter",            icon: "📊", label: "Dashboard" },
@@ -24,7 +25,11 @@ function isActive(href: string, pathname: string) {
 
 export default function RecruiterSidebar() {
   const pathname = usePathname();
-  const user = getUser();
+  const [user, setUser] = useState<{name: string, email: string} | null>(null);
+
+  useEffect(() => {
+    setUser(getUser());
+  }, []);
 
   return (
     <aside style={{

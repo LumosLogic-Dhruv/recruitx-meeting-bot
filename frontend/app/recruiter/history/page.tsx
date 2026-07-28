@@ -543,7 +543,7 @@ export default function HistoryPage() {
                         {selected.recordingUrl && (
                           <div style={{ ...card, padding: 20 }}>
                             <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Full Recording</p>
-                            <audio controls src={selected.recordingUrl} style={{ width: "100%" }} />
+                            <video controls playsInline src={selected.recordingUrl} style={{ width: "100%", borderRadius: 8, background: "rgba(0,0,0,0.2)" }} />
                           </div>
                         )}
                         {selected.candidateAudioUrl && (
