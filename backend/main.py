@@ -982,16 +982,32 @@ async def _fetch_and_store_recording(
         bot_audio_url       = urls["bot_audio_url"]
         candidate_audio_url = urls["candidate_audio_url"]
 
+        # Upload to Cloudinary so the URL never expires (Recall URLs expire in 24h).
+        # Falls back to the raw Recall URL if upload fails — non-fatal.
+        if recording_url:
+            try:
+                from recording.cloudinary_uploader import upload_to_cloudinary
+                cloudinary_url = await upload_to_cloudinary(recording_url, bot_id)
+                if cloudinary_url:
+                    recording_url = cloudinary_url
+                    print(f"[Recording] Cloudinary upload done for bot {bot_id}")
+                else:
+                    print(f"[Recording] Cloudinary upload failed — keeping Recall URL (expires 24h)")
+            except Exception as _ce:
+                print(f"[Recording] Cloudinary upload error (non-fatal): {_ce}")
+
+        # Build payload excluding None values — Convex v.optional(v.string()) accepts
+        # undefined (missing key) but rejects null, which is what Python None becomes in JSON.
+        payload: dict = {"id": meeting_id}
+        if recording_url is not None:
+            payload["recordingUrl"] = recording_url
+        if bot_audio_url is not None:
+            payload["botAudioUrl"] = bot_audio_url
+        if candidate_audio_url is not None:
+            payload["candidateAudioUrl"] = candidate_audio_url
+
         try:
-            convex_client.mutation(
-                "meetings:updateRecording",
-                {
-                    "id": meeting_id,
-                    "recordingUrl": recording_url,
-                    "botAudioUrl": bot_audio_url,
-                    "candidateAudioUrl": candidate_audio_url,
-                },
-            )
+            convex_client.mutation("meetings:updateRecording", payload)
             print(
                 f"[Recording] URLs stored for meeting {meeting_id}: "
                 f"recording={bool(recording_url)} bot={bool(bot_audio_url)} "
