@@ -314,6 +314,10 @@ class ConversationPipeline:
         # Future versions may read self._brain_state; current version only writes it.
         self._brain_state: dict = {}
 
+        # Topic flow guard — tracks consecutive follow-ups per topic.
+        # Managed by interview_flow.evaluate_topic_flow(). Shape: {"topic": str, "count": int}
+        self._topic_flow: dict = {}
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
@@ -1278,6 +1282,18 @@ class ConversationPipeline:
             state_ctx = self._build_state_context()
             dir_ctx   = self._build_direction_context(direction)
             plan_ctx  = self._build_plan_context(plan)
+
+            # Topic flow guard — appends a directive when follow-up depth is exceeded.
+            # Pure Python, zero latency, zero API calls. Silently no-ops on any error.
+            try:
+                from interview_flow.topic_flow import evaluate_topic_flow as _etf
+                _tf = _etf(self._topic_flow, plan)
+                if _tf.get("force_topic_change"):
+                    plan_ctx += _tf["directive"]
+                    print(f"[TopicFlow] Directive appended — topic='{self._topic_flow.get('topic')}' count={self._topic_flow.get('count')}")
+            except Exception:
+                pass
+
             messages = list(self._history)
             messages[0] = {
                 "role": "system",
