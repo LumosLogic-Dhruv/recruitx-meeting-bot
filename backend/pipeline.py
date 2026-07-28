@@ -310,6 +310,10 @@ class ConversationPipeline:
         self._intel_curiosity_log: list = []
         self._intel_profile:  dict = {}
 
+        # Interview Brain — passive observation layer (fire-and-forget, never blocks interview)
+        # Future versions may read self._brain_state; current version only writes it.
+        self._brain_state: dict = {}
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
@@ -1211,6 +1215,10 @@ class ConversationPipeline:
             # They never block the interview — results are stored for future turns.
             asyncio.create_task(self._run_intelligence_helpers(user_text))
 
+            # Fire Interview Brain as a separate fire-and-forget background task.
+            # Observation-only — if it fails the interview is completely unaffected.
+            asyncio.create_task(self._run_brain(user_text))
+
             # Correction detection — update profile before LLM sees this turn's context
             correction = self._detect_correction(user_text)
             if correction:
@@ -1689,6 +1697,34 @@ Guidelines:
                 self._intel_curiosity_log.append(curiosity)
         except Exception as e:
             print(f"[Intelligence] Background task error (non-fatal): {e}")
+
+    async def _run_brain(self, user_text: str) -> None:
+        """Fire-and-forget background task — runs Interview Brain after each candidate turn.
+        Stores the updated InterviewBrainState on self._brain_state for optional future use.
+        Never blocks. Never raises. If the package is missing, exits silently."""
+        try:
+            from interview_brain import run as _brain_run, DEFAULT_BRAIN_STATE
+        except ImportError:
+            return
+        try:
+            interview_snapshot = {
+                "phase":             self._state.current_phase,
+                "topic":             self._state.current_topic,
+                "topics_covered":    list(self._state.topics_covered),
+                "topics_remaining":  list(self._state.topics_remaining),
+                "elapsed_minutes":   self._state.elapsed_minutes(),
+                "questions_asked":   self._state.questions_asked,
+            }
+            updated = await _brain_run(
+                openai_client=self._openai,
+                model=self._model,
+                turn_text=user_text,
+                existing_state=self._brain_state or DEFAULT_BRAIN_STATE.copy(),
+                interview_state=interview_snapshot,
+            )
+            self._brain_state = updated
+        except Exception as e:
+            print(f"[Brain] Background task error (non-fatal): {e}")
 
     async def aclose(self):
         """Cancel background tasks and release the HTTP client. Call on session end."""
