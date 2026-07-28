@@ -318,6 +318,14 @@ class ConversationPipeline:
         # Managed by interview_flow.evaluate_topic_flow(). Shape: {"topic": str, "count": int}
         self._topic_flow: dict = {}
 
+        # STT fallback — activates when Deepgram endpointing is blocked by background noise.
+        # Managed by stt_fallback.FallbackController. Safe no-op when Deepgram behaves normally.
+        try:
+            from stt_fallback import FallbackController as _FBC
+            self._stt_fallback = _FBC()
+        except Exception:
+            self._stt_fallback = None
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
@@ -370,6 +378,18 @@ class ConversationPipeline:
         """Called on finalized transcript segments (transcript.data events)."""
         self._last_activity_at = time.monotonic()
 
+        # STT fallback reconciliation — must run before any other check.
+        # feed_final() resets the fallback and returns True when the final covers
+        # the same utterance already handled by the fallback (swallow it to avoid
+        # a duplicate turn). Returns False for all other cases — normal processing continues.
+        try:
+            if self._stt_fallback is not None:
+                if self._stt_fallback.feed_final(text):
+                    print(f"[STTFallback] Real final reconciled — swallowing duplicate ({len(text.split())} words)")
+                    return
+        except Exception:
+            pass
+
         # Drop pure-noise segments (filler sounds / background noise bursts) before
         # they reach the LLM or trigger a bot response.
         if self._is_noise_only(text):
@@ -396,19 +416,54 @@ class ConversationPipeline:
         self._words_since_last_bot += len(text.split())
         self._reset_silence_timer()
 
-    def on_partial_transcript(self, speaker: str = "Candidate"):
+    def on_partial_transcript(self, speaker: str = "Candidate", text: str = ""):
         """Called on interim transcript segments (transcript.partial_data events).
         Does NOT accumulate text — the final event delivers the clean version.
         Two purposes: (1) reset the silence timer so the AI knows the candidate is
         still speaking; (2) cancel in-progress bot speech so the bot never talks
-        over a candidate who is mid-sentence."""
+        over a candidate who is mid-sentence.
+        text parameter added for STT fallback tracking — default "" is backwards compatible."""
         if self._speaking:
             # Candidate is speaking while bot is generating/playing a response —
             # mark as interrupted so the TTS pipeline stops at the next checkpoint.
             self._was_interrupted = True
             return
+
+        # Feed partial text to STT fallback tracker (always, before the pending check).
+        try:
+            if self._stt_fallback is not None:
+                self._stt_fallback.feed_partial(text)
+        except Exception:
+            pass
+
         if self._pending_text:
-            self._reset_silence_timer()
+            # We have pending text. Reset the silence timer only when NOT in fallback mode.
+            # In fallback mode the pending text was set by the fallback — continuous noise
+            # partials must not reset the timer or the pipeline would never proceed.
+            try:
+                if self._stt_fallback is None or not self._stt_fallback.consumed:
+                    self._reset_silence_timer()
+            except Exception:
+                self._reset_silence_timer()
+            return
+
+        # No pending text yet — check whether the fallback can activate.
+        try:
+            if self._stt_fallback is not None:
+                ready = self._stt_fallback.get_ready_text()
+                if ready:
+                    print(
+                        f"[STTFallback] Stable partial activated "
+                        f"({len(ready.split())} words): {ready[:60]}"
+                    )
+                    self._pending_text    = ready
+                    self._pending_speaker = speaker
+                    self._pending_clean_task = asyncio.create_task(
+                        self._clean_transcript(ready)
+                    )
+                    self._reset_silence_timer()
+        except Exception:
+            pass
 
     # ── Backchannel (DISABLED) ─────────────────────────────────────────────────
     # Backchannels ("I see", "Got it", etc.) are disabled because ElevenLabs TTS

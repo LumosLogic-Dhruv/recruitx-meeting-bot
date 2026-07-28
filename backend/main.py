@@ -465,7 +465,7 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
                 # the candidate is still speaking. Do NOT accumulate partial text —
                 # the final event will deliver the clean, punctuated version.
                 print(f"[Webhook] PARTIAL — {speaker}: {text[:50]}…")
-                pipeline.on_partial_transcript(speaker)
+                pipeline.on_partial_transcript(speaker, text)
 
     return {"ok": True}
 
