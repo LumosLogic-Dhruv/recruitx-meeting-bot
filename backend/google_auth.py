@@ -100,12 +100,91 @@ def _get_credentials(token_dict: dict) -> Credentials:
     return creds
 
 
+def _create_open_meet_space(creds: Credentials) -> str:
+    """
+    Create a new Google Meet space with accessType=OPEN via the Meet v2 REST API.
+
+    OPEN = anyone with the link joins instantly, no waiting room, no host admission.
+    This works for both personal Gmail and Google Workspace accounts.
+
+    Creating the space BEFORE the calendar event means we control the access policy
+    from the start — the anonymous Recall.ai bot can never be stuck waiting for
+    admission because there is no admission gate.
+
+    Requires the meetings.space.created OAuth scope (already present in SCOPES).
+    Returns the meetingUri string, or "" on failure (caller falls back gracefully).
+    """
+    import json as _json
+    import urllib.request as _ureq
+    import urllib.error as _uerr
+
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+
+    body = _json.dumps({"config": {"accessType": "OPEN"}}).encode()
+    req = _ureq.Request(
+        "https://meet.googleapis.com/v2/spaces",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {creds.token}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with _ureq.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read())
+        uri = data.get("meetingUri", "")
+        if uri:
+            print(f"[Google Meet] OPEN space created: {uri} — bot will never hit waiting room")
+        return uri
+    except _uerr.HTTPError as exc:
+        print(f"[Google Meet] Meet v2 space create failed ({exc.code}): {exc.read()[:200]}")
+        return ""
+    except Exception as exc:
+        print(f"[Google Meet] Meet v2 space create error (non-fatal): {exc}")
+        return ""
+
+
 def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: str,
                       scheduled_at: datetime, duration_minutes: int, role_name: str) -> dict:
     creds = _get_credentials(token_dict)
     service = build("calendar", "v3", credentials=creds, cache_discovery=False)
 
     end_at = scheduled_at + timedelta(minutes=duration_minutes)
+
+    # Create a Meet space with OPEN access BEFORE the calendar event so the
+    # anonymous Recall.ai bot is guaranteed to never hit the waiting room.
+    # Works for personal Gmail accounts (no Google Workspace needed).
+    open_meet_uri = _create_open_meet_space(creds)
+
+    if open_meet_uri:
+        # Attach the pre-created OPEN space to the calendar event.
+        # conferenceId + entryPoints lets Calendar show the native "Join Google Meet"
+        # button without creating a second (restricted) Meet space.
+        meeting_code = open_meet_uri.rstrip("/").split("/")[-1]
+        conference_data: dict = {
+            "conferenceId": meeting_code,
+            "conferenceSolution": {
+                "key": {"type": "hangoutsMeet"},
+                "name": "Google Meet",
+            },
+            "entryPoints": [{
+                "entryPointType": "video",
+                "uri": open_meet_uri,
+                "label": f"meet.google.com/{meeting_code}",
+            }],
+        }
+    else:
+        # Fallback: let Calendar API create a new Meet. The bot may hit the waiting
+        # room on personal Gmail accounts if Quick access is not enabled in Meet settings.
+        print("[Google Meet] Falling back to Calendar-created Meet (bot may hit waiting room)")
+        conference_data = {
+            "createRequest": {
+                "requestId": str(uuid.uuid4()),
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        }
 
     attendees = [{"email": candidate_email, "displayName": candidate_name}]
     bot_email = os.getenv("BOT_GOOGLE_EMAIL", "").strip()
@@ -123,12 +202,7 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
         ),
         "start": {"dateTime": scheduled_at.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_at.isoformat(), "timeZone": "UTC"},
-        "conferenceData": {
-            "createRequest": {
-                "requestId": str(uuid.uuid4()),
-                "conferenceSolutionKey": {"type": "hangoutsMeet"},
-            }
-        },
+        "conferenceData": conference_data,
         "attendees": attendees,
         "reminders": {
             "useDefault": False,
@@ -140,18 +214,39 @@ def _create_meet_sync(token_dict: dict, candidate_name: str, candidate_email: st
         "guestsCanModifyEvent": False,
         "guestsCanSeeOtherGuests": False,
     }
-    # sendUpdates="all" → Google Calendar emails a calendar invite to every attendee
-    # and adds the event directly to their calendar. This is the standard approach
-    # used by Calendly, Ashby, and Lever. Our SMTP email also goes separately with
-    # full interview details and the ICS attachment.
-    result = service.events().insert(
-        calendarId="primary",
-        body=event,
-        conferenceDataVersion=1,
-        sendUpdates="all",
-    ).execute()
+    try:
+        result = service.events().insert(
+            calendarId="primary",
+            body=event,
+            conferenceDataVersion=1,
+            sendUpdates="all",
+        ).execute()
+    except Exception as cal_err:
+        # Calendar API may reject a manual conferenceId (undocumented behaviour).
+        # Retry with a standard createRequest so scheduling never hard-fails.
+        if open_meet_uri and "conferenceId" in str(cal_err):
+            print(f"[Google Meet] Calendar rejected manual conferenceId ({cal_err}) — retrying with createRequest")
+            event["conferenceData"] = {
+                "createRequest": {
+                    "requestId": str(uuid.uuid4()),
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            }
+            result = service.events().insert(
+                calendarId="primary",
+                body=event,
+                conferenceDataVersion=1,
+                sendUpdates="all",
+            ).execute()
+        else:
+            raise
+
+    # Prefer the pre-created OPEN space URI so the bot never hits a waiting room.
+    # If the Calendar API created its own Meet (fallback path), use that instead.
+    hang_link = open_meet_uri or result.get("hangoutLink", "")
+
     return {
-        "meet_url": result.get("hangoutLink", ""),
+        "meet_url": hang_link,
         "event_id": result.get("id", ""),
     }
 

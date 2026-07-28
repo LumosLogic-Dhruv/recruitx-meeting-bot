@@ -60,6 +60,19 @@ async def save_recording(
             print(f"[RecordingService] Mapper returned empty for bot {bot_id}")
             return {}
 
+        # Upload to Cloudinary so the URL never expires (Recall URLs expire in 24h).
+        # If upload fails we fall back to the raw Recall URL so the recording is
+        # still accessible immediately — the Cloudinary failure is non-fatal.
+        recall_video_url = recording.get("recordingUrl", "")
+        if recall_video_url:
+            from .cloudinary_uploader import upload_to_cloudinary
+            cloudinary_url = await upload_to_cloudinary(recall_video_url, bot_id)
+            if cloudinary_url:
+                recording["recordingUrl"] = cloudinary_url
+                print(f"[RecordingService] Swapped to Cloudinary URL for bot {bot_id}")
+            else:
+                print(f"[RecordingService] Cloudinary upload failed — keeping Recall URL (will expire in 24h)")
+
         upsert_recording(convex, recording)
         print(
             f"[RecordingService] Saved — bot={bot_id} status={recording.get('status')} "
