@@ -2305,6 +2305,8 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
                 duration_minutes=req.duration_minutes,
                 role_name=req.role_name,
             )
+        except gauth.GoogleScopeMissingError:
+            raise HTTPException(400, "GOOGLE_SCOPE_MISSING")
         except Exception as e:
             err_str = str(e)
             if "invalid_grant" in err_str or "Token has been expired" in err_str or "revoked" in err_str:

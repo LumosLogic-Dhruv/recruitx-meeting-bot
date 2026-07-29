@@ -18,6 +18,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/meetings.space.created",
 ]
 
+
+class GoogleScopeMissingError(Exception):
+    """Raised when the stored Google token lacks the meetings.space.created scope.
+    Caller should return GOOGLE_SCOPE_MISSING and prompt the admin to reconnect."""
+
 COMPANY_NAME = os.getenv("COMPANY_NAME", "LumosLogic")
 
 # Store Flow objects between auth URL generation and callback so the
@@ -139,8 +144,16 @@ def _create_open_meet_space(creds: Credentials) -> str:
             print(f"[Google Meet] OPEN space created: {uri} — bot will never hit waiting room")
         return uri
     except _uerr.HTTPError as exc:
-        print(f"[Google Meet] Meet v2 space create failed ({exc.code}): {exc.read()[:200]}")
+        body = exc.read()
+        print(f"[Google Meet] Meet v2 space create failed ({exc.code}): {body[:200]}")
+        if exc.code == 403:
+            # Token was granted before meetings.space.created scope was added — must re-auth.
+            raise GoogleScopeMissingError(
+                "meetings.space.created scope not granted. Please reconnect your Google account."
+            )
         return ""
+    except GoogleScopeMissingError:
+        raise
     except Exception as exc:
         print(f"[Google Meet] Meet v2 space create error (non-fatal): {exc}")
         return ""

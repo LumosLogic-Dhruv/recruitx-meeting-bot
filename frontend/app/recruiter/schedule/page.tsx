@@ -138,8 +138,8 @@ export default function SchedulePage() {
       const d = await res.json();
       if (!res.ok) {
         const detail = d.detail || "Failed";
-        if (detail === "GOOGLE_TOKEN_EXPIRED") {
-          setAlert({ msg: "GOOGLE_TOKEN_EXPIRED", type: "error" });
+        if (detail === "GOOGLE_TOKEN_EXPIRED" || detail === "GOOGLE_SCOPE_MISSING") {
+          setAlert({ msg: detail, type: "error" });
         } else {
           throw new Error(detail);
         }
@@ -303,12 +303,15 @@ export default function SchedulePage() {
               <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>Candidate profile and resume context is automatically prepended.</p>
             </div>
 
-            {alert && alert.msg === "GOOGLE_TOKEN_EXPIRED" ? (
+            {alert && (alert.msg === "GOOGLE_TOKEN_EXPIRED" || alert.msg === "GOOGLE_SCOPE_MISSING") ? (
               <div style={{ padding: "14px 16px", borderRadius: 10, fontSize: 13, marginBottom: 14, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Google account token expired</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  {alert.msg === "GOOGLE_SCOPE_MISSING" ? "Google account needs reconnection" : "Google account token expired"}
+                </div>
                 <div style={{ fontSize: 12, color: "#fca5a5", marginBottom: 10, lineHeight: 1.6 }}>
-                  Your Google Calendar connection has expired or been revoked.<br />
-                  Reconnect it in Settings to auto-generate Google Meet links.
+                  {alert.msg === "GOOGLE_SCOPE_MISSING"
+                    ? <>Your Google token was issued before a required permission (Meet API) was added.<br />Please reconnect your Google account in Settings — it takes 10 seconds.</>
+                    : <>Your Google Calendar connection has expired or been revoked.<br />Reconnect it in Settings to auto-generate Google Meet links.</>}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <Link href="/recruiter/schedule" style={{ flex: 1 }}>
