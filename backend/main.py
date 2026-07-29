@@ -218,9 +218,12 @@ async def _poll_and_greet(bot_id: str):
     candidate_name: str = session.get("candidate_name", "Candidate")
     stop_event: asyncio.Event = session["stop_event"]
 
-    # Wait until bot is in the call
-    print("[Poll] Waiting for bot to join call...")
-    for _ in range(60):
+    # Wait until bot is in the call (up to 30 min — Google Meet waiting room needs host to admit)
+    import time as _time
+    print("[Poll] Waiting for bot to join call (up to 30 min)...")
+    _poll_deadline = _time.time() + 1800
+    _last_status = ""
+    while _time.time() < _poll_deadline:
         if stop_event.is_set():
             return
         await asyncio.sleep(8)
@@ -228,13 +231,19 @@ async def _poll_and_greet(bot_id: str):
             bot = await recall.get_bot(bot_id)
             changes = bot.get("status_changes", [])
             status = changes[-1].get("code", "") if changes else ""
-            print(f"[Poll] Bot status: {status}")
+            if status != _last_status:
+                print(f"[Poll] Bot status: {status}")
+                _last_status = status
             if status in ("in_call_not_recording", "in_call_recording"):
                 break
+            # Bot gave up (waiting_room_timeout exceeded, fatal error, etc.)
+            if status in ("done", "fatal", "error", "call_ended"):
+                print(f"[Poll] Bot in terminal state '{status}' — stopping wait")
+                return
         except Exception as e:
             print(f"[Poll] Status check error: {e}")
     else:
-        print("[Poll] Timed out waiting for bot to join.")
+        print("[Poll] Timed out waiting for bot to join (30 min).")
         return
 
     # Send greeting if webhook path hasn't delivered it yet.

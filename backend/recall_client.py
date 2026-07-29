@@ -98,6 +98,11 @@ class RecallClient:
             "recording_config": recording_config,
             # Automatic leave settings — prevents hung sessions
             "automatic_leave": {
+                # Bot will wait up to 30 min in Google Meet waiting room for host to admit it.
+                # Google Meet requires the HOST to admit external bots — candidates cannot do it.
+                # Long-term fix: configure RECALL_GOOGLE_LOGIN_GROUP_ID so the bot signs in as
+                # a Google Workspace user and bypasses the waiting room entirely.
+                "waiting_room_timeout": 1800,
                 # Fire bot.done if nobody joins within 5 minutes of bot entering
                 "noone_joined_timeout": 300,
                 # Fire bot.done 3 minutes after ALL participants leave (grace window for rejoin)
