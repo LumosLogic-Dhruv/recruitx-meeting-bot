@@ -2323,6 +2323,15 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
 
     # Send email invite — calendar invite (ICS) first, then SMTP fallback, then Gmail API
     email_sent = False
+
+    # Google Calendar already emailed the candidate (sendUpdates="all" in Calendar API).
+    # That email has Yes / Propose a new time / Add note buttons — the candidate MUST
+    # accept it for the Meet to become open so the bot can join without a waiting room.
+    # Sending our own email on top would create duplicate inbox noise and dilute that CTA.
+    if calendar_event_id:
+        email_sent = True
+        print("[Schedule] Google Calendar invite already sent — skipping custom email")
+
     smtp_config = {}
     try:
         smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
@@ -2333,7 +2342,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
 
     # Primary path: enhanced calendar invitation with ICS attachment and calendar buttons
-    if smtp_user and smtp_pass:
+    if not email_sent and smtp_user and smtp_pass:
         try:
             from interview_calendar import CalendarEventData, send_calendar_invite
             from datetime import timezone as _tz
@@ -2476,6 +2485,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
         "interview_id": interview_id,
         "meeting_url": meeting_url,
         "email_sent": email_sent,
+        "calendar_invite_sent": bool(calendar_event_id),
         "scheduled_at": scheduled_dt.isoformat() + "Z",
     }
 

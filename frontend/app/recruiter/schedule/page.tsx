@@ -145,7 +145,9 @@ export default function SchedulePage() {
         }
         return;
       }
-      const emailNote = d.email_sent ? "Email invite sent ✓"
+      const emailNote = d.calendar_invite_sent
+        ? "Google Calendar invite sent ✓ — candidate must accept it to open the meeting"
+        : d.email_sent ? "Email invite sent ✓"
         : meetingMode === "manual" ? "Share meeting link with candidate manually"
         : "Configure SMTP in Settings to send emails";
       setAlert({ msg: `Interview scheduled! ${emailNote}`, type: d.email_sent ? "success" : "warning" });
