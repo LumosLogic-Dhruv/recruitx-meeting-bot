@@ -17,6 +17,9 @@ from recall_client import RecallClient
 from pipeline import ConversationPipeline
 import google_auth as gauth
 import scheduler as sched
+from speech_guard import speech_guard
+from question_guard import question_guard
+from topic_flow import topic_flow_controller
 
 load_dotenv()
 
@@ -147,7 +150,16 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     print(f"[Pipeline] Voice: {CUSTOM_VOICE_ID}")
 
     async def on_ai_response(text: str, audio_bytes: bytes):
+        if not speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
+            print(f"[Recall] Speech invalid or interrupted for bot {bot_id} — skipping speak")
+            return
+        task = asyncio.current_task()
+        if task:
+            speech_guard.register_speak_task(bot_id, task)
         for attempt in range(3):
+            if not speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
+                print(f"[Recall] Speech interrupted during attempt {attempt + 1} for bot {bot_id} — aborting speak")
+                return
             try:
                 await recall.speak(bot_id, audio_bytes)
                 return
@@ -164,6 +176,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         webhook_url=_webhook_url(),
     )
     bot_id = bot_data["id"]
+    pipeline.set_bot_id(bot_id)
     print(f"[Recall] Bot created: {bot_id}")
 
     import time as _time
@@ -191,6 +204,9 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     async def _on_pipeline_session_end():
         session_data = _sessions.pop(bot_id, None)
         if session_data:
+            speech_guard.clear_session(bot_id)
+            question_guard.clear_session(bot_id)
+            topic_flow_controller.clear_session(bot_id)
             _url_to_bot.pop(session_data.get("meeting_url", ""), None)
             _seen_segments.pop(bot_id, None)
             print(f"[Pipeline] Goodbye detected — auto-ending session {bot_id}")
@@ -252,24 +268,30 @@ async def _poll_and_greet(bot_id: str):
     await asyncio.sleep(3)
     session = _sessions.get(bot_id)
     if session and not session.get("greeted"):
-        session["greeted"] = True
-        stored_audio = session.pop("greeting_audio", None)
-        if stored_audio:
-            print("[Poll] Retrying greeting speak (webhook TTS already done)...")
-            try:
-                await recall.speak(bot_id, stored_audio)
-                print("[Poll] Greeting speak retry succeeded")
-            except Exception as e:
-                print(f"[Poll] Greeting speak retry error: {e}")
+        if not speech_guard.claim_greeting(bot_id):
+            print("[Poll] Greeting already claimed — skipping")
         else:
-            print("[Poll] Sending greeting via polling path...")
-            try:
-                audio = await pipeline.send_greeting(bot_name)
-                print(f"[Poll] Greeting TTS ready: {len(audio)} bytes")
-                await recall.speak(bot_id, audio)
-                print("[Poll] Greeting delivered via poll path")
-            except Exception as e:
-                print(f"[Poll] Greeting error: {e}")
+            session["greeted"] = True
+            stored_audio = session.pop("greeting_audio", None)
+            if stored_audio:
+                print("[Poll] Retrying greeting speak (webhook TTS already done)...")
+                try:
+                    if speech_guard.is_speech_valid(bot_id, pipeline._speech_id or 1):
+                        await recall.speak(bot_id, stored_audio)
+                        print("[Poll] Greeting speak retry succeeded")
+                except Exception as e:
+                    print(f"[Poll] Greeting speak retry error: {e}")
+            else:
+                print("[Poll] Sending greeting via polling path...")
+                try:
+                    audio = await pipeline.send_greeting(bot_name)
+                    if audio:
+                        print(f"[Poll] Greeting TTS ready: {len(audio)} bytes")
+                        if speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
+                            await recall.speak(bot_id, audio)
+                            print("[Poll] Greeting delivered via poll path")
+                except Exception as e:
+                    print(f"[Poll] Greeting error: {e}")
 
     # Health-check loop: poll bot status every 30 s to catch hung/dropped sessions.
     # Recall.ai webhooks are the primary signal; this is the safety net.
@@ -287,6 +309,7 @@ async def _poll_and_greet(bot_id: str):
                 print(f"[Poll] Health-check detected terminal status={status} — triggering auto-end")
                 session_data = _sessions.pop(bot_id, None)
                 if session_data:
+                    speech_guard.clear_session(bot_id)
                     _url_to_bot.pop(session_data.get("meeting_url", ""), None)
                     _seen_segments.pop(bot_id, None)
                     asyncio.create_task(_auto_end_session(bot_id, session_data, candidate_name))
@@ -331,7 +354,7 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             session["bot_status"] = "in_call"
         # Use greeting_in_progress to prevent double-scheduling while NOT blocking
         # the poll path from retrying if the webhook speak fails.
-        if session and not session.get("greeted") and not session.get("greeting_in_progress"):
+        if session and not session.get("greeted") and not session.get("greeting_in_progress") and not speech_guard.is_greeting_claimed(bot_id):
             session["greeting_in_progress"] = True
             background_tasks.add_task(_webhook_greeting, bot_id)
 
@@ -340,6 +363,9 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         bot_id = data.get("bot", {}).get("id", "")
         session = _sessions.pop(bot_id, None)
         if session:
+            speech_guard.clear_session(bot_id)
+            question_guard.clear_session(bot_id)
+            topic_flow_controller.clear_session(bot_id)
             meeting_url = session.get("meeting_url", "")
             _url_to_bot.pop(meeting_url, None)
             _seen_segments.pop(bot_id, None)
@@ -485,12 +511,18 @@ async def _webhook_greeting(bot_id: str):
     session = _sessions.get(bot_id)
     if not session:
         return
+    if not speech_guard.claim_greeting(bot_id):
+        print(f"[Webhook] Greeting already claimed for bot {bot_id} — skipping")
+        return
     pipeline: ConversationPipeline = session["pipeline"]
     recall: RecallClient = session["recall"]
     bot_name: str = session["bot_name"]
     print(f"[Webhook] Sending greeting for bot {bot_id}...")
     try:
         audio = await pipeline.send_greeting(bot_name)
+        if not audio:
+            print(f"[Webhook] send_greeting returned empty bytes for bot {bot_id}")
+            return
         print(f"[Webhook] Greeting TTS ready: {len(audio)} bytes")
         # Store audio so poll path can retry the speak without re-doing TTS
         session["greeting_audio"] = audio
@@ -500,6 +532,9 @@ async def _webhook_greeting(bot_id: str):
     for attempt in range(3):
         s = _sessions.get(bot_id)
         if not s:
+            return
+        if not speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
+            print(f"[Webhook] Greeting speech invalidated for bot {bot_id} — aborting speak")
             return
         try:
             await recall.speak(bot_id, audio)
@@ -650,6 +685,9 @@ async def _send_rejoin_greeting(bot_id: str):
     recall: RecallClient = session.get("recall")
     if not pipeline or not recall:
         return
+    speech_id = speech_guard.start_speech(bot_id, "rejoin_greeting")
+    if not speech_id:
+        return
     try:
         nudge = "Welcome back — let's pick up where we left off."
         audio = await pipeline._tts(nudge)
@@ -661,6 +699,8 @@ async def _send_rejoin_greeting(bot_id: str):
     for attempt in range(3):
         s = _sessions.get(bot_id)
         if not s:
+            return
+        if not speech_guard.is_speech_valid(bot_id, speech_id):
             return
         try:
             await recall.speak(bot_id, audio)
@@ -682,6 +722,9 @@ async def _send_late_join_greeting(bot_id: str):
     bot_name: str = session.get("bot_name", "RecruitX AI")
     if not pipeline or not recall:
         return
+    speech_id = speech_guard.start_speech(bot_id, "late_join_greeting")
+    if not speech_id:
+        return
     try:
         greeting = (
             f"Hey, thanks for joining! I'm {bot_name}. "
@@ -697,6 +740,8 @@ async def _send_late_join_greeting(bot_id: str):
     for attempt in range(3):
         s = _sessions.get(bot_id)
         if not s:
+            return
+        if not speech_guard.is_speech_valid(bot_id, speech_id):
             return
         try:
             await recall.speak(bot_id, audio)
@@ -1607,7 +1652,16 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
         if not bot_id_holder:
             return
         bid = bot_id_holder[0]
+        if not speech_guard.is_speech_valid(bid, pipeline._speech_id):
+            print(f"[Scheduler] Speech invalid or interrupted for bot {bid} — skipping speak")
+            return
+        task = asyncio.current_task()
+        if task:
+            speech_guard.register_speak_task(bid, task)
         for attempt in range(3):
+            if not speech_guard.is_speech_valid(bid, pipeline._speech_id):
+                print(f"[Scheduler] Speech interrupted during attempt {attempt + 1} for bot {bid} — aborting speak")
+                return
             try:
                 await recall.speak(bid, audio_bytes)
                 return
@@ -1630,6 +1684,7 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
         raise  # re-raise so _bot_join_job retries and logs the failure properly
 
     bot_id = bot_data["id"]
+    pipeline.set_bot_id(bot_id)
     bot_id_holder.append(bot_id)
     print(f"[Scheduler] Bot created for scheduled interview {scheduled_interview_id}: {bot_id}")
 

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Awaitable
 from openai import AsyncOpenAI
 import httpx
+from speech_guard import speech_guard
 
 # ── Silence timeout constants ──────────────────────────────────────────────────
 # Deepgram endpointing=300ms fires a segment after 300ms of audio silence.
@@ -265,6 +266,9 @@ class ConversationPipeline:
         self._speaking: bool = False
         self._on_response: Callable[[str, bytes], Awaitable[None]] | None = None
         self._full_transcript: list[dict] = []
+        self._current_turn_id: int = 0
+        self._bot_id: str = ""
+        self._speech_id: int = 0
 
         self._elevenlabs_key = elevenlabs_key
         self._voice_id = voice_id
@@ -318,6 +322,9 @@ class ConversationPipeline:
         # Managed by interview_flow.evaluate_topic_flow(). Shape: {"topic": str, "count": int}
         self._topic_flow: dict = {}
 
+        # Question Framing Engine — tracks recently used framing styles for deterministic rotation
+        self._framing_history: list = []
+
         # STT fallback — activates when Deepgram endpointing is blocked by background noise.
         # Managed by stt_fallback.FallbackController. Safe no-op when Deepgram behaves normally.
         try:
@@ -330,6 +337,10 @@ class ConversationPipeline:
 
     def set_response_callback(self, callback: Callable[[str, bytes], Awaitable[None]]):
         self._on_response = callback
+
+    def set_bot_id(self, bot_id: str):
+        """Associate this pipeline with a Recall.ai bot_id for speech guard tracking."""
+        self._bot_id = bot_id
 
     def set_session_end_callback(self, callback: Callable[[], Awaitable[None]]):
         """Wire up a callback that fires when the bot says goodbye.
@@ -353,8 +364,27 @@ class ConversationPipeline:
         self._paused = False
         print("[Pipeline] RESUMED — candidate present")
 
+    def is_turn_valid(self, turn_id: int) -> bool:
+        """Returns True if the specified turn is still active, uninterrupted, unpaused, and owns speech."""
+        if self._bot_id and not speech_guard.is_speech_valid(self._bot_id, self._speech_id):
+            return False
+        return (not self._was_interrupted) and (not self._paused) and (self._current_turn_id == turn_id)
+
     async def send_greeting(self, bot_name: str) -> bytes:
+        if self._bot_id:
+            if not speech_guard.claim_greeting(self._bot_id):
+                print("[Pipeline] Greeting already claimed — skipping send_greeting")
+                return b""
+            speech_id = speech_guard.start_speech(self._bot_id, "greeting")
+            if not speech_id:
+                print("[Pipeline] Speech ownership denied for greeting — returning empty bytes")
+                return b""
+            self._speech_id = speech_id
+
+        self._current_turn_id += 1
+        turn_id = self._current_turn_id
         self._speaking = True
+        self._was_interrupted = False
         # Extract interview topics from the system prompt in the background.
         # This runs concurrently with TTS synthesis — zero latency cost.
         # By the time the candidate finishes their intro (~30-60s), topics are ready.
@@ -365,6 +395,9 @@ class ConversationPipeline:
                 "Please start by telling me about yourself and your recent work experience."
             )
             audio = await self._tts(greeting)
+            if not self.is_turn_valid(turn_id):
+                print("[Pipeline] Greeting interrupted/invalidated — returning empty bytes")
+                return b""
             self._history.append({"role": "assistant", "content": greeting})
             self._full_transcript.append({"speaker": "AI", "text": greeting})
             self._last_activity_at = time.monotonic()
@@ -402,6 +435,8 @@ class ConversationPipeline:
 
         if self._speaking:
             self._was_interrupted = True
+            if self._bot_id:
+                speech_guard.interrupt_speech(self._bot_id)
             print(f"[Pipeline] Interrupted — buffered: {text[:50]}")
             return
 
@@ -427,6 +462,8 @@ class ConversationPipeline:
             # Candidate is speaking while bot is generating/playing a response —
             # mark as interrupted so the TTS pipeline stops at the next checkpoint.
             self._was_interrupted = True
+            if self._bot_id:
+                speech_guard.interrupt_speech(self._bot_id)
             return
 
         # Feed partial text to STT fallback tracker (always, before the pending check).
@@ -527,10 +564,17 @@ class ConversationPipeline:
             return
         if not self._speaking and not self._pending_text and not self._silence_task:
             print("[Pipeline] Dead silence after discarded fragment — emitting re-prompt")
-            nudge = "Please go ahead."
-            audio = await self._tts(nudge)
-            if audio and self._on_response and not self._speaking:
-                await self._on_response(nudge, audio)
+            self._current_turn_id += 1
+            turn_id = self._current_turn_id
+            self._speaking = True
+            self._was_interrupted = False
+            try:
+                nudge = "Please go ahead."
+                audio = await self._tts(nudge)
+                if audio and self._on_response and self.is_turn_valid(turn_id):
+                    await self._on_response(nudge, audio)
+            finally:
+                self._speaking = False
 
     async def _keepalive_check(self):
         """BUG_03 fix: if bot and candidate are both silent for WAKEUP_AFTER_SILENCE
@@ -543,13 +587,20 @@ class ConversationPipeline:
         if elapsed < WAKEUP_AFTER_SILENCE - 2:
             return  # activity happened after we started sleeping — no nudge needed
         print(f"[Pipeline] Keepalive: {elapsed:.0f}s of silence — sending nudge")
+        self._current_turn_id += 1
+        turn_id = self._current_turn_id
+        self._speaking = True
+        self._was_interrupted = False
         nudge = "Are you still there? Please go ahead whenever you're ready."
         try:
             audio = await self._tts(nudge)
-            if audio and self._on_response and not self._speaking:
+            if audio and self._on_response and self.is_turn_valid(turn_id):
                 await self._on_response(nudge, audio)
                 self._last_activity_at = time.monotonic()
         except Exception as e:
+            print(f"[Pipeline] Keepalive error (non-fatal): {e}")
+        finally:
+            self._speaking = False
             print(f"[Pipeline] Keepalive error: {e}")
 
     def _is_incomplete(self, text: str) -> bool:
@@ -1045,6 +1096,114 @@ class ConversationPipeline:
         direction = results[1] if not isinstance(results[1], Exception) else {}
         return plan, direction
 
+    def _get_question_framing_directive(self, plan: dict) -> str:
+        """
+        Pure Python O(1) Question Framing Engine.
+        Deterministically selects and rotates engineering framing styles based on
+        Planner action while avoiding recently used framing styles.
+        Does NOT change topic selection or Planner/Director decisions.
+        """
+        if not plan:
+            return ""
+
+        action = (plan.get("next_action") or "follow_up").strip()
+
+        action_styles = {
+            "follow_up":            ["implementation", "debugging", "decision_making"],
+            "move_deeper":          ["trade_off", "architecture", "performance"],
+            "challenge_assumption": ["failure", "architecture", "decision_making"],
+            "verify_experience":    ["operations", "testing", "implementation"],
+            "ask_for_example":      ["operations", "debugging", "trade_off"],
+            "increase_difficulty":  ["scaling", "failure", "architecture"],
+            "reduce_difficulty":    ["implementation", "testing"],
+            "switch_topic":         ["decision_making", "architecture", "implementation"],
+            "continue_naturally":   ["decision_making", "trade_off", "performance"],
+        }
+
+        style_guides = {
+            "implementation":  "Frame this as an implementation question: Ask how they built, designed, or structured this solution.",
+            "decision_making": "Frame this as a decision-making question: Ask WHY they chose this specific approach or technology instead of alternative options.",
+            "trade_off":       "Frame this as a trade-off discussion: Ask what engineering trade-offs, compromises, or drawbacks were involved in this choice.",
+            "failure":         "Frame this as a failure/resilience scenario: Ask what broke, what failure modes occurred, or how the system behaved under stress.",
+            "debugging":       "Frame this as a debugging scenario: Ask how they identified the root cause of a difficult issue or bug in this system.",
+            "scaling":         "Frame this as a scaling question: Ask how the design would change if traffic, data volume, or user load increased by 10x or 100x.",
+            "architecture":    "Frame this as an architectural redesign question: Ask how they would architecturally redesign this system today knowing what they know now.",
+            "performance":     "Frame this as a performance optimization question: Ask where the primary bottleneck was located and how they measured or optimized it.",
+            "security":        "Frame this as a security question: Ask what security risks, attack vectors, or auth vulnerabilities were considered.",
+            "operations":      "Frame this as an operational/monitoring question: Ask how this solution was monitored, logged, or managed in production.",
+            "testing":         "Frame this as a testing/validation question: Ask how they verified and tested that the solution actually worked reliably.",
+        }
+
+        candidates = action_styles.get(action, ["implementation", "decision_making", "trade_off"])
+
+        recent_history = getattr(self, "_framing_history", [])
+        recent_set = set(recent_history[-3:])
+        chosen_style = None
+        for style in candidates:
+            if style not in recent_set:
+                chosen_style = style
+                break
+
+        if not chosen_style:
+            chosen_style = candidates[0]
+
+        if hasattr(self, "_framing_history"):
+            self._framing_history.append(chosen_style)
+
+        return style_guides.get(chosen_style, style_guides["implementation"])
+
+    def _determine_seniority_tier(self) -> tuple[str, str]:
+        """
+        Pure Python O(1) determination of candidate seniority tier from system prompt.
+        Deterministically maps candidate experience years to engineering depth guidance.
+        """
+        if hasattr(self, "_cached_seniority_tier") and self._cached_seniority_tier:
+            return self._cached_seniority_tier
+
+        yoe = 0
+        match = re.search(r"(?:Years of Experience|Experience|YOE):\s*(\d+)", self._system_prompt, re.IGNORECASE)
+        if match:
+            try:
+                yoe = int(match.group(1))
+            except ValueError:
+                yoe = 0
+
+        if yoe <= 2:
+            tier = "Junior"
+            guidance = (
+                "ENGINEERING DEPTH:\n"
+                f"Candidate Tier: Junior ({yoe} years experience)\n"
+                "Focus on: fundamentals, implementation, learning approach, debugging basics.\n"
+                "Prefer implementation understanding. Avoid advanced distributed-systems discussions unless introduced by candidate."
+            )
+        elif yoe <= 5:
+            tier = "Mid"
+            guidance = (
+                "ENGINEERING DEPTH:\n"
+                f"Candidate Tier: Mid ({yoe} years experience)\n"
+                "Focus on: design choices, ownership, optimisation, testing.\n"
+                "Probe practical decision-making and hands-on component design."
+            )
+        elif yoe <= 9:
+            tier = "Senior"
+            guidance = (
+                "ENGINEERING DEPTH:\n"
+                f"Candidate Tier: Senior ({yoe} years experience)\n"
+                "Focus on: architecture, trade-offs, scaling, production incidents, security, mentoring.\n"
+                "Expect architectural reasoning. Prioritise trade-offs over definitions. Avoid introductory questions. Challenge assumptions. Discuss production experience."
+            )
+        else:
+            tier = "Staff / Principal"
+            guidance = (
+                "ENGINEERING DEPTH:\n"
+                f"Candidate Tier: Staff / Principal ({yoe} years experience)\n"
+                "Focus on: distributed systems, organisational decisions, technical strategy, system evolution, cross-team trade-offs, cost, reliability, long-term maintainability.\n"
+                "Expect high-level system strategy and architectural judgment. Avoid basic syntax or implementation questions."
+            )
+
+        self._cached_seniority_tier = (tier, guidance)
+        return tier, guidance
+
     def _build_plan_context(self, plan: dict) -> str:
         """Format the planner's decision as a directing instruction appended to
         the system message. Returns empty string if plan is empty (fallback path)."""
@@ -1068,6 +1227,23 @@ class ConversationPipeline:
             }
             instruction = action_guide.get(plan["next_action"], plan["next_action"])
             lines.append(f"NEXT ACTION: {instruction}")
+
+            # Inject Question Framing Engine directive
+            try:
+                framing_directive = self._get_question_framing_directive(plan)
+                if framing_directive:
+                    lines.append(f"QUESTION FRAMING: {framing_directive}")
+            except Exception as _fe_err:
+                print(f"[Pipeline] Framing Engine notice: {_fe_err}")
+
+            # Inject Seniority Context Layer directive
+            try:
+                _, seniority_directive = self._determine_seniority_tier()
+                if seniority_directive:
+                    lines.append(f"{seniority_directive}")
+            except Exception as _sn_err:
+                print(f"[Pipeline] Seniority Context notice: {_sn_err}")
+
         if plan.get("target_skill"):
             lines.append(f"TARGET SKILL/TOPIC: {plan['target_skill']}")
         if plan.get("difficulty"):
@@ -1247,6 +1423,14 @@ class ConversationPipeline:
     # ── Core turn: streaming LLM → sentence-level TTS → Recall.ai ─────────────
 
     async def _process_turn(self, user_text: str, speaker: str = "Candidate"):
+        if self._bot_id:
+            utterance_key = f"{speaker}:{user_text.strip()}"
+            speech_id = speech_guard.start_speech(self._bot_id, utterance_key)
+            if not speech_id:
+                print(f"[Pipeline] Turn skipped (duplicate utterance or revoked speech ownership): '{user_text[:40]}'")
+                return
+            self._speech_id = speech_id
+
         # Wait briefly for the previous answer evaluation to finish — it's usually
         # already done since the candidate's response takes 10-30s. Cap at 0.2s so
         # a slow eval call never adds visible latency to the next turn.
@@ -1258,6 +1442,8 @@ class ConversationPipeline:
 
         # Mark as speaking immediately so any transcripts that arrive during the
         # thinking pause are buffered as interruptions, not new turns.
+        self._current_turn_id += 1
+        turn_id = self._current_turn_id
         self._speaking = True
         self._words_since_last_bot = 0
         self._was_interrupted = False
@@ -1285,6 +1471,24 @@ class ConversationPipeline:
             )
         except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
             plan, direction = {}, {}
+
+        # ── Integration Point: Grounding Service Validation ─────────────────────
+        grounding_directive = ""
+        try:
+            from grounding import grounding_service
+            plan, direction, grounding_directive = grounding_service.ground_turn(
+                bot_id=self._bot_id,
+                system_prompt=self._system_prompt,
+                profile_skills=getattr(self._profile, "skills_detected", []),
+                profile_tech=getattr(self._profile, "technologies_detected", []),
+                topics_remaining=getattr(self._state, "topics_remaining", []),
+                topics_covered=getattr(self._state, "topics_covered", []),
+                user_text=user_text,
+                plan=plan,
+                direction=direction,
+            )
+        except Exception as _g_err:
+            print(f"[Pipeline] Grounding check error (non-fatal fallback): {_g_err}")
 
         try:
             print(f"[Pipeline] Processing — {speaker}: {user_text[:100]}")
@@ -1321,7 +1525,7 @@ class ConversationPipeline:
                 self._state.consecutive_confusion_count = 0
                 print(f"[Pipeline] Forced topic pivot: {fallback}")
                 audio = await self._tts(fallback)
-                if audio and self._on_response:
+                if audio and self._on_response and self.is_turn_valid(turn_id):
                     await self._on_response(fallback, audio)
                 self._history.append({"role": "assistant", "content": fallback})
                 self._full_transcript.append({"speaker": "AI", "text": fallback})
@@ -1331,28 +1535,34 @@ class ConversationPipeline:
             # Compress history if approaching the context limit (runs ~every 25 turns)
             await self._maybe_compress_history()
 
-            # Build the message list with all three context layers injected into
+            # Build the message list with all context layers injected into
             # the system message for this turn only — self._history is never modified.
-            # Order: state → Director (supervisor) → Planner (tactical directive)
+            # Order: state → Director (supervisor) → Planner (tactical directive) → Grounding
             state_ctx = self._build_state_context()
             dir_ctx   = self._build_direction_context(direction)
             plan_ctx  = self._build_plan_context(plan)
 
-            # Topic flow guard — appends a directive when follow-up depth is exceeded.
-            # Pure Python, zero latency, zero API calls. Silently no-ops on any error.
+            # Topic Flow Controller — enforces max follow-up depth & natural transitions
             try:
-                from interview_flow.topic_flow import evaluate_topic_flow as _etf
-                _tf = _etf(self._topic_flow, plan)
-                if _tf.get("force_topic_change"):
-                    plan_ctx += _tf["directive"]
-                    print(f"[TopicFlow] Directive appended — topic='{self._topic_flow.get('topic')}' count={self._topic_flow.get('count')}")
-            except Exception:
-                pass
+                from topic_flow import topic_flow_controller
+                should_pivot, flow_directive = topic_flow_controller.evaluate_turn(
+                    bot_id=self._bot_id,
+                    plan=plan,
+                    user_text=user_text,
+                    state_topics_remaining=getattr(self._state, "topics_remaining", []),
+                    state_topics_covered=getattr(self._state, "topics_covered", []),
+                    system_prompt=self._system_prompt,
+                )
+                if should_pivot and flow_directive:
+                    plan_ctx += flow_directive
+                    print(f"[TopicFlow] Enforced topic pivot for bot {self._bot_id}")
+            except Exception as _tf_err:
+                print(f"[Pipeline] TopicFlow notice: {_tf_err}")
 
             messages = list(self._history)
             messages[0] = {
                 "role": "system",
-                "content": messages[0]["content"] + state_ctx + dir_ctx + plan_ctx,
+                "content": messages[0]["content"] + state_ctx + dir_ctx + plan_ctx + grounding_directive,
             }
 
             queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -1393,16 +1603,28 @@ class ConversationPipeline:
             async def start_tts():
                 while True:
                     sentence = await queue.get()
-                    if sentence is None or self._was_interrupted:
+                    if sentence is None or not self.is_turn_valid(turn_id):
                         # Signal deliver_tts to stop, then drain any remaining LLM sentences
                         await tts_delivery_queue.put(None)
-                        if self._was_interrupted:
+                        if not self.is_turn_valid(turn_id):
                             try:
                                 while True:
                                     queue.get_nowait()
                             except asyncio.QueueEmpty:
                                 pass
                         break
+                    # ── Integration Point: QuestionGuard repetition filter ──────
+                    try:
+                        from question_guard import question_guard
+                        sentence = question_guard.filter_question(
+                            bot_id=self._bot_id,
+                            sentence=sentence,
+                            user_text=user_text,
+                            topics_remaining=getattr(self._state, "topics_remaining", []),
+                        )
+                    except Exception as _qg_err:
+                        print(f"[Pipeline] QuestionGuard notice: {_qg_err}")
+
                     tts_task = asyncio.create_task(self._tts(sentence))
                     await tts_delivery_queue.put((sentence, tts_task))
 
@@ -1412,12 +1634,14 @@ class ConversationPipeline:
                     if item is None:
                         break
                     sentence, tts_task = item
-                    if self._was_interrupted:
+                    if not self.is_turn_valid(turn_id):
                         tts_task.cancel()
                         break
                     print(f"[Pipeline] TTS → Recall: {sentence[:70]}")
                     audio = await tts_task
-                    if audio and self._on_response:
+                    if not self.is_turn_valid(turn_id):
+                        break
+                    if audio and self._on_response and self.is_turn_valid(turn_id):
                         await self._on_response(sentence, audio)
 
             # 30-second hard timeout prevents a hung OpenAI/ElevenLabs call from
@@ -1455,13 +1679,13 @@ class ConversationPipeline:
                     self._session_end_triggered = True
                     print(f"[Pipeline] Goodbye detected in response — scheduling auto-end")
                     asyncio.create_task(self._trigger_session_end())
-            elif not self._was_interrupted:
+            elif not self._was_interrupted and self.is_turn_valid(turn_id):
                 # LLM returned nothing and we weren't interrupted — emit a safe fallback
                 # so the bot doesn't silently freeze mid-interview.
                 fallback = "Sorry, could you say that again?"
                 print("[Pipeline] Empty LLM response — emitting fallback prompt")
                 audio = await self._tts(fallback)
-                if audio and self._on_response:
+                if audio and self._on_response and self.is_turn_valid(turn_id):
                     await self._on_response(fallback, audio)
                 self._history.append({"role": "assistant", "content": fallback})
                 self._full_transcript.append({"speaker": "AI", "text": fallback})
