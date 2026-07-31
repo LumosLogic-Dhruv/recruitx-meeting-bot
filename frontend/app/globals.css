@@ -90,8 +90,8 @@ body {
 /* Reusable Glossy Glass Classes */
 .glass-card {
   background: var(--glass-bg);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   box-shadow: var(--glass-shadow);
   border-radius: 14px;
@@ -157,8 +157,8 @@ select option:checked {
   display: flex;
   flex-direction: column;
   background: var(--glass-bg);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
