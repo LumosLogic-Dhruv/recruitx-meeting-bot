@@ -4,19 +4,20 @@ import Image from "next/image";
 import { logout, getUser } from "@/lib/api";
 import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDetailModal";
 
+import { ThemeToggle } from "@/components/ThemeToggle";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const G = "rgba(255,255,255,";
 function auth() { return `Bearer ${localStorage.getItem("token")}`; }
 
 const card: React.CSSProperties = {
-  background: `${G}0.05)`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  border: `1px solid ${G}0.09)`, borderRadius: 14,
+  background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--glass-shadow)",
 };
 const inp: React.CSSProperties = {
-  border: `1px solid ${G}0.12)`, borderRadius: 8, padding: "9px 12px", fontSize: 13,
-  width: "100%", outline: "none", fontFamily: "inherit", background: `${G}0.07)`, color: "#f1f5f9", colorScheme: "dark",
+  border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontSize: 13,
+  width: "100%", outline: "none", fontFamily: "inherit", background: "var(--sunken)", color: "var(--text)",
 };
-const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "#94a3b8", display: "block", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" };
+const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" };
 
 interface Candidate {
   _id: string; name: string; email: string; roleName?: string; recruiterId?: string;
@@ -51,25 +52,25 @@ function StatusBadge({ status, cooldownUntil }: { status?: string; cooldownUntil
     locked: "Final / Locked", completed: "Completed", partial: "Partial", no_show: "No Show",
   };
   const colorMap: Record<string, [string, string]> = {
-    never_invited: [`${G}0.06)`, "#94a3b8"], attempt_1_scheduled: ["rgba(59,130,246,0.12)", "#93c5fd"],
-    attempt_2_scheduled: ["rgba(59,130,246,0.12)", "#93c5fd"], cooldown: ["rgba(245,158,11,0.12)", "#fbbf24"],
-    locked: ["rgba(239,68,68,0.12)", "#f87171"], completed: ["rgba(16,185,129,0.12)", "#6ee7b7"],
-    partial: ["rgba(234,179,8,0.12)", "#fde047"], no_show: ["rgba(245,158,11,0.12)", "#fbbf24"],
+    never_invited: ["var(--sunken)", "var(--text-muted)"], attempt_1_scheduled: ["rgba(59,130,246,0.15)", "#93c5fd"],
+    attempt_2_scheduled: ["rgba(59,130,246,0.15)", "#93c5fd"], cooldown: ["rgba(245,158,11,0.15)", "#fbbf24"],
+    locked: ["rgba(239,68,68,0.15)", "#f87171"], completed: ["rgba(16,185,129,0.15)", "#34d399"],
+    partial: ["rgba(234,179,8,0.15)", "#fde047"], no_show: ["rgba(245,158,11,0.15)", "#fbbf24"],
   };
   const label = labelMap[s] || s.replace(/_/g, " ");
-  const [bg, col] = colorMap[s] || [`${G}0.06)`, "#94a3b8"];
+  const [bg, col] = colorMap[s] || ["var(--sunken)", "var(--text-muted)"];
   return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: bg, color: col }}>{label}</span>;
 }
 
 function SchedStatusBadge({ status }: { status: string }) {
   const map: Record<string, [string, string, string]> = {
-    pending:   ["rgba(59,130,246,0.12)", "#93c5fd", "Pending"],
-    scheduled: ["rgba(59,130,246,0.12)", "#93c5fd", "Scheduled"],
-    completed: ["rgba(16,185,129,0.12)", "#6ee7b7", "Completed"],
-    cancelled: [`${G}0.06)`, "#94a3b8", "Cancelled"],
-    failed:    ["rgba(239,68,68,0.12)", "#f87171", "Failed"],
+    pending:   ["rgba(59,130,246,0.15)", "#93c5fd", "Pending"],
+    scheduled: ["rgba(59,130,246,0.15)", "#93c5fd", "Scheduled"],
+    completed: ["rgba(16,185,129,0.15)", "#34d399", "Completed"],
+    cancelled: ["var(--sunken)", "var(--text-muted)", "Cancelled"],
+    failed:    ["rgba(239,68,68,0.15)", "#f87171", "Failed"],
   };
-  const [bg, col, label] = map[status] || [`${G}0.06)`, "#94a3b8", status];
+  const [bg, col, label] = map[status] || ["var(--sunken)", "var(--text-muted)", status];
   return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: bg, color: col }}>{label}</span>;
 }
 
@@ -148,7 +149,7 @@ export default function AdminPage() {
   const recruiterStats: Record<string, { name: string; total: number; done: number; avgScore: number; scores: number[] }> = {};
   candidates.forEach(c => {
     const rid = c.recruiterId || "unknown";
-    if (!recruiterStats[rid]) recruiterStats[rid] = { name: recruiterMap[rid] || "Unknown", total: 0, done: 0, avgScore: 0, scores: [] };
+    if (!recruiterStats[rid]) recruiterStats[rid] = { name: c.recruiterName || recruiterMap[rid] || "Recruiter", total: 0, done: 0, avgScore: 0, scores: [] };
     recruiterStats[rid].total++;
     if (["locked", "completed"].includes(c.interviewStatus || "")) recruiterStats[rid].done++;
   });
@@ -215,27 +216,28 @@ export default function AdminPage() {
     { id: "analytics", label: "Analytics" }, { id: "settings", label: "Settings" },
   ];
 
-  const thStyle: React.CSSProperties = { textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "#64748b", background: `${G}0.03)`, borderBottom: `2px solid ${G}0.09)` };
-  const tdStyle: React.CSSProperties = { padding: "12px", borderBottom: `1px solid ${G}0.05)`, fontSize: 13 };
+  const thStyle: React.CSSProperties = { textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--text-muted)", background: "var(--sunken)", borderBottom: "2px solid var(--border)" };
+  const tdStyle: React.CSSProperties = { padding: "12px", borderBottom: "1px solid var(--border)", fontSize: 13, color: "var(--text)" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#07070f", backgroundImage: "radial-gradient(ellipse 80% 60% at 5% 10%, rgba(139,92,246,0.12) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 95% 90%, rgba(99,102,241,0.08) 0%, transparent 60%)", backgroundAttachment: "fixed" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", transition: "background 0.3s, color 0.3s" }}>
 
       {/* Header */}
-      <header style={{ background: "rgba(8,8,17,0.88)", backdropFilter: "blur(24px)", borderBottom: `1px solid ${G}0.08)`, padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 20 }}>
+      <header style={{ background: "var(--bg-2)", backdropFilter: "blur(24px)", borderBottom: "1px solid var(--border)", padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Image src="/LogoWithoutName.svg" alt="RecruitX" width={30} height={30} style={{ objectFit: "contain" }} />
           <span style={{ fontSize: 18, fontWeight: 800, background: "linear-gradient(135deg,#a78bfa,#818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>RecruitX</span>
           <span style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)", padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Admin</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: 13, color: "#94a3b8" }}>{user?.name}</span>
+          <ThemeToggle />
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{user?.name}</span>
           <button onClick={logout} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)", color: "#f87171", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Logout</button>
         </div>
       </header>
 
       {/* Nav tabs */}
-      <div style={{ background: "rgba(8,8,17,0.7)", backdropFilter: "blur(16px)", borderBottom: `1px solid ${G}0.07)`, padding: "0 24px", display: "flex", gap: 2 }}>
+      <div style={{ background: "var(--bg-2)", backdropFilter: "blur(16px)", borderBottom: "1px solid var(--border)", padding: "0 24px", display: "flex", gap: 2 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 18px", cursor: "pointer", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? "#c4b5fd" : "#94a3b8", border: "none", background: "none", borderBottom: tab === t.id ? "2px solid #8b5cf6" : "2px solid transparent", transition: "all .2s", position: "relative" }}>
             {t.label}
@@ -287,7 +289,7 @@ export default function AdminPage() {
                           <td style={{ ...tdStyle, color: "#64748b" }}>{m.recruiterId ? recruiterMap[m.recruiterId] || m.recruiterId.slice(-6) : "—"}</td>
                           <td style={tdStyle}>{m.scorecard?.overall_score ? <ScoreChip score={m.scorecard.overall_score} /> : "—"}</td>
                           <td style={{ ...tdStyle, color: "#94a3b8" }}>{m.scorecard?.recommendation || "—"}</td>
-                          <td style={tdStyle}><button onClick={() => setModal(m)} style={{ background: `${G}0.08)`, color: "#e2e8f0", border: `1px solid ${G}0.12)`, padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>View</button></td>
+                          <td style={tdStyle}><button onClick={() => setModal(m)} style={{ background: "var(--sunken)", color: "var(--text)", border: "1px solid var(--border)", padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>View</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -349,7 +351,7 @@ export default function AdminPage() {
                           <td style={tdStyle}>
                             <div style={{ display: "flex", gap: 6 }}>
                               {cMeetings.length > 0 && (
-                                <button onClick={() => setModal(cMeetings[0])} style={{ background: `${G}0.07)`, color: "#e2e8f0", border: `1px solid ${G}0.12)`, padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Scorecard</button>
+                                <button onClick={() => setModal(cMeetings[0])} style={{ background: "var(--sunken)", color: "var(--text)", border: "1px solid var(--border)", padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Scorecard</button>
                               )}
                               {canReset && (
                                 <button onClick={() => resetCandidate(c._id, c.name)} disabled={resetLoading === c._id} style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.18)", padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: resetLoading === c._id ? "not-allowed" : "pointer", opacity: resetLoading === c._id ? 0.6 : 1 }}>
@@ -386,7 +388,7 @@ export default function AdminPage() {
                   <option value="cancelled">Cancelled</option>
                   <option value="failed">Failed</option>
                 </select>
-                <button onClick={refreshScheduled} style={{ padding: "9px 14px", background: `${G}0.07)`, border: `1px solid ${G}0.12)`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#e2e8f0" }}>Refresh</button>
+                <button onClick={refreshScheduled} style={{ padding: "9px 14px", background: "var(--sunken)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "var(--text)" }}>Refresh</button>
               </div>
             </div>
 
@@ -457,7 +459,7 @@ export default function AdminPage() {
                   <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px", color: "#e2e8f0" }}>{r.name}</h3>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                     {[["Candidates", r.total, "#a78bfa"], ["Completed", r.done, "#60a5fa"], ["Avg Score", r.avgScore || "—", "#fbbf24"]].map(([label, val, col]) => (
-                      <div key={String(label)} style={{ textAlign: "center", padding: "12px 8px", background: `${G}0.04)`, borderRadius: 10, border: `1px solid ${G}0.07)` }}>
+                      <div key={String(label)} style={{ textAlign: "center", padding: "12px 8px", background: "var(--sunken)", borderRadius: 10, border: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 22, fontWeight: 800, color: String(col) }}>{String(val)}</div>
                         <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 2 }}>{String(label)}</div>
                       </div>
@@ -542,7 +544,7 @@ export default function AdminPage() {
                             <td style={tdStyle}>{r.averageScore ? <ScoreChip score={r.averageScore} /> : "—"}</td>
                             <td style={tdStyle}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ flex: 1, height: 5, background: `${G}0.08)`, borderRadius: 3 }}>
+                                <div style={{ flex: 1, height: 5, background: "var(--sunken)", borderRadius: 3 }}>
                                   <div style={{ height: 5, background: "#8b5cf6", borderRadius: 3, width: `${r.successRate}%` }} />
                                 </div>
                                 <span style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", minWidth: 36 }}>{r.successRate}%</span>

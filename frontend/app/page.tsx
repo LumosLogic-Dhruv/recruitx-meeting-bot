@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { checkSession } from "@/lib/api";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LandingPage() {
   const [authed, setAuthed] = useState(false);
@@ -45,6 +46,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           {authed ? (
             <Link href="/recruiter" className="px-4 py-2 sm:px-6 sm:py-2.5 bg-gradient-to-br from-accent to-accent-2 text-on-accent text-xs sm:text-sm font-bold rounded-lg hover:opacity-90 transition-opacity">
               Dashboard

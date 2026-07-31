@@ -5,8 +5,8 @@ import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDe
 
 const G = "rgba(255,255,255,";
 const card: React.CSSProperties = {
-  background: `${G}0.05)`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  border: `1px solid ${G}0.09)`, borderRadius: 14,
+  background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--glass-shadow)",
 };
 
 interface Candidate {

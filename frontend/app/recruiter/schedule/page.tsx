@@ -7,16 +7,16 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 const G = "rgba(255,255,255,";
 
 const card: React.CSSProperties = {
-  background: `${G}0.05)`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  border: `1px solid ${G}0.09)`, borderRadius: 14, padding: 28,
+  background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid var(--border)", borderRadius: 14, padding: 28, boxShadow: "var(--glass-shadow)",
 };
 const inp: React.CSSProperties = {
-  width: "100%", padding: "10px 13px", fontSize: 13, border: `1px solid ${G}0.12)`,
-  borderRadius: 8, outline: "none", background: `${G}0.07)`, color: "#f1f5f9",
-  fontFamily: "inherit", boxSizing: "border-box", colorScheme: "dark",
+  width: "100%", padding: "10px 13px", fontSize: 13, border: "1px solid var(--border)",
+  borderRadius: 8, outline: "none", background: "var(--sunken)", color: "var(--text)",
+  fontFamily: "inherit", boxSizing: "border-box",
 };
 const lbl: React.CSSProperties = {
-  display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 4,
+  display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4,
   textTransform: "uppercase", letterSpacing: "0.05em",
 };
 

@@ -5,6 +5,8 @@ import RecruiterSidebar, { NAV, isActive } from "@/components/RecruiterSidebar";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { ThemeToggle } from "@/components/ThemeToggle";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export default function RecruiterLayout({ children }: { children: React.ReactNode }) {
@@ -49,6 +51,9 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
             </Link>
           );
         })}
+        <div className="flex flex-col items-center justify-center">
+          <ThemeToggle />
+        </div>
       </div>
 
       <main className="flex-1 w-full md:ml-56 p-4 sm:p-6 lg:p-8 min-h-[100dvh] max-w-full overflow-x-hidden pb-24 md:pb-8 bg-surface-base text-fg">

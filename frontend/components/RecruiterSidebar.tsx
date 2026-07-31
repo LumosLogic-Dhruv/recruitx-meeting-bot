@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { logout, getUser } from "@/lib/api";
 import { useEffect, useState } from "react";
 
+import { ThemeToggle } from "./ThemeToggle";
+
 export const NAV = [
   { href: "/recruiter",            icon: "📊", label: "Dashboard" },
   { href: "/recruiter/candidates", icon: "👥", label: "Candidates" },
@@ -33,13 +35,16 @@ export default function RecruiterSidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-56 fixed top-0 left-0 h-screen bg-surface-1/90 backdrop-blur-xl border-r border-outline/10 py-6 z-10 transition-colors">
-      {/* Logo */}
+      {/* Logo + ThemeToggle */}
       <div className="px-5 pb-5 border-b border-outline/10 mb-2">
-        <div className="flex items-center gap-2">
-          <Image src="/LogoWithoutName.svg" alt="RecruitX" width={28} height={28} />
-          <span className="text-[19px] font-extrabold bg-gradient-to-br from-accent to-accent-2 bg-clip-text text-transparent">
-            RecruitX
-          </span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Image src="/LogoWithoutName.svg" alt="RecruitX" width={28} height={28} />
+            <span className="text-[19px] font-extrabold bg-gradient-to-br from-accent to-accent-2 bg-clip-text text-transparent">
+              RecruitX
+            </span>
+          </div>
+          <ThemeToggle />
         </div>
         <span className="inline-block bg-accent/15 text-accent px-2.5 py-0.5 rounded-full text-[10px] font-bold mt-1.5 border border-accent/25 tracking-wider uppercase">
           Recruiter

@@ -64,15 +64,15 @@ function ScoreGauge({ score }: { score: number }) {
     <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
       <div style={{
         position: "absolute", inset: 0, borderRadius: "50%",
-        background: `conic-gradient(${col} ${pct * 360}deg, rgba(255,255,255,0.08) 0deg)`,
+        background: `conic-gradient(${col} ${pct * 360}deg, var(--surface-3) 0deg)`,
       }} />
       <div style={{
         position: "absolute", inset: 6, borderRadius: "50%",
-        background: "rgba(8,8,17,0.95)",
+        background: "var(--bg-2)",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       }}>
         <span style={{ fontSize: 24, fontWeight: 800, color: col, lineHeight: 1 }}>{score.toFixed(1)}</span>
-        <span style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>/ 10</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>/ 10</span>
       </div>
     </div>
   );
@@ -85,17 +85,17 @@ function ScoreBar({ score, max = 10 }: { score: number; max?: number }) {
   const col = scoreColor(score);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 99, background: `${G}0.07)`, position: "relative", overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 99, background: "var(--surface-3)", position: "relative", overflow: "hidden" }}>
         <div style={{ height: "100%", borderRadius: 99, background: col, width: `${pct}%`, transition: "width .4s ease" }} />
         {/* Pass threshold tick */}
-        <div style={{ position: "absolute", top: 0, bottom: 0, left: `${threshPct}%`, width: 1, background: "rgba(255,255,255,0.3)" }} />
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: `${threshPct}%`, width: 1, background: "var(--border)" }} />
       </div>
       <span style={{ fontSize: 12, fontWeight: 800, color: col, minWidth: 24, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{score}</span>
     </div>
   );
 }
 
-// ── Radar Chart (pure SVG, dark) ───────────────────────────────────────────
+// ── Radar Chart (pure SVG, dynamic theme) ───────────────────────────────────
 function RadarChart({ dimensions }: { dimensions: Dimension[] }) {
   if (!dimensions || dimensions.length < 3) return null;
   const size = 280, cx = 140, cy = 140, r = 90;
@@ -121,21 +121,21 @@ function RadarChart({ dimensions }: { dimensions: Dimension[] }) {
   return (
     <svg viewBox={`0 0 ${size} ${size}`} style={{ width: "100%", maxWidth: 280, display: "block", margin: "0 auto" }}>
       {[2, 4, 6, 8, 10].map(scale => (
-        <polygon key={scale} points={gridPts(scale)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={0.8} />
+        <polygon key={scale} points={gridPts(scale)} fill="none" stroke="var(--border)" strokeWidth={0.8} />
       ))}
       {Array.from({ length: n }, (_, i) => {
         const angle = angleStep * i - Math.PI / 2;
-        return <line key={i} x1={cx} y1={cy} x2={cx + r * Math.cos(angle)} y2={cy + r * Math.sin(angle)} stroke="rgba(255,255,255,0.1)" strokeWidth={0.8} />;
+        return <line key={i} x1={cx} y1={cy} x2={cx + r * Math.cos(angle)} y2={cy + r * Math.sin(angle)} stroke="var(--border)" strokeWidth={0.8} />;
       })}
-      <polygon points={dataStr} fill="rgba(139,92,246,0.15)" stroke="#8b5cf6" strokeWidth={2} />
-      {dataPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3.5} fill="#8b5cf6" />)}
+      <polygon points={dataStr} fill="rgba(139,92,246,0.18)" stroke="var(--primary)" strokeWidth={2} />
+      {dataPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3.5} fill="var(--primary)" />)}
       {dimensions.map((d, i) => {
         const angle = angleStep * i - Math.PI / 2;
         const lx = cx + (r + 28) * Math.cos(angle);
         const ly = cy + (r + 28) * Math.sin(angle);
         const col = scoreColor(d.score);
         return (
-          <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="#94a3b8">
+          <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="var(--text-muted)">
             {d.name} <tspan fill={col} fontWeight="bold">{d.score}</tspan>
           </text>
         );
@@ -175,24 +175,25 @@ export default function ScorecardDetailModal({ meetings, onClose, dashboardUrl }
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "28px 16px" }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "28px 16px" }}
     >
       <div style={{
-        background: "rgba(10,10,20,0.96)", backdropFilter: "blur(30px)",
-        border: `1px solid ${G}0.10)`,
+        background: "var(--bg-2)", backdropFilter: "blur(30px)",
+        border: "1px solid var(--border)",
+        boxShadow: "var(--glass-shadow)",
         borderRadius: 20, width: "100%", maxWidth: 820,
-        overflow: "hidden", marginBottom: 28, position: "relative",
+        overflow: "hidden", marginBottom: 28, position: "relative", color: "var(--text)",
       }}>
 
         {/* ── Header ── */}
-        <div style={{ background: `${G}0.04)`, borderBottom: `1px solid ${G}0.09)`, padding: "28px 32px 24px", position: "relative" }}>
-          <button onClick={onClose} style={{ position: "absolute", top: 18, right: 22, background: `${G}0.06)`, border: `1px solid ${G}0.10)`, borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#94a3b8", fontSize: 16 }}>✕</button>
+        <div style={{ background: "var(--sunken)", borderBottom: "1px solid var(--border)", padding: "28px 32px 24px", position: "relative" }}>
+          <button onClick={onClose} style={{ position: "absolute", top: 18, right: 22, background: "var(--surface-3)", border: "1px solid var(--border)", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-muted)", fontSize: 16 }}>✕</button>
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
             {score > 0 && <ScoreGauge score={score} />}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "#64748b" }}>AI Interview Report</p>
-              <h2 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 800, color: "#f1f5f9" }}>{m?.candidateName || "Candidate"}</h2>
+              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--text-muted)" }}>AI Interview Report</p>
+              <h2 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 800, color: "var(--text)" }}>{m?.candidateName || "Candidate"}</h2>
               <p style={{ margin: "0 0 10px", fontSize: 13, color: "#64748b" }}>
                 {m?.roleName || "Interview"}
                 {m?.createdAt ? ` · ${new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}

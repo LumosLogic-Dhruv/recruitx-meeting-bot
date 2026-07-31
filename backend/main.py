@@ -2199,11 +2199,14 @@ def admin_analytics(user: dict = Depends(get_current_user)):
         improvement_rate = round(improved_count / total_retried * 100) if total_retried else 0
 
         # Recruiter performance
+        users_list = convex_client.query("users:list") or []
+        recruiter_map = {u["_id"]: u.get("name") or u.get("email") for u in users_list}
+
         recruiter_stats: dict[str, dict] = {}
         for c in candidates:
             rid = c.get("recruiterId") or "unknown"
             if rid not in recruiter_stats:
-                rname = c.get("recruiterName") or rid[-6:]
+                rname = c.get("recruiterName") or recruiter_map.get(rid) or (rid[-6:] if len(rid) >= 6 else rid)
                 recruiter_stats[rid] = {"name": rname, "total": 0, "completed": 0, "scores": []}
             recruiter_stats[rid]["total"] += 1
             if c.get("interviewStatus") in ("locked", "completed"):

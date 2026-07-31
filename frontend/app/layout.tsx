@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
 import "./globals.css";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
-});
 
 export const metadata: Metadata = {
   title: "RecruitX AI Interviewer",
@@ -17,8 +11,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={outfit.className} suppressHydrationWarning>
-      <body className="min-h-screen flex flex-col">
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen flex flex-col font-sans">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           {children}
         </ThemeProvider>
@@ -26,3 +20,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
