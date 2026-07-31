@@ -10,8 +10,6 @@ import Clips from "../../../components/Clips";
 import TranscriptChat from "../../../components/TranscriptChat";
 import { getRecommendationLabel } from "../../../lib/useCasePresets";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL || "");
-
 type CallTab = "scorecard" | "ai-report" | "clips" | "transcript";
 
 function formatCtc(val?: number | null) {
@@ -346,6 +344,7 @@ function CandidateShareContent() {
 
   useEffect(() => {
     if (token && process.env.NEXT_PUBLIC_CONVEX_URL) {
+      const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL);
       convex.query("candidates:getByShareToken" as any, { token })
         .then(res => setData(res))
         .catch(() => setData(null));

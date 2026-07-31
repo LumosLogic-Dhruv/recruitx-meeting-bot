@@ -10,8 +10,6 @@ import Clips from "../../components/Clips";
 import TranscriptChat from "../../components/TranscriptChat";
 import { getRecommendationLabel } from "../../lib/useCasePresets";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL || "");
-
 function formatDuration(seconds: number): string {
   if (!seconds || seconds < 0) return "—";
   const m = Math.floor(seconds / 60);
@@ -43,6 +41,7 @@ function SharePageContent() {
 
   useEffect(() => {
     if (token && process.env.NEXT_PUBLIC_CONVEX_URL) {
+      const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL);
       convex.query("meetings:getByShareToken" as any, { token })
         .then(res => setCall(res))
         .catch(() => setCall(null));
