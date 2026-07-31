@@ -4,7 +4,6 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const G = "rgba(255,255,255,";
 
 const card: React.CSSProperties = {
   background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -34,7 +33,7 @@ interface ScheduledInterview {
 const statusBg: Record<string, [string, string]> = {
   pending:   ["rgba(59,130,246,0.12)", "#93c5fd"],
   active:    ["rgba(16,185,129,0.12)", "#34d399"],
-  completed: [`${G}0.05)`, "#64748b"],
+  completed: ["var(--surface-3)", "var(--text-muted)"],
   cancelled: ["rgba(239,68,68,0.10)", "#f87171"],
 };
 
@@ -174,8 +173,8 @@ export default function SchedulePage() {
 
   return (
     <>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", margin: "0 0 24px" }}>Schedule Interview</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "500px 1fr", gap: 24, alignItems: "start" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: "0 0 24px" }}>Schedule Interview</h1>
+      <div className="responsive-2-col" style={{ gridTemplateColumns: "minmax(300px,500px) 1fr" }}>
 
         {/* ── Schedule Form ── */}
         <div style={card}>
@@ -185,8 +184,8 @@ export default function SchedulePage() {
               const done = n === 1 ? !!form.candidateId : n === 2 ? !!(form.datetime && form.role) : false;
               return (
                 <div key={n} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: done ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.07)", color: done ? "#fff" : "#a78bfa", border: done ? "none" : "1px solid rgba(139,92,246,0.3)" }}>{done ? "✓" : n}</div>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b", textAlign: "center" }}>{label}</span>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: done ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "var(--sunken)", color: done ? "#fff" : "#a78bfa", border: done ? "none" : "1px solid rgba(139,92,246,0.3)" }}>{done ? "✓" : n}</div>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textAlign: "center" }}>{label}</span>
                 </div>
               );
             })}
@@ -213,7 +212,7 @@ export default function SchedulePage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#c4b5fd" }}>{selectedCandidate.name}</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
                       {selectedCandidate.roleName || "Role not set"}
                       {selectedCandidate.currentCompany ? ` · ${selectedCandidate.currentCompany}` : ""}
                       {selectedCandidate.experienceYears ? ` · ${selectedCandidate.experienceYears} yrs` : ""}
@@ -249,7 +248,7 @@ export default function SchedulePage() {
             {/* Meeting link */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ ...lbl, marginBottom: 10 }}>Google Meet Link</label>
-              <div style={{ display: "flex", gap: 0, marginBottom: 14, border: `1px solid ${G}0.12)`, borderRadius: 8, overflow: "hidden" }}>
+              <div style={{ display: "flex", gap: 0, marginBottom: 14, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
                 {(["auto", "manual"] as const).map(mode => (
                   <button key={mode} type="button" onClick={() => setMeetingMode(mode)} style={{ flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", background: meetingMode === mode ? "rgba(139,92,246,0.25)" : "rgba(255,255,255,0.04)", color: meetingMode === mode ? "#c4b5fd" : "#94a3b8", transition: "all .15s" }}>
                     {mode === "auto" ? "Auto (Google Calendar)" : "Paste my own link"}
@@ -261,14 +260,14 @@ export default function SchedulePage() {
                   <input type="url" placeholder="https://meet.google.com/abc-def-ghi" value={manualUrl} onChange={e => setManualUrl(e.target.value)} style={inp} />
                   <div style={{ marginTop: 12, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 10, padding: 14 }}>
                     <div style={{ fontWeight: 700, fontSize: 12, color: "#fbbf24", marginBottom: 6 }}>⚡ Disable waiting room before interview</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.7 }}>
-                      Open the Meet link → join → click the <strong style={{ color: "#e2e8f0" }}>shield/lock icon</strong> → turn <strong style={{ color: "#e2e8f0" }}>&quot;Quick access&quot; ON</strong>.<br />
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.7 }}>
+                      Open the Meet link → join → click the <strong style={{ color: "var(--text)" }}>shield/lock icon</strong> → turn <strong style={{ color: "var(--text)" }}>&quot;Quick access&quot; ON</strong>.<br />
                       This allows the AI bot to join automatically.
                     </div>
                   </div>
                 </div>
               ) : (
-                <div style={{ fontSize: 12, color: "#64748b", background: `${G}0.03)`, border: `1px solid ${G}0.08)`, borderRadius: 8, padding: "10px 14px" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", background: "var(--sunken)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
                   A Google Meet link will be generated via your connected Google Calendar account.
                 </div>
               )}
@@ -290,11 +289,11 @@ export default function SchedulePage() {
               {generatingPrompt ? (
                 <div style={{ padding: "14px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 8, fontSize: 13, color: "#a78bfa", display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 18 }}>⏳</span>
-                  <div><div style={{ fontWeight: 700 }}>Generating AI interview prompt...</div><div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Analyzing candidate profile and resume</div></div>
+                  <div><div style={{ fontWeight: 700 }}>Generating AI interview prompt...</div><div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Analyzing candidate profile and resume</div></div>
                 </div>
               ) : (
                 <>
-                  {!form.candidateId && <div style={{ padding: "12px 14px", background: `${G}0.03)`, border: `1px dashed ${G}0.10)`, borderRadius: 8, fontSize: 12, color: "#64748b", marginBottom: 8 }}>Select a candidate — the AI prompt will be auto-generated from their profile.</div>}
+                  {!form.candidateId && <div style={{ padding: "12px 14px", background: "var(--sunken)", border: "1px dashed var(--border)", borderRadius: 8, fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>Select a candidate — the AI prompt will be auto-generated from their profile.</div>}
                   <select style={{ ...inp, marginBottom: 8, fontSize: 12 }} value="" onChange={e => { if (e.target.value) { setForm(p => ({ ...p, promptText: e.target.value })); setPromptSource(""); } }}>
                     <option value="">— Override with a saved prompt —</option>
                     {prompts.map((p, i) => <option key={i} value={p.promptText}>{p.roleName}</option>)}
@@ -302,7 +301,7 @@ export default function SchedulePage() {
                   <textarea rows={7} style={{ ...inp, resize: "vertical", fontSize: 12, lineHeight: 1.6 }} placeholder="AI interview prompt will appear here..." value={form.promptText} onChange={e => { setForm(p => ({ ...p, promptText: e.target.value })); setPromptSource(""); }} />
                 </>
               )}
-              <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>Candidate profile and resume context is automatically prepended.</p>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>Candidate profile and resume context is automatically prepended.</p>
             </div>
 
             {alert && (alert.msg === "GOOGLE_TOKEN_EXPIRED" || alert.msg === "GOOGLE_SCOPE_MISSING") ? (
@@ -317,7 +316,7 @@ export default function SchedulePage() {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <Link href="/recruiter/schedule" style={{ flex: 1 }}>
-                    <button type="button" onClick={() => { setMeetingMode("manual"); setAlert(null); }} style={{ width: "100%", padding: "8px 0", fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,0.07)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, cursor: "pointer" }}>
+                    <button type="button" onClick={() => { setMeetingMode("manual"); setAlert(null); }} style={{ width: "100%", padding: "8px 0", fontSize: 12, fontWeight: 700, background: "var(--sunken)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer" }}>
                       Use manual link instead
                     </button>
                   </Link>
@@ -341,30 +340,30 @@ export default function SchedulePage() {
 
         {/* ── Scheduled list ── */}
         <div style={card}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px" }}>Scheduled Interviews</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 16px" }}>Scheduled Interviews</h2>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 {["Candidate", "Role", "Date & Time", "Attempt", "Status", ""].map(h => (
-                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "#64748b", background: `${G}0.03)`, borderBottom: `2px solid ${G}0.09)` }}>{h}</th>
+                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--text-muted)", background: "var(--sunken)", borderBottom: "2px solid var(--border)" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {scheduled.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "#64748b", padding: 40, fontSize: 13 }}>No interviews scheduled yet.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40, fontSize: 13 }}>No interviews scheduled yet.</td></tr>
               ) : scheduled.map(iv => {
-                const [sbg, scol] = statusBg[iv.status] || [`${G}0.05)`, "#64748b"];
+                const [sbg, scol] = statusBg[iv.status] || ["var(--surface-3)", "var(--text-muted)"];
                 return (
                   <tr key={iv._id}>
-                    <td style={{ padding: "12px", fontSize: 13, borderBottom: `1px solid ${G}0.05)`, color: "#f1f5f9", fontWeight: 600 }}>{iv.candidateName}</td>
-                    <td style={{ padding: "12px", fontSize: 12, borderBottom: `1px solid ${G}0.05)`, color: "#94a3b8" }}>{iv.roleName}</td>
-                    <td style={{ padding: "12px", fontSize: 11, color: "#64748b", borderBottom: `1px solid ${G}0.05)` }}>{new Date(iv.scheduledAt).toISOString().replace("T", " ").slice(0, 16)} UTC</td>
-                    <td style={{ padding: "12px", textAlign: "center", borderBottom: `1px solid ${G}0.05)`, color: "#94a3b8", fontSize: 12 }}>#{iv.attemptNumber || 1}</td>
-                    <td style={{ padding: "12px", borderBottom: `1px solid ${G}0.05)` }}>
+                    <td style={{ padding: "12px", fontSize: 13, borderBottom: "1px solid var(--border)", color: "var(--text)", fontWeight: 600 }}>{iv.candidateName}</td>
+                    <td style={{ padding: "12px", fontSize: 12, borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}>{iv.roleName}</td>
+                    <td style={{ padding: "12px", fontSize: 11, color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>{new Date(iv.scheduledAt).toISOString().replace("T", " ").slice(0, 16)} UTC</td>
+                    <td style={{ padding: "12px", textAlign: "center", borderBottom: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12 }}>#{iv.attemptNumber || 1}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid var(--border)" }}>
                       <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: sbg, color: scol }}>{iv.status}</span>
                     </td>
-                    <td style={{ padding: "12px", borderBottom: `1px solid ${G}0.05)` }}>
+                    <td style={{ padding: "12px", borderBottom: "1px solid var(--border)" }}>
                       {iv.status === "pending" ? (
                         <button onClick={() => cancel(iv._id)} style={{ background: "rgba(239,68,68,0.10)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)", padding: "4px 10px", fontSize: 11, borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>Cancel</button>
                       ) : "—"}

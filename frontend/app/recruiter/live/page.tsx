@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef } from "react";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const G = "rgba(255,255,255,";
 function auth() { return `Bearer ${localStorage.getItem("token")}`; }
 
 interface TranscriptEntry { speaker: string; text: string; }
@@ -20,7 +19,7 @@ function statusBadge(status: string) {
     case "in_waiting_room": return { label: "Waiting Room", color: "#f87171", bg: "rgba(239,68,68,0.15)" };
     case "in_call":         return { label: "● Live",       color: "#34d399", bg: "rgba(16,185,129,0.15)" };
     case "joining":         return { label: "Connecting…",  color: "#fbbf24", bg: "rgba(245,158,11,0.15)" };
-    default:                return { label: status,         color: "#94a3b8", bg: `${G}0.06)` };
+    default:                return { label: status,         color: "var(--text-muted)", bg: "var(--surface-3)" };
   }
 }
 
@@ -58,8 +57,8 @@ export default function LiveInterviewPage() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>Live Interviews</h1>
-          <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: "0 0 4px" }}>Live Interviews</h1>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
             {sessions.length} active · auto-refreshes every 3s
             {lastUpdated && ` · ${lastUpdated.toLocaleTimeString()}`}
           </p>
@@ -79,10 +78,10 @@ export default function LiveInterviewPage() {
       )}
 
       {sessions.length === 0 && !error ? (
-        <div style={{ background: `${G}0.04)`, backdropFilter: "blur(20px)", border: `1px dashed ${G}0.10)`, borderRadius: 16, padding: 60, textAlign: "center" }}>
+        <div style={{ background: "var(--glass-bg)", backdropFilter: "blur(20px)", border: "1px dashed var(--border)", borderRadius: 16, padding: 60, textAlign: "center" }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>🎙️</div>
-          <p style={{ color: "#e2e8f0", fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>No interviews in progress</p>
-          <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>This page auto-refreshes every 3 seconds when an interview begins</p>
+          <p style={{ color: "var(--text)", fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>No interviews in progress</p>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>This page auto-refreshes every 3 seconds when an interview begins</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -90,20 +89,20 @@ export default function LiveInterviewPage() {
             const st = statusBadge(session.bot_status);
             const isBot = (speaker: string) => speaker === "AI" || speaker.toLowerCase().includes("recruit");
             return (
-              <div key={session.bot_id} style={{ background: `${G}0.05)`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: `1px solid ${G}0.09)`, borderRadius: 14, overflow: "hidden" }}>
+              <div key={session.bot_id} style={{ background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
 
                 {/* Session header */}
-                <div style={{ padding: "16px 20px", borderBottom: `1px solid ${G}0.08)`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                      <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f1f5f9" }}>{session.candidate_name}</h3>
+                      <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{session.candidate_name}</h3>
                       <span style={{ background: st.bg, color: st.color, padding: "3px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{st.label}</span>
                     </div>
-                    <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
                       {session.role_name || "Interview"} · Bot: {session.bot_name} · {formatElapsed(session.elapsed_seconds)}
                     </p>
                   </div>
-                  <div style={{ textAlign: "right", fontSize: 12, color: "#64748b" }}>
+                  <div style={{ textAlign: "right", fontSize: 12, color: "var(--text-muted)" }}>
                     {session.transcript.length} turn{session.transcript.length !== 1 ? "s" : ""}
                   </div>
                 </div>
@@ -133,9 +132,9 @@ export default function LiveInterviewPage() {
                 )}
 
                 {/* Live transcript */}
-                <div ref={el => { transcriptRefs.current[session.bot_id] = el; }} style={{ padding: "16px 20px", maxHeight: 420, overflowY: "auto", background: `${G}0.02)` }}>
+                <div ref={el => { transcriptRefs.current[session.bot_id] = el; }} style={{ padding: "16px 20px", maxHeight: 420, overflowY: "auto", background: "var(--sunken)" }}>
                   {session.transcript.length === 0 ? (
-                    <p style={{ color: "#64748b", fontSize: 13, textAlign: "center", padding: "24px 0", margin: 0 }}>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: "24px 0", margin: 0 }}>
                       {session.bot_status === "in_call" ? "Waiting for conversation to begin..." : "Transcript will appear here once the bot joins"}
                     </p>
                   ) : (
@@ -162,7 +161,7 @@ export default function LiveInterviewPage() {
                 </div>
 
                 {/* Legend */}
-                <div style={{ padding: "8px 20px", borderTop: `1px solid ${G}0.07)`, display: "flex", gap: 16, fontSize: 11, color: "#64748b" }}>
+                <div style={{ padding: "8px 20px", borderTop: "1px solid var(--border)", display: "flex", gap: 16, fontSize: 11, color: "var(--text-muted)" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(139,92,246,0.15)", display: "inline-block" }} />AI Bot (right)
                   </span>

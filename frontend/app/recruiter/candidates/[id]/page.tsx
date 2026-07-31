@@ -5,7 +5,6 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const G = "rgba(255,255,255,";
 
 const card: React.CSSProperties = {
   background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -45,7 +44,7 @@ const EVENT_LABELS: Record<string, { icon: string; label: string; color: string 
   candidate_left:       { icon: "🔴", label: "Candidate Left",         color: "#f87171" },
   candidate_rejoined:   { icon: "🔄", label: "Candidate Rejoined",     color: "#38bdf8" },
   interview_started:    { icon: "▶️",  label: "Interview Started",      color: "#a78bfa" },
-  interview_ended:      { icon: "⏹️",  label: "Interview Ended",       color: "#94a3b8" },
+  interview_ended:      { icon: "⏹️",  label: "Interview Ended",       color: "var(--text-muted)" },
   no_show:              { icon: "🚫", label: "No Show",                color: "#f87171" },
   score_generated:      { icon: "📊", label: "Score Generated",        color: "#34d399" },
   scorecard_email_sent: { icon: "📨", label: "Scorecard Email Sent",   color: "#34d399" },
@@ -180,7 +179,7 @@ export default function CandidateDetailPage() {
     if (generatedPrompt) { sessionStorage.setItem("pendingPrompt", generatedPrompt); window.location.href = "/recruiter/schedule"; }
   }
 
-  if (loading) return <div style={{ padding: 40, color: "#64748b" }}>Loading...</div>;
+  if (loading) return <div style={{ padding: 40, color: "var(--text-muted)" }}>Loading...</div>;
   if (!candidate) return <div style={{ padding: 40, color: "#f87171" }}>Candidate not found.</div>;
 
   const skills = (profileForm.skills || []) as string[];
@@ -199,8 +198,8 @@ export default function CandidateDetailPage() {
       <div style={{ ...card, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>{candidate.name}</h1>
-            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: "0 0 4px" }}>{candidate.name}</h1>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
               {candidate.email}
               {candidate.roleName ? ` · ${candidate.roleName}` : ""}
               {candidate.attemptCount ? ` · Attempt ${candidate.attemptCount}/2` : ""}
@@ -215,9 +214,9 @@ export default function CandidateDetailPage() {
             ].map(step => (
               <div key={step.n} style={{
                 display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                background: step.done ? "rgba(52,211,153,0.12)" : `${G}0.05)`,
-                color: step.done ? "#34d399" : "#64748b",
-                border: `1px solid ${step.done ? "rgba(52,211,153,0.2)" : `${G}0.09)`}`,
+                background: step.done ? "rgba(52,211,153,0.12)" : "var(--surface-3)",
+                color: step.done ? "#34d399" : "var(--text-muted)",
+                border: `1px solid ${step.done ? "rgba(52,211,153,0.2)" : "var(--border)"}`,
               }}>
                 <span>{step.n}</span><span>{step.label}</span>
               </div>
@@ -226,10 +225,10 @@ export default function CandidateDetailPage() {
         </div>
 
         {/* Resume row */}
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${G}0.07)`, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>Resume:</span>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Resume:</span>
           {candidate.resumeFileName && <span style={{ fontSize: 12, color: "#34d399", fontWeight: 600 }}>✓ {candidate.resumeFileName}</span>}
-          <label style={{ display: "inline-block", padding: "5px 13px", background: candidate.resumeFileName ? `${G}0.07)` : "rgba(139,92,246,0.15)", color: candidate.resumeFileName ? "#e2e8f0" : "#c4b5fd", border: `1px solid ${candidate.resumeFileName ? `${G}0.12)` : "rgba(139,92,246,0.25)"}`, borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+          <label style={{ display: "inline-block", padding: "5px 13px", background: candidate.resumeFileName ? "var(--sunken)" : "rgba(139,92,246,0.15)", color: candidate.resumeFileName ? "var(--text)" : "#c4b5fd", border: `1px solid ${candidate.resumeFileName ? "var(--border)" : "rgba(139,92,246,0.25)"}`, borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
             {uploading ? "Uploading..." : candidate.resumeFileName ? "Replace Resume" : "Upload Resume"}
             <input type="file" accept=".pdf,.txt,.doc,.docx" style={{ display: "none" }} onChange={handleResumeUpload} disabled={uploading} />
           </label>
@@ -238,18 +237,18 @@ export default function CandidateDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `2px solid ${G}0.09)`, alignItems: "flex-end" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "2px solid var(--border)", alignItems: "flex-end" }}>
         {(["profile", "timeline"] as Tab[]).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
             padding: "10px 20px", fontSize: 13, fontWeight: 600, border: "none",
             background: "none", cursor: "pointer",
-            borderBottom: activeTab === tab ? "2px solid #8b5cf6" : "2px solid transparent",
-            color: activeTab === tab ? "#c4b5fd" : "#64748b", marginBottom: -2, textTransform: "capitalize",
+            borderBottom: activeTab === tab ? "2px solid var(--primary)" : "2px solid transparent",
+            color: activeTab === tab ? "#c4b5fd" : "var(--text-muted)", marginBottom: -2, textTransform: "capitalize",
           }}>
             {tab === "profile" ? "Candidate Profile" : "Interview Timeline"}
           </button>
         ))}
-        <Link href="/recruiter/scorecards" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, color: "#64748b", textDecoration: "none", marginBottom: -2, borderBottom: "2px solid transparent", marginLeft: "auto" }}>
+        <Link href="/recruiter/scorecards" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, color: "var(--text-muted)", textDecoration: "none", marginBottom: -2, borderBottom: "2px solid transparent", marginLeft: "auto" }}>
           View Scorecards →
         </Link>
       </div>
@@ -259,7 +258,7 @@ export default function CandidateDetailPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={card}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Information</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Information</h2>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {[
                   { key: "name", label: "Full Name", ph: "Jane Doe" },
@@ -279,7 +278,7 @@ export default function CandidateDetailPage() {
             </div>
 
             <div style={card}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Professional Details</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Professional Details</h2>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {[
                   { key: "experienceYears", label: "Years Exp", ph: "4" },
@@ -300,13 +299,13 @@ export default function CandidateDetailPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={card}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Skills</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Skills</h2>
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <input style={{ ...inp, flex: 1 }} placeholder="Add a skill (e.g. React, Python)" value={skillInput} onChange={e => setSkillInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }} />
                 <button onClick={addSkill} style={{ padding: "9px 16px", background: "rgba(139,92,246,0.2)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Add</button>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, minHeight: 40 }}>
-                {skills.length === 0 && <span style={{ fontSize: 12, color: "#64748b" }}>No skills added yet</span>}
+                {skills.length === 0 && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No skills added yet</span>}
                 {skills.map(skill => (
                   <span key={skill} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(139,92,246,0.15)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.25)", padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
                     {skill}
@@ -317,7 +316,7 @@ export default function CandidateDetailPage() {
             </div>
 
             <div style={card}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Recruiter Notes</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Recruiter Notes</h2>
               <textarea rows={4} style={{ ...inp, resize: "vertical" }} placeholder="Any relevant context about this candidate..." value={(profileForm.notes as string) || ""} onChange={e => setField("notes", e.target.value)} />
             </div>
 
@@ -336,7 +335,7 @@ export default function CandidateDetailPage() {
                 <h2 style={{ fontSize: 13, fontWeight: 700, color: "#c4b5fd", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>AI Interview Prompt</h2>
                 {candidate.generatedPrompt && <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.2)", padding: "2px 8px", borderRadius: 20 }}>Saved to Profile</span>}
               </div>
-              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px", lineHeight: 1.5 }}>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
                 {candidate.resumeFileName ? `Resume: ${candidate.resumeFileName}. ` : ""}
                 Generate a tailored prompt from resume + profile.
               </p>
@@ -346,7 +345,7 @@ export default function CandidateDetailPage() {
               {generatedPrompt && (
                 <>
                   <div style={{ fontSize: 11, color: "#34d399", marginTop: 8, marginBottom: 4 }}>Prompt generated and saved. Auto-loads when scheduling.</div>
-                  <textarea readOnly rows={8} value={generatedPrompt} style={{ ...inp, background: `${G}0.04)`, resize: "vertical", fontSize: 12, lineHeight: 1.5, marginTop: 4 }} />
+                  <textarea readOnly rows={8} value={generatedPrompt} style={{ ...inp, background: "var(--sunken)", resize: "vertical", fontSize: 12, lineHeight: 1.5, marginTop: 4 }} />
                   <button onClick={copyPromptToSchedule} style={{ marginTop: 8, padding: "8px 16px", background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Use in Schedule Interview →
                   </button>
@@ -360,14 +359,14 @@ export default function CandidateDetailPage() {
       {/* Timeline Tab */}
       {activeTab === "timeline" && (
         <div style={card}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: "0 0 24px" }}>Interview Timeline</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 24px" }}>Interview Timeline</h2>
           {events.length === 0 ? (
-            <p style={{ color: "#64748b", textAlign: "center", padding: 40 }}>No events recorded yet.</p>
+            <p style={{ color: "var(--text-muted)", textAlign: "center", padding: 40 }}>No events recorded yet.</p>
           ) : (
             <div style={{ position: "relative", paddingLeft: 32 }}>
               <div style={{ position: "absolute", left: 11, top: 0, bottom: 0, width: 2, background: "rgba(139,92,246,0.2)" }} />
               {events.map((ev, idx) => {
-                const def = EVENT_LABELS[ev.eventType] || { icon: "•", label: ev.eventType, color: "#64748b" };
+                const def = EVENT_LABELS[ev.eventType] || { icon: "•", label: ev.eventType, color: "var(--text-muted)" };
                 const dt = new Date(ev.timestamp);
                 return (
                   <div key={ev._id} style={{ position: "relative", marginBottom: idx === events.length - 1 ? 0 : 24 }}>
@@ -379,10 +378,10 @@ export default function CandidateDetailPage() {
                     }}>
                       {def.icon}
                     </div>
-                    <div style={{ background: `${G}0.04)`, border: `1px solid ${G}0.08)`, borderRadius: 10, padding: "12px 16px" }}>
+                    <div style={{ background: "var(--sunken)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: def.color }}>{def.label}</span>
-                        <span style={{ fontSize: 10, color: "#64748b" }}>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
                           {dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
@@ -391,7 +390,7 @@ export default function CandidateDetailPage() {
                           {!!ev.metadata.overallScore && <span style={{ fontSize: 10, background: "rgba(52,211,153,0.12)", color: "#34d399", padding: "1px 7px", borderRadius: 20, fontWeight: 700 }}>Score: {String(ev.metadata.overallScore)}/10</span>}
                           {!!ev.metadata.recommendation && <span style={{ fontSize: 10, background: "rgba(139,92,246,0.12)", color: "#a78bfa", padding: "1px 7px", borderRadius: 20, fontWeight: 700 }}>{String(ev.metadata.recommendation)}</span>}
                           {!!ev.metadata.attemptNumber && <span style={{ fontSize: 10, background: "rgba(96,165,250,0.12)", color: "#93c5fd", padding: "1px 7px", borderRadius: 20, fontWeight: 700 }}>Attempt {String(ev.metadata.attemptNumber)}</span>}
-                          {!!ev.metadata.fileName && <span style={{ fontSize: 10, background: `${G}0.07)`, color: "#94a3b8", padding: "1px 7px", borderRadius: 20, fontWeight: 600 }}>{String(ev.metadata.fileName)}</span>}
+                          {!!ev.metadata.fileName && <span style={{ fontSize: 10, background: "var(--sunken)", color: "var(--text-muted)", padding: "1px 7px", borderRadius: 20, fontWeight: 600 }}>{String(ev.metadata.fileName)}</span>}
                         </div>
                       )}
                     </div>

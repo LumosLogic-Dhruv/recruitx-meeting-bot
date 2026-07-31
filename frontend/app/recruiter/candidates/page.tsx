@@ -5,19 +5,18 @@ import { api } from "@/lib/api";
 import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDetailModal";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const G = "rgba(255,255,255,";
 
 // ── Shared style tokens ────────────────────────────────────────────────────
 const card: React.CSSProperties = {
-  background: `${G}0.05)`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  border: `1px solid ${G}0.09)`, borderRadius: 14,
+  background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid var(--border)", borderRadius: 14,
 };
 const inp: React.CSSProperties = {
   width: "100%", padding: "9px 12px", fontSize: 13,
-  border: `1px solid ${G}0.12)`, borderRadius: 8, outline: "none",
-  background: `${G}0.07)`, color: "#f1f5f9", fontFamily: "inherit", boxSizing: "border-box", colorScheme: "dark",
+  border: "1px solid var(--border)", borderRadius: 8, outline: "none",
+  background: "var(--sunken)", color: "var(--text)", fontFamily: "inherit", boxSizing: "border-box",
 };
-const lbl: React.CSSProperties = { display: "block", fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" };
+const lbl: React.CSSProperties = { display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" };
 
 // ── Extended meeting type with API fields not in ScorecardMeeting ─────────
 interface MeetingRecord extends ScorecardMeeting {
@@ -42,7 +41,7 @@ interface TimelineEvent {
 // ── Status helpers ────────────────────────────────────────────────────────
 function statusColor(s: string): [string, string] {
   const m: Record<string, [string, string]> = {
-    never_invited:       [`${G}0.06)`, "#94a3b8"],
+    never_invited:       ["var(--surface-3)", "var(--text-muted)"],
     attempt_1_scheduled: ["rgba(59,130,246,0.15)", "#93c5fd"],
     attempt_2_scheduled: ["rgba(59,130,246,0.15)", "#93c5fd"],
     cooldown:            ["rgba(245,158,11,0.15)", "#fbbf24"],
@@ -51,7 +50,7 @@ function statusColor(s: string): [string, string] {
     partial:             ["rgba(234,179,8,0.15)", "#fde047"],
     no_show:             ["rgba(245,158,11,0.15)", "#fbbf24"],
   };
-  return m[s] || [`${G}0.06)`, "#94a3b8"];
+  return m[s] || ["var(--surface-3)", "var(--text-muted)"];
 }
 function statusLabel(s: string, c: Candidate) {
   const map: Record<string, string> = {
@@ -252,19 +251,15 @@ export default function CandidatesPage() {
   }
 
   return (
-    <div style={{ display: "flex", gap: 0, height: "calc(100vh - 64px)" }}>
+    <div className="two-panel" style={{ height: "calc(100dvh - 64px)", gap: 16 }}>
 
       {/* ── Sidebar: Candidate List ── */}
-      <div style={{
-        width: 320, flexShrink: 0, display: "flex", flexDirection: "column",
-        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 14, overflow: "hidden", marginRight: 20,
-      }}>
+      <div className="panel-left" style={{ width: 320 }}>
         {/* Search + Filter Header */}
-        <div style={{ padding: "16px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+        <div style={{ padding: "16px 14px", borderBottom: "1px solid var(--border)", background: "var(--sunken)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>
-              Candidates <span style={{ color: "#64748b", fontWeight: 500, fontSize: 12 }}>({filtered.length})</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
+              Candidates <span style={{ color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}>({filtered.length})</span>
             </span>
             <Link href="/recruiter/add" style={{
               fontSize: 11, fontWeight: 700, color: "#c4b5fd", textDecoration: "none",
@@ -297,7 +292,7 @@ export default function CandidatesPage() {
         {/* Candidate list */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: 32, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+            <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
               {search || statusFilter ? "No matches" : "No candidates yet"}
             </div>
           ) : filtered.map(c => {
@@ -311,22 +306,22 @@ export default function CandidatesPage() {
                 style={{
                   display: "block", width: "100%", textAlign: "left", padding: "12px 14px",
                   background: isSelected ? "rgba(139,92,246,0.10)" : "transparent",
-                  borderLeft: `3px solid ${isSelected ? "#8b5cf6" : "transparent"}`,
-                  border: "none", borderBottom: "1px solid rgba(255,255,255,0.05)",
+                  borderLeft: `3px solid ${isSelected ? "var(--primary)" : "transparent"}`,
+                  border: "none", borderBottom: "1px solid var(--border)",
                   cursor: "pointer", transition: "all .12s",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? "#c4b5fd" : "#e2e8f0" }}>{c.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? "#c4b5fd" : "var(--text)" }}>{c.name}</span>
                   <span style={{ background: bg, color: col, padding: "2px 7px", borderRadius: 20, fontSize: 9, fontWeight: 700, flexShrink: 0, marginLeft: 6 }}>
                     {statusLabel(s, c)}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   {c.roleName || "No role"}{c.currentCompany ? ` · ${c.currentCompany}` : ""}
                 </div>
                 {c.experienceYears && (
-                  <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{c.experienceYears} yrs exp</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{c.experienceYears} yrs exp</div>
                 )}
               </button>
             );
@@ -335,15 +330,15 @@ export default function CandidatesPage() {
       </div>
 
       {/* ── Main Panel ── */}
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div className="panel-right">
         {!selected ? (
           <div style={{
             flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
             ...card, padding: 40, textAlign: "center",
           }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", margin: "0 0 8px" }}>Select a Candidate</h2>
-            <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 20px" }}>Choose a candidate from the list to view and manage their profile</p>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: "0 0 8px" }}>Select a Candidate</h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 20px" }}>Choose a candidate from the list to view and manage their profile</p>
             <Link href="/recruiter/add" style={{
               background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff",
               padding: "10px 22px", borderRadius: 8, textDecoration: "none", fontSize: 14, fontWeight: 700,
@@ -356,8 +351,8 @@ export default function CandidatesPage() {
             <div style={{ ...card, padding: "18px 22px" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
                 <div>
-                  <h1 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>{selected.name}</h1>
-                  <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+                  <h1 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", margin: "0 0 4px" }}>{selected.name}</h1>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
                     {selected.email}
                     {selected.phone && ` · ${selected.phone}`}
                     {selected.roleName && ` · ${selected.roleName}`}
@@ -365,7 +360,7 @@ export default function CandidatesPage() {
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <StatusBadge c={selected} />
-                  <span style={{ background: "rgba(255,255,255,0.07)", color: "#94a3b8", padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
+                  <span style={{ background: "var(--surface-3)", color: "var(--text-muted)", padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
                     {selected.attemptCount || 0}/2 attempts
                   </span>
                   <Link href={`/recruiter/schedule?candidateId=${selected._id}`} style={{
@@ -376,7 +371,7 @@ export default function CandidatesPage() {
               </div>
 
               {/* Workflow chips */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                 {[
                   { n: 1, label: "Profile", done: true, color: "#34d399" },
                   { n: 2, label: "Resume", done: !!selected.resumeFileName, color: "#34d399" },
@@ -408,13 +403,13 @@ export default function CandidatesPage() {
             </div>
 
             {/* Tabs */}
-            <div style={{ display: "flex", gap: 2, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 0 }}>
+            <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
               {(["profile", "timeline", "interviews"] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{
                   padding: "9px 18px", fontSize: 13, fontWeight: 600, border: "none",
                   background: "none", cursor: "pointer",
-                  borderBottom: activeTab === tab ? "2px solid #8b5cf6" : "2px solid transparent",
-                  color: activeTab === tab ? "#c4b5fd" : "#94a3b8",
+                  borderBottom: activeTab === tab ? "2px solid var(--primary)" : "2px solid transparent",
+                  color: activeTab === tab ? "#c4b5fd" : "var(--text-muted)",
                   textTransform: "capitalize", transition: "all .15s",
                 }}>
                   {tab === "profile" ? "Profile" : tab === "timeline" ? "Timeline" : `Interviews (${meetings.length})`}
@@ -423,7 +418,7 @@ export default function CandidatesPage() {
             </div>
 
             {loadingDetail && (
-              <div style={{ color: "#64748b", fontSize: 13, padding: "20px 0" }}>Loading...</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "20px 0" }}>Loading...</div>
             )}
 
             {/* ── Profile Tab ── */}
@@ -433,7 +428,7 @@ export default function CandidatesPage() {
                 {/* Left: Basic + Professional */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ ...card, padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Info</h3>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Info</h3>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       {[
                         { key: "name", label: "Full Name", ph: "Jane Doe" },
@@ -459,7 +454,7 @@ export default function CandidatesPage() {
                   </div>
 
                   <div style={{ ...card, padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Professional</h3>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Professional</h3>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       {[
                         { key: "experienceYears", label: "Years Exp", ph: "4" },
@@ -485,7 +480,7 @@ export default function CandidatesPage() {
                 {/* Right: Skills, Notes, AI Prompt */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ ...card, padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Skills</h3>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Skills</h3>
                     <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                       <input
                         style={{ ...inp, flex: 1 }}
@@ -499,7 +494,7 @@ export default function CandidatesPage() {
                       </button>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {skills.length === 0 && <span style={{ fontSize: 12, color: "#64748b" }}>No skills added</span>}
+                      {skills.length === 0 && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No skills added</span>}
                       {skills.map(s => (
                         <span key={s} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(139,92,246,0.15)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.25)", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
                           {s}
@@ -510,7 +505,7 @@ export default function CandidatesPage() {
                   </div>
 
                   <div style={{ ...card, padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Notes</h3>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Notes</h3>
                     <textarea
                       rows={3}
                       style={{ ...inp, resize: "vertical" }}
@@ -537,7 +532,7 @@ export default function CandidatesPage() {
                         <span style={{ fontSize: 10, color: "#34d399", background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.25)", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>Saved</span>
                       )}
                     </div>
-                    <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px", lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
                       {selected.resumeFileName ? `Resume: ${selected.resumeFileName}. ` : ""}
                       Generate a tailored interview prompt from candidate profile.
                     </p>
@@ -563,14 +558,14 @@ export default function CandidatesPage() {
             {/* ── Timeline Tab ── */}
             {!loadingDetail && activeTab === "timeline" && (
               <div style={{ ...card, padding: 24 }}>
-                <h2 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: "0 0 20px" }}>Interview Timeline</h2>
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 20px" }}>Interview Timeline</h2>
                 {events.length === 0 ? (
-                  <p style={{ color: "#64748b", textAlign: "center", padding: "30px 0" }}>No events recorded yet.</p>
+                  <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "30px 0" }}>No events recorded yet.</p>
                 ) : (
                   <div style={{ position: "relative", paddingLeft: 30 }}>
                     <div style={{ position: "absolute", left: 9, top: 4, bottom: 4, width: 2, background: "rgba(139,92,246,0.2)" }} />
                     {events.map((ev, idx) => {
-                      const def = EVENT_LABELS[ev.eventType] || { icon: "•", label: ev.eventType, color: "#64748b" };
+                      const def = EVENT_LABELS[ev.eventType] || { icon: "•", label: ev.eventType, color: "var(--text-muted)" };
                       const dt = new Date(ev.timestamp);
                       return (
                         <div key={ev._id} style={{ position: "relative", marginBottom: idx === events.length - 1 ? 0 : 20 }}>
@@ -582,10 +577,10 @@ export default function CandidatesPage() {
                           }}>
                             <span>{def.icon}</span>
                           </div>
-                          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "10px 14px" }}>
+                          <div style={{ background: "var(--sunken)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                               <span style={{ fontSize: 13, fontWeight: 700, color: def.color }}>{def.label}</span>
-                              <span style={{ fontSize: 10, color: "#64748b" }}>
+                              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
                                 {dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                               </span>
                             </div>
@@ -611,8 +606,8 @@ export default function CandidatesPage() {
                 {meetings.length === 0 ? (
                   <div style={{ ...card, padding: 40, textAlign: "center" }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-                    <p style={{ color: "#94a3b8", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No interviews yet</p>
-                    <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Schedule an AI interview to see results here</p>
+                    <p style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No interviews yet</p>
+                    <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 16px" }}>Schedule an AI interview to see results here</p>
                     <Link href={`/recruiter/schedule?candidateId=${selected._id}`} style={{
                       background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff",
                       padding: "9px 20px", borderRadius: 8, textDecoration: "none", fontSize: 13, fontWeight: 700,
@@ -626,13 +621,13 @@ export default function CandidatesPage() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
                               Attempt #{m.attemptNumber || i + 1}
                             </span>
                             {score && <ScoreChip score={score} />}
-                            {rec && <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>{rec}</span>}
+                            {rec && <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{rec}</span>}
                           </div>
-                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
                             {m.roleName || "Interview"}
                             {m.interviewStatus && ` · ${m.interviewStatus.replace(/_/g, " ")}`}
                           </div>
@@ -648,7 +643,7 @@ export default function CandidatesPage() {
                       </div>
                       {m.recordingUrl && (
                         <div style={{ marginTop: 10 }}>
-                          <p style={{ fontSize: 11, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Recording</p>
+                          <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, margin: "0 0 6px" }}>Recording</p>
                           <video controls playsInline src={m.recordingUrl} style={{ width: "100%", borderRadius: 8, background: "rgba(0,0,0,0.2)" }} />
                         </div>
                       )}

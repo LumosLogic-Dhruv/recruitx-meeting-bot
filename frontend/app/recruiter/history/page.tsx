@@ -3,11 +3,9 @@ import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDetailModal";
 
-const G = "rgba(255,255,255,";
-
 const card: React.CSSProperties = {
-  background: `${G}0.05)`, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  border: `1px solid ${G}0.09)`, borderRadius: 14,
+  background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid var(--border)", borderRadius: 14,
 };
 
 // ── Interfaces ────────────────────────────────────────────────────────────
@@ -30,7 +28,7 @@ function statusStyle(s: InterviewStatus): [string, string, string] {
     no_show:   ["rgba(245,158,11,0.15)", "#fbbf24", "No Show"],
     failed:    ["rgba(239,68,68,0.15)",  "#fca5a5", "Failed"],
   };
-  return m[s] || [`${G}0.06)`, "#94a3b8", s.replace(/_/g, " ")];
+  return m[s] || ["var(--surface-3)", "var(--text-muted)", s.replace(/_/g, " ")];
 }
 
 function scoreColor(score: number): [string, string] {
@@ -61,10 +59,10 @@ function ScoreGaugeSmall({ score }: { score: number }) {
   const col = sc(score);
   return (
     <div style={{ position: "relative", width: 80, height: 80, flexShrink: 0 }}>
-      <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: `conic-gradient(${col} ${pct * 360}deg, rgba(255,255,255,0.07) 0deg)` }} />
-      <div style={{ position: "absolute", inset: 5, borderRadius: "50%", background: "rgba(8,8,17,0.98)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: `conic-gradient(${col} ${pct * 360}deg, var(--surface-3) 0deg)` }} />
+      <div style={{ position: "absolute", inset: 5, borderRadius: "50%", background: "var(--bg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 20, fontWeight: 800, color: col, lineHeight: 1 }}>{score.toFixed(1)}</span>
-        <span style={{ fontSize: 9, color: "#64748b", marginTop: 1 }}>/ 10</span>
+        <span style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 1 }}>/ 10</span>
       </div>
     </div>
   );
@@ -75,7 +73,7 @@ function ScoreBarInline({ score }: { score: number }) {
   const col = sc(score);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1, height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", position: "relative", overflow: "hidden" }}>
+      <div style={{ flex: 1, height: 5, borderRadius: 99, background: "var(--surface-3)", position: "relative", overflow: "hidden" }}>
         <div style={{ height: "100%", borderRadius: 99, background: col, width: `${(score / 10) * 100}%`, transition: "width .4s ease" }} />
         <div style={{ position: "absolute", top: 0, bottom: 0, left: "60%", width: 1, background: "rgba(255,255,255,0.25)" }} />
       </div>
@@ -90,7 +88,7 @@ function TranscriptView({ transcript }: { transcript: { speaker: string; text: s
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 400, overflowY: "auto", padding: "4px 0" }}>
       {transcript.length === 0 ? (
-        <p style={{ color: "#64748b", textAlign: "center", padding: "20px 0", fontSize: 13 }}>No transcript available</p>
+        <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "20px 0", fontSize: 13 }}>No transcript available</p>
       ) : transcript.map((t, i) => {
         const bot = isBot(t.speaker);
         return (
@@ -177,10 +175,21 @@ export default function HistoryPage() {
     setModal(false);
   }
 
+  const inpStyle: React.CSSProperties = {
+    width: "100%", padding: "8px 11px", fontSize: 12,
+    border: "1px solid var(--border)", borderRadius: 8, outline: "none",
+    background: "var(--sunken)", color: "var(--text)", fontFamily: "inherit",
+  };
+  const selStyle: React.CSSProperties = {
+    flex: 1, padding: "6px 8px", fontSize: 11,
+    border: "1px solid var(--border)", borderRadius: 7, outline: "none",
+    background: "var(--sunken)", color: "var(--text)",
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 64px)", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Stats bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+      <div className="responsive-4-grid">
         {[
           { label: "Total Interviews", val: stats.total, col: "#a78bfa" },
           { label: "Completed", val: stats.completed, col: "#34d399" },
@@ -189,33 +198,25 @@ export default function HistoryPage() {
         ].map(s => (
           <div key={s.label} style={{ ...card, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 22, fontWeight: 800, color: s.col }}>{s.val}</span>
-            <span style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{s.label}</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{s.label}</span>
           </div>
         ))}
       </div>
 
       {/* Two-panel body */}
-      <div style={{ flex: 1, display: "flex", gap: 16, overflow: "hidden" }}>
+      <div className="two-panel" style={{ height: "calc(100dvh - 200px)", gap: 16 }}>
 
         {/* ── Left: Interview List ── */}
-        <div style={{
-          width: 340, flexShrink: 0, display: "flex", flexDirection: "column",
-          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 14, overflow: "hidden",
-        }}>
+        <div className="panel-left" style={{ width: 340 }}>
           {/* Filters */}
-          <div style={{ padding: "14px 12px", borderBottom: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ padding: "14px 12px", borderBottom: "1px solid var(--border)", background: "var(--sunken)", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>
-                History <span style={{ color: "#64748b", fontWeight: 400, fontSize: 12 }}>({filtered.length})</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
+                History <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: 12 }}>({filtered.length})</span>
               </span>
             </div>
             <input
-              style={{
-                width: "100%", padding: "8px 11px", fontSize: 12,
-                border: "1px solid rgba(255,255,255,0.10)", borderRadius: 8, outline: "none",
-                background: "rgba(255,255,255,0.07)", color: "#f1f5f9", fontFamily: "inherit",
-              }}
+              style={inpStyle}
               placeholder="Search candidate or role…"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -229,9 +230,9 @@ export default function HistoryPage() {
               ].map(opt => (
                 <button key={opt.val} onClick={() => setStatusFilter(opt.val)} style={{
                   padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700, cursor: "pointer", border: "1px solid",
-                  background: statusFilter === opt.val ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.04)",
-                  color: statusFilter === opt.val ? "#c4b5fd" : "#94a3b8",
-                  borderColor: statusFilter === opt.val ? "rgba(139,92,246,0.4)" : "rgba(255,255,255,0.08)",
+                  background: statusFilter === opt.val ? "rgba(139,92,246,0.2)" : "var(--surface-3)",
+                  color: statusFilter === opt.val ? "#c4b5fd" : "var(--text-muted)",
+                  borderColor: statusFilter === opt.val ? "rgba(139,92,246,0.4)" : "var(--border)",
                 }}>
                   {opt.label}
                 </button>
@@ -241,7 +242,7 @@ export default function HistoryPage() {
               <select
                 value={scoreFilter}
                 onChange={e => setScoreFilter(e.target.value)}
-                style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, outline: "none", background: "rgba(255,255,255,0.07)", color: "#f1f5f9", colorScheme: "dark" }}
+                style={selStyle}
               >
                 <option value="">All scores</option>
                 <option value="high">High (7-10)</option>
@@ -252,7 +253,7 @@ export default function HistoryPage() {
               <select
                 value={dateFilter}
                 onChange={e => setDateFilter(e.target.value)}
-                style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 7, outline: "none", background: "rgba(255,255,255,0.07)", color: "#f1f5f9", colorScheme: "dark" }}
+                style={selStyle}
               >
                 <option value="">All time</option>
                 <option value="today">Today</option>
@@ -265,15 +266,15 @@ export default function HistoryPage() {
           {/* List */}
           <div style={{ flex: 1, overflowY: "auto" }}>
             {loading ? (
-              <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 13 }}>Loading...</div>
+              <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Loading...</div>
             ) : filtered.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+              <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                 {search || statusFilter || scoreFilter || dateFilter ? "No matches" : "No interviews yet"}
               </div>
             ) : filtered.map((m, i) => {
               const score = m.scorecard?.overall_score;
               const [statBg, statCol, statLabel] = statusStyle(m.interviewStatus || "completed");
-              const [scoreBg, scoreCol] = score ? scoreColor(score) : [`${G}0.05)`, "#64748b"];
+              const [scoreBg, scoreCol] = score ? scoreColor(score) : ["var(--surface-3)", "var(--text-muted)"];
               const isSelected = selected === m || (selected?.candidateName === m.candidateName && selected?.attemptNumber === m.attemptNumber);
               return (
                 <button
@@ -282,13 +283,13 @@ export default function HistoryPage() {
                   style={{
                     display: "block", width: "100%", textAlign: "left", padding: "12px 14px",
                     background: isSelected ? "rgba(139,92,246,0.10)" : "transparent",
-                    borderLeft: `3px solid ${isSelected ? "#8b5cf6" : "transparent"}`,
-                    border: "none", borderBottom: "1px solid rgba(255,255,255,0.05)",
+                    borderLeft: `3px solid ${isSelected ? "var(--primary)" : "transparent"}`,
+                    border: "none", borderBottom: "1px solid var(--border)",
                     cursor: "pointer", transition: "all .12s",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? "#c4b5fd" : "#e2e8f0" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? "#c4b5fd" : "var(--text)" }}>
                       {m.candidateName}
                     </span>
                     {score ? (
@@ -298,7 +299,7 @@ export default function HistoryPage() {
                     ) : null}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "#64748b" }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {m.roleName || "Interview"}{m.attemptNumber ? ` · #${m.attemptNumber}` : ""}
                     </span>
                     <span style={{ background: statBg, color: statCol, padding: "1px 7px", borderRadius: 20, fontSize: 9, fontWeight: 700 }}>
@@ -306,7 +307,7 @@ export default function HistoryPage() {
                     </span>
                   </div>
                   {m.createdAt && (
-                    <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
                       {new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </div>
                   )}
@@ -317,12 +318,12 @@ export default function HistoryPage() {
         </div>
 
         {/* ── Right: Detail Panel ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="panel-right">
           {!selected ? (
             <div style={{ ...card, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 40 }}>
               <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", margin: "0 0 8px" }}>Select an Interview</h2>
-              <p style={{ color: "#64748b", fontSize: 13 }}>Click any interview in the list to view details, scorecard, and transcript</p>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: "0 0 8px" }}>Select an Interview</h2>
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Click any interview in the list to view details, scorecard, and transcript</p>
             </div>
           ) : (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -330,8 +331,8 @@ export default function HistoryPage() {
               <div style={{ ...card, padding: "16px 20px", marginBottom: 14, flexShrink: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                   <div>
-                    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>{selected.candidateName}</h2>
-                    <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", margin: "0 0 4px" }}>{selected.candidateName}</h2>
+                    <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
                       {selected.roleName || "Interview"}
                       {selected.attemptNumber ? ` · Attempt #${selected.attemptNumber}` : ""}
                       {selected.createdAt ? ` · ${new Date(selected.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}
@@ -363,13 +364,13 @@ export default function HistoryPage() {
               </div>
 
               {/* Tabs */}
-              <div style={{ display: "flex", gap: 2, borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: 14, flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", marginBottom: 14, flexShrink: 0 }}>
                 {(["scorecard", "transcript", "recording"] as const).map(tab => (
                   <button key={tab} onClick={() => setActiveTab(tab)} style={{
                     padding: "8px 16px", fontSize: 13, fontWeight: 600, border: "none",
                     background: "none", cursor: "pointer",
-                    borderBottom: activeTab === tab ? "2px solid #8b5cf6" : "2px solid transparent",
-                    color: activeTab === tab ? "#c4b5fd" : "#94a3b8",
+                    borderBottom: activeTab === tab ? "2px solid var(--primary)" : "2px solid transparent",
+                    color: activeTab === tab ? "#c4b5fd" : "var(--text-muted)",
                     textTransform: "capitalize",
                   }}>
                     {tab === "scorecard" ? "Scorecard" : tab === "transcript" ? "Transcript" : "Recording"}
@@ -386,8 +387,8 @@ export default function HistoryPage() {
                     {!selected.scorecard?.overall_score ? (
                       <div style={{ ...card, padding: 40, textAlign: "center" }}>
                         <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-                        <p style={{ color: "#94a3b8", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No scorecard available</p>
-                        <p style={{ color: "#64748b", fontSize: 12 }}>Generated after the AI interview completes</p>
+                        <p style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No scorecard available</p>
+                        <p style={{ color: "var(--text-muted)", fontSize: 12 }}>Generated after the AI interview completes</p>
                       </div>
                     ) : (() => {
                       const s = selected.scorecard!;
@@ -412,11 +413,11 @@ export default function HistoryPage() {
                               <ScoreGaugeSmall score={s.overall_score!} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                                  <span style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9" }}>{selected.candidateName}</span>
+                                  <span style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>{selected.candidateName}</span>
                                   {rec && <span style={{ background: `${rec.color}18`, color: rec.color, border: `1px solid ${rec.color}30`, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{rec.label}</span>}
                                 </div>
                                 {s.summary && (
-                                  <p style={{ margin: 0, fontSize: 12, color: "#94a3b8", lineHeight: 1.6, borderLeft: `2px solid ${rec?.color || "#8b5cf6"}`, paddingLeft: 10, fontStyle: "italic" }}>
+                                  <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6, borderLeft: `2px solid ${rec?.color || "#8b5cf6"}`, paddingLeft: 10, fontStyle: "italic" }}>
                                     {s.summary}
                                   </p>
                                 )}
@@ -424,13 +425,13 @@ export default function HistoryPage() {
                             </div>
                             {/* Snapshot */}
                             {(topS.length > 0 || topG.length > 0) && (
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                                 {topS.length > 0 && (
                                   <div>
-                                    <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "#64748b" }}>Top Strengths</p>
+                                    <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--text-muted)" }}>Top Strengths</p>
                                     {topS.map((x, i) => (
-                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
-                                        <span style={{ color: "#e2e8f0" }}>{x.name}</span>
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                                        <span style={{ color: "var(--text)" }}>{x.name}</span>
                                         <span style={{ fontWeight: 800, color: sc(x.score) }}>{x.score}</span>
                                       </div>
                                     ))}
@@ -438,10 +439,10 @@ export default function HistoryPage() {
                                 )}
                                 {topG.length > 0 && (
                                   <div>
-                                    <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "#64748b" }}>Top Gaps</p>
+                                    <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--text-muted)" }}>Top Gaps</p>
                                     {topG.map((x, i) => (
-                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 12 }}>
-                                        <span style={{ color: "#e2e8f0" }}>{x.name}</span>
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                                        <span style={{ color: "var(--text)" }}>{x.name}</span>
                                         <span style={{ fontWeight: 800, color: sc(x.score) }}>{x.score}</span>
                                       </div>
                                     ))}
@@ -460,7 +461,7 @@ export default function HistoryPage() {
                                     <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e" }} />Green Flags
                                   </h4>
                                   <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-                                    {greenFlags.map((f, i) => <li key={i} style={{ fontSize: 12, color: "#94a3b8", display: "flex", gap: 6 }}><span style={{ color: "#22c55e" }}>+</span>{f}</li>)}
+                                    {greenFlags.map((f, i) => <li key={i} style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 6 }}><span style={{ color: "#22c55e" }}>+</span>{f}</li>)}
                                   </ul>
                                 </div>
                               )}
@@ -470,7 +471,7 @@ export default function HistoryPage() {
                                     <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444" }} />Red Flags
                                   </h4>
                                   <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-                                    {redFlags.map((f, i) => <li key={i} style={{ fontSize: 12, color: "#94a3b8", display: "flex", gap: 6 }}><span style={{ color: "#ef4444" }}>−</span>{f}</li>)}
+                                    {redFlags.map((f, i) => <li key={i} style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 6 }}><span style={{ color: "#ef4444" }}>−</span>{f}</li>)}
                                   </ul>
                                 </div>
                               )}
@@ -480,15 +481,15 @@ export default function HistoryPage() {
                           {/* Skill Breakdown */}
                           {skillsList.length > 0 && (
                             <div style={{ ...card, padding: 18 }}>
-                              <h4 style={{ margin: "0 0 14px", fontSize: 11, fontWeight: 700, color: "#e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" }}>Skill Breakdown</h4>
+                              <h4 style={{ margin: "0 0 14px", fontSize: 11, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Skill Breakdown</h4>
                               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                                 {skillsList.map((sk, i) => (
                                   <div key={i}>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                                      <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{sk.name}</span>
+                                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{sk.name}</span>
                                     </div>
                                     <ScoreBarInline score={sk.score} />
-                                    {(sk as { description?: string }).description && <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>{(sk as { description?: string }).description}</p>}
+                                    {(sk as { description?: string }).description && <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--text-muted)" }}>{(sk as { description?: string }).description}</p>}
                                   </div>
                                 ))}
                               </div>
@@ -502,7 +503,7 @@ export default function HistoryPage() {
                                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} />Areas for Improvement
                               </h4>
                               <ol style={{ margin: 0, padding: "0 0 0 16px", display: "flex", flexDirection: "column", gap: 5 }}>
-                                {improvements.map((a, i) => <li key={i} style={{ fontSize: 12, color: "#94a3b8" }}>{a}</li>)}
+                                {improvements.map((a, i) => <li key={i} style={{ fontSize: 12, color: "var(--text-muted)" }}>{a}</li>)}
                               </ol>
                             </div>
                           )}
@@ -520,11 +521,11 @@ export default function HistoryPage() {
                 {/* Transcript Tab */}
                 {activeTab === "transcript" && (
                   <div style={{ ...card, padding: 20 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Interview Transcript</h3>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Interview Transcript</h3>
                     {selected.transcript && selected.transcript.length > 0 ? (
                       <TranscriptView transcript={selected.transcript} />
                     ) : (
-                      <p style={{ color: "#64748b", textAlign: "center", padding: "24px 0", fontSize: 13 }}>No transcript available for this interview</p>
+                      <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "24px 0", fontSize: 13 }}>No transcript available for this interview</p>
                     )}
                   </div>
                 )}
@@ -535,14 +536,14 @@ export default function HistoryPage() {
                     {!selected.recordingUrl && !selected.botAudioUrl && !selected.candidateAudioUrl ? (
                       <div style={{ ...card, padding: 40, textAlign: "center" }}>
                         <div style={{ fontSize: 36, marginBottom: 12 }}>🎵</div>
-                        <p style={{ color: "#94a3b8", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No recording available</p>
-                        <p style={{ color: "#64748b", fontSize: 12 }}>Recordings are attached after the meeting ends</p>
+                        <p style={{ color: "var(--text-muted)", fontSize: 14, fontWeight: 600, margin: "0 0 6px" }}>No recording available</p>
+                        <p style={{ color: "var(--text-muted)", fontSize: 12 }}>Recordings are attached after the meeting ends</p>
                       </div>
                     ) : (
                       <>
                         {selected.recordingUrl && (
                           <div style={{ ...card, padding: 20 }}>
-                            <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Full Recording</p>
+                            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Full Recording</p>
                             <video controls playsInline src={selected.recordingUrl} style={{ width: "100%", borderRadius: 8, background: "rgba(0,0,0,0.2)" }} />
                           </div>
                         )}

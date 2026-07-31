@@ -239,7 +239,7 @@ export default function AdminPage() {
       {/* Nav tabs */}
       <div style={{ background: "var(--bg-2)", backdropFilter: "blur(16px)", borderBottom: "1px solid var(--border)", padding: "0 24px", display: "flex", gap: 2 }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 18px", cursor: "pointer", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? "#c4b5fd" : "#94a3b8", border: "none", background: "none", borderBottom: tab === t.id ? "2px solid #8b5cf6" : "2px solid transparent", transition: "all .2s", position: "relative" }}>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "10px 18px", cursor: "pointer", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? "#c4b5fd" : "var(--text-muted)", border: "none", background: "none", borderBottom: tab === t.id ? "2px solid var(--primary)" : "2px solid transparent", transition: "all .2s", position: "relative" }}>
             {t.label}
             {t.id === "scheduling" && pendingCount > 0 && (
               <span style={{ position: "absolute", top: 6, right: 2, background: "#dc2626", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{pendingCount}</span>
@@ -253,11 +253,11 @@ export default function AdminPage() {
         {/* ── Weekly Top ── */}
         {tab === "weekly" && (
           <div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", margin: "0 0 20px" }}>Weekly Top Candidates</h2>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", margin: "0 0 20px" }}>Weekly Top Candidates</h2>
             {weeklyMeetings.length === 0 ? (
               <div style={{ ...card, padding: 60, textAlign: "center" }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-                <p style={{ color: "#94a3b8", margin: 0, fontSize: 14 }}>No completed interviews this week yet.</p>
+                <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 14 }}>No completed interviews this week yet.</p>
               </div>
             ) : (
               <>
@@ -284,11 +284,11 @@ export default function AdminPage() {
                       {weeklyMeetings.map((m, i) => (
                         <tr key={m._id}>
                           <td style={{ ...tdStyle, fontWeight: 800, color: "#a78bfa" }}>#{i + 1}</td>
-                          <td style={{ ...tdStyle, fontWeight: 700, color: "#f1f5f9" }}>{m.candidateName}</td>
-                          <td style={{ ...tdStyle, color: "#94a3b8" }}>{m.roleName || "—"}</td>
-                          <td style={{ ...tdStyle, color: "#64748b" }}>{m.recruiterId ? recruiterMap[m.recruiterId] || m.recruiterId.slice(-6) : "—"}</td>
+                          <td style={{ ...tdStyle, fontWeight: 700, color: "var(--text)" }}>{m.candidateName}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{m.roleName || "—"}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{m.recruiterId ? recruiterMap[m.recruiterId] || m.recruiterId.slice(-6) : "—"}</td>
                           <td style={tdStyle}>{m.scorecard?.overall_score ? <ScoreChip score={m.scorecard.overall_score} /> : "—"}</td>
-                          <td style={{ ...tdStyle, color: "#94a3b8" }}>{m.scorecard?.recommendation || "—"}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{m.scorecard?.recommendation || "—"}</td>
                           <td style={tdStyle}><button onClick={() => setModal(m)} style={{ background: "var(--sunken)", color: "var(--text)", border: "1px solid var(--border)", padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>View</button></td>
                         </tr>
                       ))}
@@ -304,7 +304,7 @@ export default function AdminPage() {
         {tab === "candidates" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", margin: 0 }}>All Candidates</h2>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", margin: 0 }}>All Candidates</h2>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search name / email..." style={{ ...inp, width: 220 }} />
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: 160 }}>
@@ -334,20 +334,20 @@ export default function AdminPage() {
                 <thead><tr>{["Name","Email","Role","Recruiter","Attempts","Status","Score","Actions"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
                 <tbody>
                   {filteredCandidates.length === 0
-                    ? <tr><td colSpan={8} style={{ textAlign: "center", color: "#64748b", padding: 40 }}>No candidates match the filter</td></tr>
+                    ? <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>No candidates match the filter</td></tr>
                     : filteredCandidates.map(c => {
                       const cMeetings = meetings.filter(m => m.candidateName === c.name && m.scorecard?.overall_score);
                       const bestScore = cMeetings.length ? Math.max(...cMeetings.map(m => m.scorecard!.overall_score!)) : null;
                       const canReset = !["never_invited"].includes(c.interviewStatus || "never_invited");
                       return (
                         <tr key={c._id}>
-                          <td style={{ ...tdStyle, fontWeight: 700, color: "#f1f5f9" }}>{c.name}</td>
-                          <td style={{ ...tdStyle, color: "#64748b" }}>{c.email}</td>
-                          <td style={{ ...tdStyle, color: "#e2e8f0" }}>{c.roleName || "—"}</td>
-                          <td style={{ ...tdStyle, color: "#64748b" }}>{c.recruiterId ? recruiterMap[c.recruiterId] || c.recruiterId.slice(-6) : "—"}</td>
-                          <td style={{ ...tdStyle, textAlign: "center", color: "#94a3b8" }}>{c.attemptCount || 0}/2</td>
+                          <td style={{ ...tdStyle, fontWeight: 700, color: "var(--text)" }}>{c.name}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{c.email}</td>
+                          <td style={{ ...tdStyle, color: "var(--text)" }}>{c.roleName || "—"}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{c.recruiterId ? recruiterMap[c.recruiterId] || c.recruiterId.slice(-6) : "—"}</td>
+                          <td style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)" }}>{c.attemptCount || 0}/2</td>
                           <td style={tdStyle}><StatusBadge status={c.interviewStatus} cooldownUntil={c.cooldownUntil} /></td>
-                          <td style={tdStyle}>{bestScore ? <ScoreChip score={bestScore} /> : <span style={{ color: "#64748b" }}>—</span>}</td>
+                          <td style={tdStyle}>{bestScore ? <ScoreChip score={bestScore} /> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                           <td style={tdStyle}>
                             <div style={{ display: "flex", gap: 6 }}>
                               {cMeetings.length > 0 && (
@@ -366,7 +366,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
-            <p style={{ fontSize: 11, color: "#64748b", marginTop: 10 }}>Reset clears cooldown/lock and resets attempt count. Admin only.</p>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10 }}>Reset clears cooldown/lock and resets attempt count. Admin only.</p>
           </div>
         )}
 
@@ -375,8 +375,8 @@ export default function AdminPage() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>Scheduled Interviews</h2>
-                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>{pendingCount} pending · {scheduledInterviews.length} total</p>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", margin: "0 0 4px" }}>Scheduled Interviews</h2>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>{pendingCount} pending · {scheduledInterviews.length} total</p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input value={schedSearch} onChange={e => setSchedSearch(e.target.value)} placeholder="Search candidate / role..." style={{ ...inp, width: 220 }} />
@@ -398,7 +398,7 @@ export default function AdminPage() {
 
             {filteredScheduled.length === 0 ? (
               <div style={{ ...card, padding: 60, textAlign: "center" }}>
-                <p style={{ color: "#64748b", margin: 0 }}>No scheduled interviews found.</p>
+                <p style={{ color: "var(--text-muted)", margin: 0 }}>No scheduled interviews found.</p>
               </div>
             ) : (
               <div style={{ ...card, overflow: "hidden" }}>
@@ -411,13 +411,13 @@ export default function AdminPage() {
                       const isPast = dt < new Date();
                       return (
                         <tr key={s._id}>
-                          <td style={{ ...tdStyle, fontWeight: 700, color: "#f1f5f9" }}>{s.candidateName}</td>
-                          <td style={{ ...tdStyle, color: "#94a3b8" }}>{s.roleName || "—"}</td>
+                          <td style={{ ...tdStyle, fontWeight: 700, color: "var(--text)" }}>{s.candidateName}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{s.roleName || "—"}</td>
                           <td style={tdStyle}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: isPast && isPending ? "#f87171" : "#e2e8f0" }}>
                               {dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                             </div>
-                            <div style={{ fontSize: 11, color: "#64748b" }}>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                               {dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                               {isPast && isPending && <span style={{ marginLeft: 6, color: "#f87171", fontWeight: 700 }}>Overdue</span>}
                             </div>
@@ -425,7 +425,7 @@ export default function AdminPage() {
                           <td style={{ ...tdStyle, textAlign: "center" }}>
                             <span style={{ background: "rgba(139,92,246,0.15)", color: "#c4b5fd", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>#{s.attemptNumber || 1}</span>
                           </td>
-                          <td style={{ ...tdStyle, color: "#64748b" }}>{s.recruiterId ? recruiterMap[s.recruiterId] || s.recruiterId.slice(-6) : "—"}</td>
+                          <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{s.recruiterId ? recruiterMap[s.recruiterId] || s.recruiterId.slice(-6) : "—"}</td>
                           <td style={tdStyle}><SchedStatusBadge status={s.status} /></td>
                           <td style={tdStyle}>
                             <div style={{ display: "flex", gap: 6 }}>
@@ -452,16 +452,16 @@ export default function AdminPage() {
         {/* ── Recruiters ── */}
         {tab === "recruiters" && (
           <div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", marginBottom: 20 }}>Recruiter Overview</h2>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 20 }}>Recruiter Overview</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px,1fr))", gap: 16 }}>
               {Object.entries(recruiterStats).map(([rid, r]) => (
                 <div key={rid} style={{ ...card, padding: 20 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px", color: "#e2e8f0" }}>{r.name}</h3>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px", color: "var(--text)" }}>{r.name}</h3>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                     {[["Candidates", r.total, "#a78bfa"], ["Completed", r.done, "#60a5fa"], ["Avg Score", r.avgScore || "—", "#fbbf24"]].map(([label, val, col]) => (
                       <div key={String(label)} style={{ textAlign: "center", padding: "12px 8px", background: "var(--sunken)", borderRadius: 10, border: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 22, fontWeight: 800, color: String(col) }}>{String(val)}</div>
-                        <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 2 }}>{String(label)}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 2 }}>{String(label)}</div>
                       </div>
                     ))}
                   </div>
@@ -469,7 +469,7 @@ export default function AdminPage() {
               ))}
               {Object.keys(recruiterStats).length === 0 && (
                 <div style={{ ...card, padding: 60, textAlign: "center", gridColumn: "1/-1" }}>
-                  <p style={{ color: "#64748b", margin: 0 }}>No recruiter data yet.</p>
+                  <p style={{ color: "var(--text-muted)", margin: 0 }}>No recruiter data yet.</p>
                 </div>
               )}
             </div>
@@ -480,7 +480,7 @@ export default function AdminPage() {
         {tab === "analytics" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", margin: 0 }}>Platform Analytics</h2>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", margin: 0 }}>Platform Analytics</h2>
               <button onClick={loadAnalytics} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 {analytics ? "↻ Refresh" : "Load Analytics"}
               </button>
@@ -488,7 +488,7 @@ export default function AdminPage() {
             {!analytics ? (
               <div style={{ ...card, padding: 60, textAlign: "center" }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-                <p style={{ color: "#94a3b8", margin: 0 }}>Click &quot;Load Analytics&quot; to fetch real-time platform stats.</p>
+                <p style={{ color: "var(--text-muted)", margin: 0 }}>Click &quot;Load Analytics&quot; to fetch real-time platform stats.</p>
               </div>
             ) : (
               <>
@@ -505,24 +505,24 @@ export default function AdminPage() {
                   ].map(k => (
                     <div key={k.label} style={{ ...card, padding: "16px 18px" }}>
                       <div style={{ fontSize: 26, fontWeight: 800, color: k.col }}>{String(k.val)}</div>
-                      <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 4 }}>{k.label}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 4 }}>{k.label}</div>
                     </div>
                   ))}
                 </div>
 
                 {analytics.weeklyTop.length > 0 && (
                   <div style={{ ...card, padding: 24, marginBottom: 20, overflow: "hidden" }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px" }}>Weekly Top Candidates</h3>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 16px" }}>Weekly Top Candidates</h3>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{["Rank","Candidate","Role","Score","Recommendation"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
                       <tbody>
                         {analytics.weeklyTop.map((c, i) => (
                           <tr key={i}>
                             <td style={{ ...tdStyle, fontWeight: 800, color: "#a78bfa" }}>#{i + 1}</td>
-                            <td style={{ ...tdStyle, fontWeight: 600, color: "#f1f5f9" }}>{c.candidateName}</td>
-                            <td style={{ ...tdStyle, color: "#94a3b8" }}>{c.roleName}</td>
+                            <td style={{ ...tdStyle, fontWeight: 600, color: "var(--text)" }}>{c.candidateName}</td>
+                            <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{c.roleName}</td>
                             <td style={tdStyle}><ScoreChip score={c.score} /></td>
-                            <td style={{ ...tdStyle, color: "#94a3b8" }}>{c.recommendation}</td>
+                            <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{c.recommendation}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -532,15 +532,15 @@ export default function AdminPage() {
 
                 {analytics.recruiterPerformance.length > 0 && (
                   <div style={{ ...card, padding: 24, overflow: "hidden" }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px" }}>Recruiter Performance</h3>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 16px" }}>Recruiter Performance</h3>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{["Recruiter","Candidates","Completed","Avg Score","Success Rate"].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
                       <tbody>
                         {analytics.recruiterPerformance.map(r => (
                           <tr key={r.recruiterId}>
-                            <td style={{ ...tdStyle, fontWeight: 600, color: "#f1f5f9" }}>{r.name}</td>
-                            <td style={{ ...tdStyle, color: "#94a3b8" }}>{r.totalCandidates}</td>
-                            <td style={{ ...tdStyle, color: "#94a3b8" }}>{r.completedInterviews}</td>
+                            <td style={{ ...tdStyle, fontWeight: 600, color: "var(--text)" }}>{r.name}</td>
+                            <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{r.totalCandidates}</td>
+                            <td style={{ ...tdStyle, color: "var(--text-muted)" }}>{r.completedInterviews}</td>
                             <td style={tdStyle}>{r.averageScore ? <ScoreChip score={r.averageScore} /> : "—"}</td>
                             <td style={tdStyle}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -564,10 +564,10 @@ export default function AdminPage() {
         {/* ── Settings ── */}
         {tab === "settings" && (
           <div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", marginBottom: 24 }}>System Settings</h2>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 24 }}>System Settings</h2>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, maxWidth: 900 }}>
               <div style={{ ...card, padding: 24 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginBottom: 14 }}>Google Account</h3>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 14 }}>Google Account</h3>
                 <div style={{ marginBottom: 14, fontSize: 13, color: googleConnected ? "#34d399" : "#94a3b8", fontWeight: 600 }}>{googleMsg}</div>
                 <button onClick={async () => {
                   try {
@@ -581,7 +581,7 @@ export default function AdminPage() {
                 </button>
               </div>
               <div style={{ ...card, padding: 24 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginBottom: 14 }}>SMTP Email</h3>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 14 }}>SMTP Email</h3>
                 <form onSubmit={saveSmtp}>
                   {[["SMTP Host", "smtp.gmail.com", "host", "text"], ["Port", "587", "port", "number"], ["Email Address", "you@gmail.com", "user", "email"], ["App Password", "", "pass", "password"]].map(([label, ph, key, type]) => (
                     <div key={key} style={{ marginBottom: 10 }}>

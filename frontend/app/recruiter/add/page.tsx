@@ -4,7 +4,6 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const G = "rgba(255,255,255,";
 
 const card: React.CSSProperties = {
   background: "var(--glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -34,7 +33,7 @@ interface Candidate {
 
 function statusColor(s: string): [string, string] {
   const m: Record<string, [string, string]> = {
-    never_invited:       [`${G}0.06)`, "#94a3b8"],
+    never_invited:       ["var(--surface-3)", "var(--text-muted)"],
     attempt_1_scheduled: ["rgba(59,130,246,0.15)", "#93c5fd"],
     attempt_2_scheduled: ["rgba(59,130,246,0.15)", "#93c5fd"],
     cooldown:            ["rgba(245,158,11,0.15)", "#fbbf24"],
@@ -43,7 +42,7 @@ function statusColor(s: string): [string, string] {
     partial:             ["rgba(234,179,8,0.15)", "#fde047"],
     no_show:             ["rgba(245,158,11,0.15)", "#fbbf24"],
   };
-  return m[s] || [`${G}0.06)`, "#94a3b8"];
+  return m[s] || ["var(--surface-3)", "var(--text-muted)"];
 }
 
 function Badge({ c }: { c: Candidate }) {
@@ -160,19 +159,19 @@ export default function AddCandidatePage() {
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", margin: 0 }}>Add Candidate</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>{candidates.length} candidates total</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: 0 }}>Add Candidate</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>{candidates.length} candidates total</p>
         </div>
         <Link href="/recruiter/candidates" style={{ fontSize: 13, fontWeight: 600, color: "#c4b5fd", textDecoration: "none", background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)", padding: "7px 16px", borderRadius: 8 }}>
           View All Candidates →
         </Link>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "400px 1fr", gap: 24, alignItems: "start" }}>
+      <div className="responsive-2-col" style={{ gridTemplateColumns: "minmax(300px,400px) 1fr" }}>
 
         {/* ── Add Form ── */}
         <div style={{ ...card, maxHeight: "calc(100vh - 140px)", overflowY: "auto" }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: "0 0 16px" }}>New Candidate</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 16px" }}>New Candidate</h2>
 
           <form onSubmit={handleSubmit}>
             <p style={sectionTitle}>Basic Information</p>
@@ -233,7 +232,7 @@ export default function AddCandidatePage() {
                     Select Resume (PDF, DOC, DOCX)
                     <input type="file" accept=".pdf,.txt,.doc,.docx" style={{ display: "none" }} onChange={e => setResumeFile(e.target.files?.[0] || null)} />
                   </label>
-                  <p style={{ fontSize: 11, color: "#64748b", margin: "6px 0 0" }}>Can also be uploaded later from the candidate profile</p>
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "6px 0 0" }}>Can also be uploaded later from the candidate profile</p>
                 </div>
               )}
             </div>
@@ -252,7 +251,7 @@ export default function AddCandidatePage() {
         {/* ── Candidates List ── */}
         <div style={{ ...card }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: 0 }}>My Candidates</h2>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>My Candidates</h2>
             <input style={{ ...inp, width: 220, fontSize: 12 }} placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
@@ -260,33 +259,33 @@ export default function AddCandidatePage() {
             <thead>
               <tr>
                 {["Candidate", "Role", "Experience", "Status", "Attempts", "Actions"].map(h => (
-                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "#64748b", background: "rgba(255,255,255,0.03)", borderBottom: `2px solid ${G}0.09)` }}>{h}</th>
+                  <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--text-muted)", background: "var(--sunken)", borderBottom: "2px solid var(--border)" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "#64748b", padding: 40 }}>
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>
                   {search ? "No matches." : "No candidates yet."}
                 </td></tr>
               ) : filtered.map(c => (
                 <tr key={c._id}>
-                  <td style={{ padding: "12px", fontSize: 13, borderBottom: `1px solid ${G}0.05)` }}>
-                    <div style={{ fontWeight: 700, color: "#f1f5f9" }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>{c.email}</div>
-                    {c.location && <div style={{ fontSize: 10, color: "#475569" }}>{c.location}</div>}
+                  <td style={{ padding: "12px", fontSize: 13, borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ fontWeight: 700, color: "var(--text)" }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.email}</div>
+                    {c.location && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.location}</div>}
                   </td>
-                  <td style={{ padding: "12px", fontSize: 12, borderBottom: `1px solid ${G}0.05)`, color: "#e2e8f0" }}>
-                    {c.roleName || <span style={{ color: "#475569" }}>—</span>}
-                    {c.currentCompany && <div style={{ fontSize: 11, color: "#64748b" }}>@ {c.currentCompany}</div>}
+                  <td style={{ padding: "12px", fontSize: 12, borderBottom: "1px solid var(--border)", color: "var(--text)" }}>
+                    {c.roleName || <span style={{ color: "var(--text-muted)" }}>—</span>}
+                    {c.currentCompany && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>@ {c.currentCompany}</div>}
                   </td>
-                  <td style={{ padding: "12px", fontSize: 12, borderBottom: `1px solid ${G}0.05)`, color: "#94a3b8" }}>
+                  <td style={{ padding: "12px", fontSize: 12, borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}>
                     {c.experienceYears ? `${c.experienceYears} yrs` : "—"}
-                    {c.expectedCtc ? <div style={{ fontSize: 11, color: "#64748b" }}>Exp: {c.expectedCtc}</div> : null}
+                    {c.expectedCtc ? <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Exp: {c.expectedCtc}</div> : null}
                   </td>
-                  <td style={{ padding: "12px", borderBottom: `1px solid ${G}0.05)` }}><Badge c={c} /></td>
-                  <td style={{ padding: "12px", fontSize: 13, textAlign: "center", borderBottom: `1px solid ${G}0.05)`, color: "#94a3b8" }}>{c.attemptCount || 0}/2</td>
-                  <td style={{ padding: "12px", borderBottom: `1px solid ${G}0.05)` }}>
+                  <td style={{ padding: "12px", borderBottom: "1px solid var(--border)" }}><Badge c={c} /></td>
+                  <td style={{ padding: "12px", fontSize: 13, textAlign: "center", borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}>{c.attemptCount || 0}/2</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                       <Link href={`/recruiter/candidates/${c._id}`} style={{ background: "rgba(139,92,246,0.15)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.25)", padding: "4px 9px", fontSize: 11, borderRadius: 6, textDecoration: "none", fontWeight: 600 }}>Profile</Link>
                       <Link href={`/recruiter/schedule?candidateId=${c._id}`} style={{ background: "rgba(59,130,246,0.12)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.2)", padding: "4px 9px", fontSize: 11, borderRadius: 6, textDecoration: "none", fontWeight: 600 }}>Schedule</Link>
