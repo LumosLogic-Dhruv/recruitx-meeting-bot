@@ -6,15 +6,16 @@
   --color-surface-1: var(--bg-2);
   --color-surface-sunken: var(--sunken);
   --color-surface-3: var(--surface-3);
-  
+  --color-glass: var(--glass-bg);
+
   --color-accent: var(--primary);
   --color-accent-2: var(--primary-2);
   --color-on-accent: var(--on-primary);
-  
+
   --color-fg: var(--text);
   --color-fg-muted: var(--text-muted);
   --color-outline: var(--border);
-  
+
   --color-danger: #ef4444;
   --color-warning: #f59e0b;
   --color-success: #10b981;
@@ -26,21 +27,21 @@
   --bg-2: rgba(15, 17, 34, 0.85);
   --sunken: rgba(0, 0, 0, 0.35);
   --surface-3: rgba(255, 255, 255, 0.08);
-  
+
   --text: #f8fafc;
   --text-muted: #94a3b8;
-  
+
   --primary: #8b5cf6;
   --primary-2: #a855f7;
   --on-primary: #ffffff;
-  
+
   --border: rgba(255, 255, 255, 0.10);
   --border-hover: rgba(139, 92, 246, 0.45);
-  
+
   --glass-bg: rgba(18, 20, 42, 0.65);
   --glass-border: rgba(255, 255, 255, 0.10);
   --glass-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.35);
-  
+
   --scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover: #8b5cf6;
   --radial-1: rgba(139, 92, 246, 0.18);
@@ -52,21 +53,21 @@
   --bg-2: rgba(255, 255, 255, 0.88);
   --sunken: rgba(241, 245, 249, 0.9);
   --surface-3: rgba(0, 0, 0, 0.06);
-  
+
   --text: #0f172a;
   --text-muted: #475569;
-  
+
   --primary: #6366f1;
   --primary-2: #8b5cf6;
   --on-primary: #ffffff;
-  
+
   --border: rgba(226, 232, 240, 0.95);
   --border-hover: rgba(99, 102, 241, 0.45);
-  
+
   --glass-bg: rgba(255, 255, 255, 0.82);
   --glass-border: rgba(226, 232, 240, 0.9);
   --glass-shadow: 0 12px 35px 0 rgba(99, 102, 241, 0.08), 0 2px 6px 0 rgba(0, 0, 0, 0.03);
-  
+
   --scrollbar-thumb: rgba(0, 0, 0, 0.18);
   --scrollbar-thumb-hover: #475569;
   --radial-1: rgba(99, 102, 241, 0.10);
@@ -75,50 +76,27 @@
 
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
-}
 
-body {
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  background-image:
-    radial-gradient(ellipse 80% 60% at 5% 10%, var(--radial-1) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 95% 90%, var(--radial-2) 0%, transparent 60%);
-  background-attachment: fixed;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
+  body {
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 5% 10%, var(--radial-1) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 95% 90%, var(--radial-2) 0%, transparent 60%);
+    background-attachment: fixed;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
 
-/* Reusable Glossy Glass Classes */
-.glass-card {
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
-  box-shadow: var(--glass-shadow);
-  border-radius: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-}
-
-.glass-card-hover:hover {
-  border-color: var(--border-hover);
-}
-
-.glass-input {
-  background: var(--sunken);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 12px;
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  input, textarea, select, option {
+    color-scheme: dark;
+  }
+  .light input, .light textarea, .light select, .light option,
+  html.light input, html.light textarea, html.light select, html.light option,
+  html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select, html[data-theme="light"] option {
+    color-scheme: light;
+  }
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -126,17 +104,6 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
-/* Force correct color-scheme on form elements */
-input, textarea, select, option {
-  color-scheme: dark;
-}
-.light input, .light textarea, .light select, .light option,
-html.light input, html.light textarea, html.light select, html.light option,
-html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select, html[data-theme="light"] option {
-  color-scheme: light;
-}
-
-/* Fix native select dropdown popup */
 select option {
   background-color: var(--bg-2);
   color: var(--text);
@@ -148,86 +115,35 @@ select option:checked {
   color: var(--on-primary);
 }
 
-/* ── Responsive Two-Panel Layout ──────────────────────────────────────── */
-.two-panel {
-  display: flex;
-  gap: 16px;
-  overflow: hidden;
-}
-.two-panel > .panel-left {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-}
-.two-panel > .panel-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 0;
-}
+@layer components {
+  .glass-card {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 14px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  }
 
-@media (max-width: 767px) {
-  .two-panel {
-    flex-direction: column;
-    height: auto !important;
-    overflow: visible !important;
+  .glass-card-hover:hover {
+    border-color: var(--border-hover);
   }
-  .two-panel > .panel-left {
-    width: 100% !important;
-    max-height: 45vh;
+
+  .glass-input {
+    background: var(--sunken);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
-  .two-panel > .panel-right {
-    overflow: visible;
+
+  .glass-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
   }
 }
-
-/* ── Responsive grid helpers ─────────────────────────────────────────── */
-.responsive-4-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-@media (max-width: 900px) {
-  .responsive-4-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 480px) {
-  .responsive-4-grid { grid-template-columns: 1fr 1fr; }
-}
-
-.responsive-2-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  align-items: start;
-}
-@media (max-width: 768px) {
-  .responsive-2-col { grid-template-columns: 1fr; }
-}
-
-/* ── Inline-style page text helpers ──────────────────────────────────── */
-.page-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
-  margin: 0 0 24px;
-}
-.page-subtitle {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.section-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-.muted { color: var(--text-muted); }
-.fg    { color: var(--text); }
-

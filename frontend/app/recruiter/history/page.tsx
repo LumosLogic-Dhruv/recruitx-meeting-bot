@@ -189,7 +189,7 @@ export default function HistoryPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Stats bar */}
-      <div className="responsive-4-grid">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: "Total Interviews", val: stats.total, col: "#a78bfa" },
           { label: "Completed", val: stats.completed, col: "#34d399" },
@@ -204,10 +204,10 @@ export default function HistoryPage() {
       </div>
 
       {/* Two-panel body */}
-      <div className="two-panel" style={{ height: "calc(100dvh - 200px)", gap: 16 }}>
+      <div className="flex flex-col md:flex-row gap-4 overflow-visible md:overflow-hidden md:h-[calc(100dvh-200px)]">
 
         {/* ── Left: Interview List ── */}
-        <div className="panel-left" style={{ width: 340 }}>
+        <div className="shrink-0 flex flex-col bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--border)] rounded-[14px] overflow-hidden w-full max-h-[45vh] md:max-h-none md:w-[340px]">
           {/* Filters */}
           <div style={{ padding: "14px 12px", borderBottom: "1px solid var(--border)", background: "var(--sunken)", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -318,7 +318,7 @@ export default function HistoryPage() {
         </div>
 
         {/* ── Right: Detail Panel ── */}
-        <div className="panel-right">
+        <div className="flex-1 flex flex-col min-w-0 overflow-visible md:overflow-hidden">
           {!selected ? (
             <div style={{ ...card, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 40 }}>
               <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>

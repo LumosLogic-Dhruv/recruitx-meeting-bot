@@ -251,10 +251,10 @@ export default function CandidatesPage() {
   }
 
   return (
-    <div className="two-panel" style={{ height: "calc(100dvh - 64px)", gap: 16 }}>
+    <div className="flex flex-col md:flex-row gap-4 overflow-visible md:overflow-hidden md:h-[calc(100dvh-64px)]">
 
       {/* ── Sidebar: Candidate List ── */}
-      <div className="panel-left" style={{ width: 320 }}>
+      <div className="shrink-0 flex flex-col bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--border)] rounded-[14px] overflow-hidden w-full max-h-[45vh] md:max-h-none md:w-[320px]">
         {/* Search + Filter Header */}
         <div style={{ padding: "16px 14px", borderBottom: "1px solid var(--border)", background: "var(--sunken)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -330,7 +330,7 @@ export default function CandidatesPage() {
       </div>
 
       {/* ── Main Panel ── */}
-      <div className="panel-right">
+      <div className="flex-1 flex flex-col min-w-0 overflow-visible md:overflow-hidden">
         {!selected ? (
           <div style={{
             flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",

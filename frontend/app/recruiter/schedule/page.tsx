@@ -174,7 +174,7 @@ export default function SchedulePage() {
   return (
     <>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: "0 0 24px" }}>Schedule Interview</h1>
-      <div className="responsive-2-col" style={{ gridTemplateColumns: "minmax(300px,500px) 1fr" }}>
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(300px,500px)_1fr] gap-6 items-start">
 
         {/* ── Schedule Form ── */}
         <div style={card}>

@@ -70,7 +70,7 @@ export default function ScorecardsPage() {
     <>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: "0 0 24px" }}>Candidate Scorecards</h1>
 
-      <div className="responsive-4-grid" style={{ marginBottom: 24 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {stats.map(s => (
           <div key={s.label} style={{ ...card, padding: 20, textAlign: "center" }}>
             <p style={{ margin: 0, fontSize: 30, fontWeight: 800, color: s.col }}>{s.val}</p>

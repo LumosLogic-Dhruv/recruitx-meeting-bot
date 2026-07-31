@@ -167,7 +167,7 @@ export default function AddCandidatePage() {
         </Link>
       </div>
 
-      <div className="responsive-2-col" style={{ gridTemplateColumns: "minmax(300px,400px) 1fr" }}>
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(300px,400px)_1fr] gap-6 items-start">
 
         {/* ── Add Form ── */}
         <div style={{ ...card, maxHeight: "calc(100vh - 140px)", overflowY: "auto" }}>
