@@ -104,3 +104,55 @@ export const getByBotId = query({
       .first();
   },
 });
+
+// ---------------------------------------------------------------------------
+// Meeting sharing
+// ---------------------------------------------------------------------------
+
+export const enableSharing = mutation({
+  args: { meetingId: v.id("meetings") },
+  handler: async (ctx, args): Promise<string> => {
+    const meetingId = args.meetingId;
+    const call = await ctx.db.get(meetingId);
+    if (!call) throw new Error("Call not found");
+
+    if ((call as any).shareEnabled && (call as any).shareToken) return (call as any).shareToken;
+    const token = (call as any).shareToken ?? crypto.randomUUID();
+    await ctx.db.patch(meetingId, { shareEnabled: true, shareToken: token });
+    return token;
+  },
+});
+
+export const disableSharing = mutation({
+  args: { meetingId: v.id("meetings") },
+  handler: async (ctx, args): Promise<void> => {
+    const meetingId = args.meetingId;
+    const call = await ctx.db.get(meetingId);
+    if (!call) throw new Error("Call not found");
+    await ctx.db.patch(meetingId, { shareEnabled: false });
+  },
+});
+
+export const getByShareToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.token) return null;
+    const call = await ctx.db
+      .query("meetings")
+      .withIndex("by_share_token", (q) => q.eq("shareToken", args.token))
+      .unique();
+    if (!call || !(call as any).shareEnabled) return null;
+
+    return {
+      _id: call._id,
+      contactName: call.candidateName ?? null,
+      createdAt: call.createdAt,
+      duration: call.wordCount ? Math.floor(call.wordCount / 2.5) : 0,
+      status: call.interviewStatus,
+      transcript: call.transcriptText ?? null,
+      recordingUrl: call.candidateAudioUrl ?? call.recordingUrl ?? null,
+      scorecard: call.scorecard ?? null,
+      useCase: call.roleName ?? null,
+    };
+  },
+});

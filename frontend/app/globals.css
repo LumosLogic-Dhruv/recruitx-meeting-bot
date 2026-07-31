@@ -1,25 +1,60 @@
 @import "tailwindcss";
 
+@theme {
+  --color-surface-base: var(--bg);
+  --color-surface-1: var(--bg-2);
+  --color-surface-sunken: var(--sunken);
+  
+  --color-accent: var(--primary);
+  --color-accent-2: var(--primary-2);
+  --color-on-accent: var(--on-primary);
+  
+  --color-fg: var(--text);
+  --color-fg-muted: var(--text-muted);
+  --color-outline: var(--border);
+  
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+}
+
 :root {
   --bg: #07070f;
   --bg-2: #0d0d1a;
-  --card: rgba(255, 255, 255, 0.05);
-  --card-hover: rgba(255, 255, 255, 0.08);
-  --glass: rgba(255, 255, 255, 0.05);
-  --glass-heavy: rgba(255, 255, 255, 0.10);
-  --border: rgba(255, 255, 255, 0.10);
-  --border-focus: #8b5cf6;
+  --sunken: rgba(0,0,0, 0.2);
+  
   --text: #f1f5f9;
   --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  
   --primary: #8b5cf6;
-  --primary-dark: #7c3aed;
-  --primary-hover: #a78bfa;
-  --primary-glow: rgba(139, 92, 246, 0.25);
-  --success: #10b981;
-  --error: #ef4444;
-  --warning: #f59e0b;
-  --info: #3b82f6;
+  --primary-2: #a855f7;
+  --on-primary: #ffffff;
+  
+  --border: rgba(255, 255, 255, 0.10);
+  
+  --scrollbar-thumb: rgba(255,255,255,0.12);
+  --scrollbar-thumb-hover: #8b5cf6;
+  --radial-1: rgba(139, 92, 246, 0.13);
+  --radial-2: rgba(99, 102, 241, 0.09);
+}
+
+.light, html[data-theme="light"] {
+  --bg: #f8fafc;
+  --bg-2: #ffffff;
+  --sunken: #f1f5f9;
+  
+  --text: #0f172a;
+  --text-muted: #475569;
+  
+  --primary: #6366f1;
+  --primary-2: #8b5cf6;
+  --on-primary: #ffffff;
+  
+  --border: #e2e8f0;
+  
+  --scrollbar-thumb: rgba(0,0,0,0.15);
+  --scrollbar-thumb-hover: #475569;
+  --radial-1: rgba(99, 102, 241, 0.06);
+  --radial-2: rgba(139, 92, 246, 0.04);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,29 +65,34 @@ body {
   color: var(--text);
   min-height: 100vh;
   background-image:
-    radial-gradient(ellipse 80% 60% at 5% 10%, rgba(139, 92, 246, 0.13) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 95% 90%, rgba(99, 102, 241, 0.09) 0%, transparent 60%);
+    radial-gradient(ellipse 80% 60% at 5% 10%, var(--radial-1) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 95% 90%, var(--radial-2) 0%, transparent 60%);
   background-attachment: fixed;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #8b5cf6; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
-/* Force dark color-scheme on form elements */
+/* Force correct color-scheme on form elements */
 input, textarea, select, option {
   color-scheme: dark;
 }
+.light input, .light textarea, .light select, .light option,
+html[data-theme="light"] input, html[data-theme="light"] textarea, html[data-theme="light"] select, html[data-theme="light"] option {
+  color-scheme: light;
+}
 
-/* Fix native select dropdown popup — white bg + white text = invisible on Chrome/Windows */
+/* Fix native select dropdown popup */
 select option {
-  background-color: #0d0d1a;
-  color: #f1f5f9;
+  background-color: var(--bg-2);
+  color: var(--text);
 }
 select option:hover,
 select option:focus,
 select option:checked {
-  background-color: #1e1b4b;
-  color: #e2e8f0;
+  background-color: var(--primary);
+  color: var(--on-primary);
 }

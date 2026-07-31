@@ -9,126 +9,138 @@ export default function LandingPage() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (token) checkSession().then((ok) => {
-      if (!ok) { localStorage.removeItem("token"); localStorage.removeItem("user"); }
-      setAuthed(ok);
-    });
+    if (token) {
+      checkSession().then((ok) => {
+        if (!ok) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+        }
+        setAuthed(ok);
+      });
+    }
   }, []);
 
   const features = [
-    { icon: "🤖", col: "rgba(139,92,246,0.15)", title: "Conversational Bot", desc: "The RecruitX bot joins Google Meet calls dynamically, greets candidates, and conducts human-like structured conversations based on customizable prompts." },
-    { icon: "📝", col: "rgba(96,165,250,0.12)", title: "Real-time Transcripts", desc: "Transcribe conversations live. Monitor user responses and interviewer feedback immediately on your dashboard as the interview is conducted." },
-    { icon: "📊", col: "rgba(52,211,153,0.12)", title: "AI Scorecard Reports", desc: "Receive detailed, dimensions-based scorecards highlighting candidate strengths, areas of concern, overall ratings, and hiring recommendations." },
+    { icon: "🤖", col: "bg-primary/10 text-primary", title: "Conversational Bot", desc: "The RecruitX bot joins Google Meet calls dynamically, greets candidates, and conducts human-like structured conversations based on customizable prompts." },
+    { icon: "📝", col: "bg-info/10 text-info", title: "Real-time Transcripts", desc: "Transcribe conversations live. Monitor user responses and interviewer feedback immediately on your dashboard as the interview is conducted." },
+    { icon: "📊", col: "bg-success/10 text-success", title: "AI Scorecard Reports", desc: "Receive detailed, dimensions-based scorecards highlighting candidate strengths, areas of concern, overall ratings, and hiring recommendations." },
   ];
 
   return (
-    <div style={{
-      minHeight: "100vh", display: "flex", flexDirection: "column",
-      background: "#07070f",
-      backgroundImage: "radial-gradient(ellipse 80% 60% at 5% 10%, rgba(139,92,246,0.14) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 95% 90%, rgba(99,102,241,0.10) 0%, transparent 60%)",
-      backgroundAttachment: "fixed",
-      color: "#f1f5f9",
-    }}>
+    <div className="min-h-screen flex flex-col bg-surface-base text-fg relative overflow-hidden">
+      
+      {/* Background gradients managed by globals.css body styles, but we can double check it works */}
+      
       {/* Navbar */}
-      <header style={{
-        background: "rgba(8,8,17,0.80)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "20px 48px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "sticky", top: 0, zIndex: 50,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Image src="/LogoWithoutName.svg" alt="RecruitX" width={36} height={36} style={{ objectFit: "contain" }} />
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, background: "linear-gradient(135deg,#a78bfa,#818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>RecruitX AI</h2>
-            <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".1em" }}>AI Interviewer Hub</p>
+      <header className="sticky top-0 z-50 flex items-center justify-between px-4 sm:px-8 lg:px-12 py-4 sm:py-5 border-b border-outline/10 bg-surface-1/80 backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <Image src="/LogoWithoutName.svg" alt="RecruitX" width={32} height={32} className="object-contain" />
+          <div className="flex flex-col">
+            <h2 className="text-base sm:text-lg font-extrabold bg-gradient-to-br from-accent to-accent-2 bg-clip-text text-transparent leading-none">
+              RecruitX AI
+            </h2>
+            <p className="text-[9px] sm:text-[10px] font-bold text-fg-muted uppercase tracking-widest leading-tight mt-1">
+              AI Interviewer
+            </p>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div className="flex items-center gap-2 sm:gap-3">
           {authed ? (
-            <Link href="/recruiter" style={{ padding: "9px 20px", textDecoration: "none", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 700 }}>
-              Go to Dashboard
+            <Link href="/recruiter" className="px-4 py-2 sm:px-6 sm:py-2.5 bg-gradient-to-br from-accent to-accent-2 text-on-accent text-xs sm:text-sm font-bold rounded-lg hover:opacity-90 transition-opacity">
+              Dashboard
             </Link>
           ) : (
             <>
-              <Link href="/login" style={{ padding: "9px 18px", textDecoration: "none", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", color: "#e2e8f0", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>Sign In</Link>
-              <Link href="/signup" style={{ padding: "9px 18px", textDecoration: "none", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 700 }}>Sign Up</Link>
+              <Link href="/login" className="px-3 py-1.5 sm:px-5 sm:py-2 bg-surface-1 border border-outline/10 text-fg text-xs sm:text-sm font-semibold rounded-lg hover:bg-surface-sunken transition-colors">
+                Sign In
+              </Link>
+              <Link href="/signup" className="px-3 py-1.5 sm:px-5 sm:py-2 bg-gradient-to-br from-accent to-accent-2 text-on-accent text-xs sm:text-sm font-bold rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap">
+                Sign Up
+              </Link>
             </>
           )}
         </div>
       </header>
 
-      <main style={{ flex: 1, maxWidth: 1152, width: "100%", margin: "0 auto", padding: "64px 48px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-8 lg:px-12 py-12 sm:py-16 flex flex-col items-center text-center">
         {/* Hero */}
-        <div style={{ maxWidth: 768, display: "flex", flexDirection: "column", alignItems: "center", gap: 24, marginTop: 32 }}>
-          <div style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)", color: "#c4b5fd", padding: "5px 14px", borderRadius: 9999, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#8b5cf6", marginRight: 7, boxShadow: "0 0 6px #8b5cf6" }} />
-            Meet RecruitX AI Interviewer
+        <div className="w-full max-w-3xl flex flex-col items-center gap-6 mt-4 sm:mt-8">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-bold uppercase tracking-widest">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--color-accent)] animate-pulse" />
+            Meet RecruitX AI
           </div>
-          <h1 style={{ margin: 0, fontSize: 52, fontWeight: 800, lineHeight: 1.12, color: "#f1f5f9" }}>
-            Automate Candidate Interviews on{" "}
-            <span style={{ background: "linear-gradient(135deg,#a78bfa,#818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight text-fg tracking-tight">
+            Force-multiply Candidate Assessment on{" "}
+            <span className="bg-gradient-to-br from-accent to-accent-2 bg-clip-text text-transparent">
               Google Meet
             </span>
           </h1>
-          <p style={{ margin: 0, color: "#94a3b8", fontSize: 17, lineHeight: 1.7, maxWidth: 580 }}>
+          <p className="text-base sm:text-lg text-fg-muted leading-relaxed max-w-2xl px-2">
             RecruitX orchestrates intelligent, conversational AI bots directly in your live calls. Conduct structured technical or behavioral interviews, generate real-time transcripts, and receive immediate dimensions-based evaluations.
           </p>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-            <Link href={authed ? "/recruiter" : "/signup"} style={{ padding: "13px 28px", fontSize: 15, fontWeight: 700, textDecoration: "none", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", borderRadius: 12, boxShadow: "0 4px 20px rgba(139,92,246,0.35)" }}>
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 mt-4 w-full sm:w-auto px-4 sm:px-0">
+            <Link href={authed ? "/recruiter" : "/signup"} className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-br from-accent to-accent-2 text-on-accent text-sm font-bold rounded-xl shadow-[0_4px_20px_var(--color-accent)_0.35] hover:-translate-y-0.5 hover:shadow-[0_6px_25px_var(--color-accent)_0.45] transition-all">
               {authed ? "Go to Dashboard" : "Get Started Free"}
             </Link>
-            <a href="#how-to-use" style={{ padding: "13px 28px", fontSize: 15, fontWeight: 600, textDecoration: "none", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", color: "#e2e8f0", borderRadius: 12 }}>
+            <a href="#how-to-use" className="w-full sm:w-auto px-8 py-3.5 bg-surface-1 border border-outline/10 text-fg text-sm font-semibold rounded-xl hover:bg-surface-sunken transition-colors">
               How it Works
             </a>
           </div>
         </div>
 
         {/* Feature cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24, width: "100%", marginTop: 96 }}>
-          {features.map(f => (
-            <div key={f.title} style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 16, padding: 32, textAlign: "left" }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: f.col, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginBottom: 16 }}>{f.icon}</div>
-              <h3 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, color: "#f1f5f9" }}>{f.title}</h3>
-              <p style={{ margin: 0, fontSize: 14, color: "#94a3b8", lineHeight: 1.65 }}>{f.desc}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full mt-24">
+          {features.map((f, i) => (
+            <div key={i} className="bg-surface-1/40 backdrop-blur-xl border border-outline/10 rounded-2xl p-6 sm:p-8 text-left hover:bg-surface-1/60 hover:border-outline/20 transition-all">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-6 ${f.col}`}>
+                {f.icon}
+              </div>
+              <h3 className="text-lg font-bold text-fg mb-3">{f.title}</h3>
+              <p className="text-sm text-fg-muted leading-relaxed">
+                {f.desc}
+              </p>
             </div>
           ))}
         </div>
 
         {/* Steps */}
-        <div id="how-to-use" style={{ width: "100%", marginTop: 120, textAlign: "left", maxWidth: 960 }}>
-          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, marginBottom: 10, color: "#f1f5f9" }}>How to Use the System</h2>
-          <p style={{ textAlign: "center", color: "#64748b", marginBottom: 64, fontSize: 15 }}>Get up and running with RecruitX AI Interviewer in four easy steps.</p>
-          <div style={{ borderLeft: "2px solid rgba(139,92,246,0.3)", paddingLeft: 24, display: "flex", flexDirection: "column", gap: 48, marginLeft: 16 }}>
+        <div id="how-to-use" className="w-full max-w-4xl mt-32 text-left">
+          <h2 className="text-3xl font-extrabold text-center text-fg mb-3">How to Use the System</h2>
+          <p className="text-center text-fg-muted mb-16 text-sm sm:text-base">Get up and running with RecruitX AI Interviewer in four easy steps.</p>
+          
+          <div className="border-l-2 border-accent/20 pl-6 sm:pl-8 ml-4 sm:ml-8 flex flex-col gap-12">
             {[
               { n: 1, title: "Custom Prompt Generation", desc: "Navigate to the Prompt Generator view. Enter the role name and click Generate. OpenAI will design a custom structured system prompt, defining candidate experience parameters and interview flow rules." },
               { n: 2, title: "Start an Interview Room Session", desc: "Go to the Interview Room. Paste your active Google Meet call URL. Choose the target prompt from saved role prompts, type the candidate's name, and click Start Interview." },
               { n: 3, title: "Monitor Live Conversations", desc: "The RecruitX bot joins the Google Meet call, greets the candidate and starts interviewing. You'll see messages appear inside the Live Conversation Feed in real-time." },
               { n: 4, title: "End Session & Analyze Scorecards", desc: "When the interview wraps up, click End Interview. The system disconnects the bot, compiles the full transcript, and triggers an evaluation with a detailed scorecard." },
-            ].map(s => (
-              <div key={s.n}>
-                <h3 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", gap: 12, color: "#e2e8f0" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{s.n}</span>
-                  Step {s.n}: {s.title}
-                </h3>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: 14, lineHeight: 1.7, paddingLeft: 42 }}>{s.desc}</p>
+            ].map((s) => (
+              <div key={s.n} className="relative">
+                <span className="absolute -left-[45px] sm:-left-[53px] top-0 w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent-2 text-on-accent text-sm font-bold flex items-center justify-center shadow-lg shadow-accent/20">
+                  {s.n}
+                </span>
+                <h3 className="text-lg font-bold text-fg mb-2">Step {s.n}: {s.title}</h3>
+                <p className="text-sm text-fg-muted leading-relaxed max-w-2xl">{s.desc}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* CTA */}
-        <div style={{ marginTop: 120, width: "100%", maxWidth: 896, background: "linear-gradient(135deg,rgba(124,58,237,0.9),rgba(79,70,229,0.9))", backdropFilter: "blur(20px)", borderRadius: 24, padding: 48, border: "1px solid rgba(139,92,246,0.3)", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, boxShadow: "0 20px 60px rgba(139,92,246,0.2)" }}>
-          <h2 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#fff" }}>Ready to transform your hiring workflow?</h2>
-          <p style={{ margin: 0, color: "#ddd6fe", maxWidth: 500, fontSize: 15, lineHeight: 1.6 }}>
+        <div className="w-full max-w-4xl mt-32 bg-gradient-to-br from-accent to-accent-2 rounded-3xl p-8 sm:p-12 border border-accent/20 shadow-[0_20px_60px_var(--color-accent)_0.2] flex flex-col items-center gap-6">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-on-accent m-0 text-center">
+            Ready to transform your hiring workflow?
+          </h2>
+          <p className="text-on-accent/80 max-w-lg text-sm sm:text-base text-center">
             {authed ? "Access your workspace to orchestrate bots and view candidate transcripts." : "Deploy your first RecruitX interviewer bot and automate screeners effortlessly."}
           </p>
-          <Link href={authed ? "/recruiter" : "/signup"} style={{ background: "#fff", color: "#7c3aed", padding: "12px 28px", fontSize: 15, fontWeight: 700, borderRadius: 12, textDecoration: "none", marginTop: 8 }}>
+          <Link href={authed ? "/recruiter" : "/signup"} className="mt-2 px-8 py-3.5 bg-surface-1 text-fg hover:text-accent font-bold rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all w-full sm:w-auto text-center">
             {authed ? "Go to Dashboard" : "Create Free Account"}
           </Link>
         </div>
       </main>
 
-      <footer style={{ textAlign: "center", padding: 24, borderTop: "1px solid rgba(255,255,255,0.07)", fontSize: 12, color: "#475569", marginTop: 80 }}>
+      <footer className="text-center py-8 border-t border-outline/10 text-xs text-fg-muted mt-12">
         &copy; 2026 RecruitX AI. All rights reserved. Powered by Convex Cloud.
       </footer>
     </div>

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { logout, getUser } from "@/lib/api";
 import { useEffect, useState } from "react";
 
-const NAV = [
+export const NAV = [
   { href: "/recruiter",            icon: "📊", label: "Dashboard" },
   { href: "/recruiter/candidates", icon: "👥", label: "Candidates" },
   { href: "/recruiter/history",    icon: "📋", label: "History" },
@@ -15,7 +15,7 @@ const NAV = [
   { href: "/recruiter/prompts",    icon: "✨", label: "Prompts" },
 ];
 
-function isActive(href: string, pathname: string) {
+export function isActive(href: string, pathname: string) {
   if (href === "/recruiter") return pathname === "/recruiter";
   if (href === "/recruiter/candidates") {
     return pathname.startsWith("/recruiter/candidates") || pathname === "/recruiter/add";
@@ -32,69 +32,29 @@ export default function RecruiterSidebar() {
   }, []);
 
   return (
-    <aside style={{
-      width: 220,
-      background: "rgba(8,8,17,0.88)",
-      backdropFilter: "blur(24px)",
-      WebkitBackdropFilter: "blur(24px)",
-      borderRight: "1px solid rgba(255,255,255,0.07)",
-      display: "flex",
-      flexDirection: "column",
-      padding: "24px 0",
-      position: "fixed",
-      top: 0,
-      left: 0,
-      height: "100vh",
-      zIndex: 10,
-    }}>
+    <aside className="hidden md:flex flex-col w-56 fixed top-0 left-0 h-screen bg-surface-1/90 backdrop-blur-xl border-r border-outline/10 py-6 z-10 transition-colors">
       {/* Logo */}
-      <div style={{
-        padding: "0 20px 20px",
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
-        marginBottom: 8,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="px-5 pb-5 border-b border-outline/10 mb-2">
+        <div className="flex items-center gap-2">
           <Image src="/LogoWithoutName.svg" alt="RecruitX" width={28} height={28} />
-          <span style={{
-            fontSize: 19, fontWeight: 800,
-            background: "linear-gradient(135deg,#a78bfa,#818cf8)",
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          }}>RecruitX</span>
+          <span className="text-[19px] font-extrabold bg-gradient-to-br from-accent to-accent-2 bg-clip-text text-transparent">
+            RecruitX
+          </span>
         </div>
-        <span style={{
-          display: "inline-block",
-          background: "rgba(139,92,246,0.15)",
-          color: "#c4b5fd",
-          padding: "2px 10px",
-          borderRadius: 20,
-          fontSize: 10,
-          fontWeight: 700,
-          marginTop: 6,
-          border: "1px solid rgba(139,92,246,0.25)",
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-        }}>Recruiter</span>
+        <span className="inline-block bg-accent/15 text-accent px-2.5 py-0.5 rounded-full text-[10px] font-bold mt-1.5 border border-accent/25 tracking-wider uppercase">
+          Recruiter
+        </span>
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, overflowY: "auto", paddingTop: 4 }}>
+      <nav className="flex-1 overflow-y-auto pt-1">
         {NAV.map(({ href, icon, label }) => {
           const active = isActive(href, pathname);
           return (
-            <Link key={href} href={href} style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 20px",
-              fontSize: 13,
-              fontWeight: active ? 700 : 500,
-              textDecoration: "none",
-              color: active ? "#c4b5fd" : "#94a3b8",
-              background: active ? "rgba(139,92,246,0.12)" : "transparent",
-              borderLeft: `3px solid ${active ? "#8b5cf6" : "transparent"}`,
-              transition: "all .15s",
-            }}>
-              <span style={{ width: 18, textAlign: "center", fontSize: 14 }}>{icon}</span>
+            <Link key={href} href={href} className={`flex items-center gap-2.5 px-5 py-2.5 text-[13px] transition-all border-l-[3px] ${
+              active ? "font-bold text-accent bg-accent/10 border-accent" : "font-medium text-fg-muted border-transparent hover:bg-surface-sunken hover:text-fg"
+            }`}>
+              <span className="w-[18px] text-center text-sm">{icon}</span>
               {label}
             </Link>
           );
@@ -102,32 +62,16 @@ export default function RecruiterSidebar() {
       </nav>
 
       {/* User + Logout */}
-      <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="px-5 pt-4 border-t border-outline/10">
         {user && (
-          <>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {user.name}
-            </div>
-            <div style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-              {user.email}
-            </div>
-          </>
+          <div className="mb-2.5">
+            <div className="text-[13px] font-semibold text-fg truncate">{user.name}</div>
+            <div className="text-[11px] text-fg-muted truncate mt-0.5">{user.email}</div>
+          </div>
         )}
         <button
           onClick={logout}
-          style={{
-            marginTop: 10,
-            background: "rgba(239,68,68,0.08)",
-            border: "1px solid rgba(239,68,68,0.18)",
-            color: "#f87171",
-            padding: "7px 14px",
-            borderRadius: 7,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            width: "100%",
-            transition: "all .15s",
-          }}
+          className="w-full bg-danger/10 border border-danger/20 text-danger py-[7px] px-3.5 rounded-lg text-xs font-semibold hover:bg-danger/20 transition-all cursor-pointer"
         >
           Logout
         </button>

@@ -33,7 +33,10 @@ export default defineSchema({
     attemptNumber: v.optional(v.number()),
     transcriptText: v.optional(v.string()),   // full transcript as plain text for search/display
     wordCount: v.optional(v.number()),        // total word count for quick filtering
-  }).index("by_bot_id", ["botId"]),
+    // Sharing fields
+    shareEnabled: v.optional(v.boolean()),
+    shareToken: v.optional(v.string()),
+  }).index("by_bot_id", ["botId"]).index("by_share_token", ["shareToken"]),
 
   rolePrompts: defineTable({
     roleName: v.string(),
@@ -66,7 +69,11 @@ export default defineSchema({
     linkedinUrl: v.optional(v.string()),
     githubUrl: v.optional(v.string()),
     generatedPrompt: v.optional(v.string()),
-  }).index("by_email", ["email"]).index("by_recruiter", ["recruiterId"]),
+    // Sharing fields
+    candidateShareEnabled: v.optional(v.boolean()),
+    candidateShareToken: v.optional(v.string()),
+  }).index("by_email", ["email"]).index("by_recruiter", ["recruiterId"])
+    .index("by_share_token", ["candidateShareToken"]),
 
   scheduledInterviews: defineTable({
     candidateId: v.string(),

@@ -136,3 +136,91 @@ export const updateStatus = mutation({
     await ctx.db.patch(id as any, clean);
   },
 });
+
+// ---------------------------------------------------------------------------
+// Candidate profile sharing
+// ---------------------------------------------------------------------------
+
+export const enableSharing = mutation({
+  args: { candidateId: v.id("candidates") },
+  handler: async (ctx, args): Promise<string> => {
+    const candidateId = args.candidateId;
+    const candidate = await ctx.db.get(candidateId);
+    if (!candidate) throw new Error("Candidate not found");
+
+    if ((candidate as any).candidateShareEnabled && (candidate as any).candidateShareToken) {
+      return (candidate as any).candidateShareToken;
+    }
+    const token = (candidate as any).candidateShareToken ?? crypto.randomUUID();
+    await ctx.db.patch(candidateId, {
+      candidateShareEnabled: true,
+      candidateShareToken: token,
+    });
+    return token;
+  },
+});
+
+export const disableSharing = mutation({
+  args: { candidateId: v.id("candidates") },
+  handler: async (ctx, args): Promise<void> => {
+    const candidateId = args.candidateId;
+    const candidate = await ctx.db.get(candidateId);
+    if (!candidate) throw new Error("Candidate not found");
+    await ctx.db.patch(candidateId, { candidateShareEnabled: false });
+  },
+});
+
+// Public — no auth required. Returns candidate profile + linked call scorecards.
+export const getByShareToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.token) return null;
+    const candidate = await ctx.db
+      .query("candidates")
+      .withIndex("by_share_token", (q) =>
+        q.eq("candidateShareToken", args.token)
+      )
+      .unique();
+    if (!candidate || !(candidate as any).candidateShareEnabled) return null;
+
+    // Fetch linked calls (meetings in bot-server matching recruiterId and candidateName)
+    const calls = candidate.recruiterId ? await ctx.db
+      .query("meetings")
+      .filter((q) => q.and(
+        q.eq(q.field("recruiterId"), candidate.recruiterId),
+        q.eq(q.field("candidateName"), candidate.name)
+      ))
+      .order("desc")
+      .take(20) : [];
+
+    const publicCalls = calls.map((c) => ({
+      _id: c._id,
+      createdAt: c.createdAt,
+      duration: c.wordCount ? Math.floor(c.wordCount / 2.5) : 0, // Approximate duration if none exists
+      status: c.interviewStatus,
+      scorecard: c.scorecard ?? null,
+      transcript: c.transcriptText ?? null,
+      recordingUrl: c.candidateAudioUrl ?? c.recordingUrl ?? null,
+      useCase: c.roleName ?? null,
+    }));
+
+    return {
+      _id: candidate._id,
+      name: candidate.name,
+      email: candidate.email ?? null,
+      phone: candidate.phone ?? null,
+      location: candidate.location ?? null,
+      currentCompany: candidate.currentCompany ?? null,
+      currentTitle: candidate.currentRole ?? null,
+      experienceYears: candidate.experienceYears ?? null,
+      currentCtc: candidate.currentCtc ?? null,
+      expectedCtc: candidate.expectedCtc ?? null,
+      skills: candidate.skills ?? [],
+      linkedin: candidate.linkedinUrl ?? null,
+      github: candidate.githubUrl ?? null,
+      roleApplyingFor: candidate.roleName ?? null,
+      resumeUrl: candidate.resumeFileName ?? null, // Will need a separate bucket/storage fetch for real urls
+      calls: publicCalls,
+    };
+  },
+});

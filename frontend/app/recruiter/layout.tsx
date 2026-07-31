@@ -1,22 +1,22 @@
 "use client";
 import { useEffect } from "react";
 import { getUser, logout } from "@/lib/api";
-import RecruiterSidebar from "@/components/RecruiterSidebar";
+import RecruiterSidebar, { NAV, isActive } from "@/components/RecruiterSidebar";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export default function RecruiterLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) { window.location.href = "/login"; return; }
 
-    // Fast path: use cached user to redirect admin immediately (no network needed)
     const user = getUser();
     if (user?.role === "admin") { window.location.href = "/admin"; return; }
 
-    // Validate token with backend — only logout on a definitive 401.
-    // Network errors / 5xx (e.g. Render cold-start slowness) must NOT remove
-    // a valid token and force the user back to the login page.
     fetch(`${BASE}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -25,17 +25,33 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
         if (res.ok) return res.json().then((data: { user?: { role?: string } }) => {
           if (data.user?.role === "admin") { window.location.href = "/admin"; }
         });
-        // 5xx or other errors — backend issue, keep the user on the page
       })
-      .catch(() => {
-        // Network error — don't logout; the backend might just be slow to wake up
-      });
+      .catch(() => {});
   }, []);
 
+  // Filter NAV for mobile (only show max 5 items to fit screen)
+  const mobileNav = NAV.slice(0, 5);
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#07070f" }}>
+    <div className="flex min-h-screen bg-surface-base relative">
       <RecruiterSidebar />
-      <main style={{ marginLeft: 220, flex: 1, padding: 32, minHeight: "100vh" }}>
+      
+      {/* Mobile Bottom Nav */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-surface-1/90 backdrop-blur-xl border-t border-outline/10 z-50 flex items-center justify-around py-2 px-2 pb-6">
+        {mobileNav.map(({ href, icon, label }) => {
+          const active = isActive(href, pathname);
+          return (
+            <Link key={href} href={href} className={`flex flex-col items-center gap-1 py-1.5 px-3 rounded-lg transition-colors ${
+              active ? "text-accent font-bold" : "text-fg-muted font-medium hover:text-fg"
+            }`}>
+              <span className="text-xl leading-none">{icon}</span>
+              <span className="text-[10px] mt-0.5">{label}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      <main className="flex-1 w-full md:ml-56 p-4 sm:p-6 lg:p-8 min-h-[100dvh] max-w-full overflow-x-hidden pb-24 md:pb-8 bg-surface-base text-fg">
         {children}
       </main>
     </div>
