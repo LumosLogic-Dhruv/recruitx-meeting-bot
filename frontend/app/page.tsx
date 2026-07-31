@@ -93,7 +93,7 @@ export default function LandingPage() {
         {/* Feature cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full mt-24">
           {features.map((f, i) => (
-            <div key={i} className="bg-surface-1/40 backdrop-blur-xl border border-outline/10 rounded-2xl p-6 sm:p-8 text-left hover:bg-surface-1/60 hover:border-outline/20 transition-all">
+            <div key={i} className="glass-card glass-card-hover p-6 sm:p-8 text-left">
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-6 ${f.col}`}>
                 {f.icon}
               </div>
@@ -110,15 +110,15 @@ export default function LandingPage() {
           <h2 className="text-3xl font-extrabold text-center text-fg mb-3">How to Use the System</h2>
           <p className="text-center text-fg-muted mb-16 text-sm sm:text-base">Get up and running with RecruitX AI Interviewer in four easy steps.</p>
           
-          <div className="border-l-2 border-accent/20 pl-6 sm:pl-8 ml-4 sm:ml-8 flex flex-col gap-12">
+          <div className="border-l-[3px] border-accent/20 pl-6 sm:pl-10 ml-4 sm:ml-8 flex flex-col gap-10">
             {[
               { n: 1, title: "Custom Prompt Generation", desc: "Navigate to the Prompt Generator view. Enter the role name and click Generate. OpenAI will design a custom structured system prompt, defining candidate experience parameters and interview flow rules." },
               { n: 2, title: "Start an Interview Room Session", desc: "Go to the Interview Room. Paste your active Google Meet call URL. Choose the target prompt from saved role prompts, type the candidate's name, and click Start Interview." },
               { n: 3, title: "Monitor Live Conversations", desc: "The RecruitX bot joins the Google Meet call, greets the candidate and starts interviewing. You'll see messages appear inside the Live Conversation Feed in real-time." },
               { n: 4, title: "End Session & Analyze Scorecards", desc: "When the interview wraps up, click End Interview. The system disconnects the bot, compiles the full transcript, and triggers an evaluation with a detailed scorecard." },
             ].map((s) => (
-              <div key={s.n} className="relative">
-                <span className="absolute -left-[45px] sm:-left-[53px] top-0 w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent-2 text-on-accent text-sm font-bold flex items-center justify-center shadow-lg shadow-accent/20">
+              <div key={s.n} className="relative glass-card p-6 sm:p-8">
+                <span className="absolute -left-[45.5px] sm:-left-[64px] top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-gradient-to-br from-accent to-accent-2 text-on-accent text-sm font-bold flex items-center justify-center shadow-[0_0_15px_var(--color-accent)] ring-4 ring-bg outline outline-1 outline-accent/20 z-10 transition-all hover:scale-110">
                   {s.n}
                 </span>
                 <h3 className="text-lg font-bold text-fg mb-2">Step {s.n}: {s.title}</h3>

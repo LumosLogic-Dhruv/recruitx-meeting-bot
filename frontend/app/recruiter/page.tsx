@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import ScorecardDetailModal, { ScorecardMeeting } from "@/components/ScorecardDetailModal";
 
 // Helper for card styling
-const cardClass = "bg-surface-1/40 backdrop-blur-xl border border-outline/10 rounded-2xl p-5 sm:p-6";
+const cardClass = "glass-card p-5 sm:p-6";
 
 interface Candidate {
   _id: string; name: string; email: string; roleName?: string;
@@ -116,7 +116,7 @@ export default function RecruiterDashboard() {
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
         {statCards.map(s => (
-          <div key={s.label} className="bg-surface-1/40 backdrop-blur-xl border border-outline/10 rounded-2xl p-4 sm:p-5 text-center flex flex-col items-center">
+          <div key={s.label} className="glass-card glass-card-hover p-4 sm:p-5 text-center flex flex-col items-center">
             <div className="text-2xl sm:text-3xl mb-1.5">{s.icon}</div>
             <div className={`text-2xl sm:text-3xl font-extrabold leading-none ${s.accent}`}>{s.val}</div>
             <div className="text-[10px] sm:text-[11px] text-fg-muted uppercase tracking-wider font-bold mt-2">{s.label}</div>
