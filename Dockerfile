@@ -15,21 +15,15 @@ RUN npm run build
 # ── Stage 2: Final production image ──────────────────────────────────────────
 FROM python:3.12-slim
 
-# Install Node.js 20, Caddy, supervisor
+# Install Node.js 20, nginx, supervisor
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl gnupg debian-keyring debian-archive-keyring apt-transport-https \
-    supervisor && \
+    curl gnupg supervisor nginx && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | \
-        gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg && \
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | \
-        tee /etc/apt/sources.list.d/caddy-stable.list && \
-    apt-get update && apt-get install -y caddy && \
     rm -rf /var/lib/apt/lists/*
 
-# Create log directory for supervisor
-RUN mkdir -p /var/log/supervisor
+# Create log directories
+RUN mkdir -p /var/log/supervisor /var/log/nginx
 
 # ── Backend (FastAPI + uvicorn) ───────────────────────────────────────────────
 WORKDIR /app/backend
@@ -44,12 +38,9 @@ COPY --from=frontend-builder /app/frontend/.next/static ./.next/static
 COPY --from=frontend-builder /app/frontend/public ./public
 
 # ── Config files ──────────────────────────────────────────────────────────────
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisor/conf.d/app.conf
 
-# Caddy data & config volumes (SSL certs persist here)
-VOLUME ["/data", "/config"]
-
-EXPOSE 80 443
+EXPOSE 80
 
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/app.conf"]
