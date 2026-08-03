@@ -1,0 +1,21 @@
+services:
+  recruitx:
+    build: .
+    image: recruitx:latest
+    container_name: recruitx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    env_file:
+      - .env
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+
+volumes:
+  caddy_data:    # SSL certificates — persists across container restarts
+  caddy_config:
+  caddy_logs:

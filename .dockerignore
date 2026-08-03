@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+backend/__pycache__
+backend/**/__pycache__
+backend/*.pyc
+backend/**/*.pyc
+backend/.env
+backend/.env.local
+backend/node_modules
+backend/test_*.py
+
+# Node / Next.js
+frontend/node_modules
+frontend/.next
+frontend/.env.local
+frontend/.env
+
+# Docker files (not needed inside image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Convex backend (cloud-only — not deployed inside container)
+backend/convex/
+backend/convex.json
+backend/package.json
+backend/package-lock.json
+
+# Misc
+*.md
+.DS_Store
+**/.DS_Store

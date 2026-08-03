@@ -1,0 +1,56 @@
+meet.recruitx-ai.com {
+
+    # ── Backend routes (FastAPI on port 8000) ─────────────────────────────────
+
+    handle /api/* {
+        reverse_proxy localhost:8000 {
+            transport http {
+                read_timeout  5m
+                write_timeout 5m
+            }
+        }
+    }
+
+    handle /webhook/* {
+        reverse_proxy localhost:8000 {
+            transport http {
+                read_timeout 60s
+            }
+        }
+    }
+
+    handle /start-interview {
+        reverse_proxy localhost:8000
+    }
+
+    handle /end-interview {
+        reverse_proxy localhost:8000
+    }
+
+    handle /health {
+        reverse_proxy localhost:8000
+    }
+
+    handle /sessions {
+        reverse_proxy localhost:8000
+    }
+
+    handle /transcript/* {
+        reverse_proxy localhost:8000
+    }
+
+    # ── Frontend (Next.js on port 3000) — catch-all ───────────────────────────
+    handle {
+        reverse_proxy localhost:3000
+    }
+
+    # Allow large file uploads (CV/JD PDFs)
+    request_body {
+        max_size 50MB
+    }
+
+    # Access log
+    log {
+        output file /var/log/caddy/access.log
+    }
+}

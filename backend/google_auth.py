@@ -31,14 +31,14 @@ _pending_flows: dict = {}
 
 
 def _redirect_uri() -> str:
-    # GOOGLE_REDIRECT_URI takes priority; fall back to RENDER_URL; finally hardcoded prod URL
+    # GOOGLE_REDIRECT_URI takes priority; fall back to SERVER_URL then RENDER_URL
     explicit = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
     if explicit:
         return explicit
-    base = os.getenv("RENDER_URL", "").strip().rstrip("/")
+    base = (os.getenv("SERVER_URL") or os.getenv("RENDER_URL", "")).strip().rstrip("/")
     if base:
         return f"{base}/api/auth/google/callback"
-    return "https://recruitx-backend-bmvx.onrender.com/api/auth/google/callback"
+    return ""
 
 
 def _client_config() -> dict:

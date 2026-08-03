@@ -121,7 +121,7 @@ def _make_recall() -> RecallClient:
 
 
 def _webhook_url() -> str:
-    base = os.getenv("RENDER_URL", "").rstrip("/")
+    base = (os.getenv("SERVER_URL") or os.getenv("RENDER_URL", "")).rstrip("/")
     return f"{base}/webhook/recall" if base else ""
 
 
