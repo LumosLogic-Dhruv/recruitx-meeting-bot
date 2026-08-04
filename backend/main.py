@@ -121,7 +121,10 @@ def _make_recall() -> RecallClient:
 
 
 def _webhook_url() -> str:
-    base = (os.getenv("SERVER_URL") or os.getenv("RENDER_URL", "")).rstrip("/")
+    base_raw = os.getenv("SERVER_URL") or os.getenv("RENDER_URL", "")
+    base = base_raw.strip().rstrip("/")
+    if not base:
+        print("[CRITICAL WARNING] SERVER_URL is missing! Recall.ai Webhooks will fail and the bot will not speak.")
     return f"{base}/webhook/recall" if base else ""
 
 
@@ -139,6 +142,11 @@ def health():
 async def start_interview(req: StartInterviewRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     if req.meeting_url in _url_to_bot:
         raise HTTPException(400, "Interview already active for this meeting URL")
+
+    webhook_url = _webhook_url()
+    if not webhook_url:
+        print("[CRITICAL WARNING] Rejecting interview start because SERVER_URL is not set and webhook_url is empty.")
+        raise HTTPException(500, "Server configuration error: SERVER_URL is missing in environment variables.")
 
     recall = _make_recall()
     pipeline = ConversationPipeline(
@@ -173,7 +181,7 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
     bot_data = await recall.create_bot(
         req.meeting_url,
         req.bot_name,
-        webhook_url=_webhook_url(),
+        webhook_url=webhook_url,
     )
     bot_id = bot_data["id"]
     pipeline.set_bot_id(bot_id)
