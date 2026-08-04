@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
+import { validateName, validateEmail, validatePhone, validateNonSpecialOnly } from "@/lib/validation";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 const card: React.CSSProperties = {
@@ -71,6 +73,7 @@ const emptyForm = {
 export default function AddCandidatePage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [form, setForm] = useState(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -90,6 +93,22 @@ export default function AddCandidatePage() {
 
   function setField(k: keyof typeof emptyForm, v: string) {
     setForm(p => ({ ...p, [k]: v }));
+    // Real-time validation
+    let err = "";
+    if (k === "name") {
+      err = validateName(v).error || "";
+    } else if (k === "email") {
+      err = validateEmail(v).error || "";
+    } else if (k === "phone") {
+      err = validatePhone(v).error || "";
+    } else if (k === "location") {
+      err = validateNonSpecialOnly(v, "Location").error || "";
+    } else if (k === "role_name") {
+      err = validateNonSpecialOnly(v, "Role Applied For", true).error || "";
+    } else if (k === "education") {
+      err = validateNonSpecialOnly(v, "Education").error || "";
+    }
+    setFieldErrors(p => ({ ...p, [k]: err }));
   }
 
   function addSkill() {
@@ -101,6 +120,29 @@ export default function AddCandidatePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const nameV = validateName(form.name);
+    const emailV = validateEmail(form.email);
+    const phoneV = validatePhone(form.phone);
+    const roleV = validateNonSpecialOnly(form.role_name, "Role Applied For", true);
+    const locV = validateNonSpecialOnly(form.location, "Location");
+    const eduV = validateNonSpecialOnly(form.education, "Education");
+
+    const errs: Record<string, string> = {
+      name: nameV.error || "",
+      email: emailV.error || "",
+      phone: phoneV.error || "",
+      role_name: roleV.error || "",
+      location: locV.error || "",
+      education: eduV.error || "",
+    };
+
+    setFieldErrors(errs);
+
+    if (Object.values(errs).some(x => !!x)) {
+      setAlert({ msg: "Please fill all mandatory fields correctly and fix validation errors before creating profile.", type: "error" });
+      return;
+    }
+
     setLoading(true);
     try {
       setAlert({ msg: "Creating candidate profile...", type: "info" });
@@ -176,19 +218,43 @@ export default function AddCandidatePage() {
           <form onSubmit={handleSubmit}>
             <p style={sectionTitle}>Basic Information</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
-              <div><label style={lbl}>Full Name *</label><input style={inp} required placeholder="Jane Doe" value={form.name} onChange={e => setField("name", e.target.value)} /></div>
-              <div><label style={lbl}>Email *</label><input style={inp} type="email" required placeholder="jane@example.com" value={form.email} onChange={e => setField("email", e.target.value)} /></div>
-              <div><label style={lbl}>Phone</label><input style={inp} placeholder="+91 98765 43210" value={form.phone} onChange={e => setField("phone", e.target.value)} /></div>
-              <div><label style={lbl}>Location</label><input style={inp} placeholder="Bangalore, India" value={form.location} onChange={e => setField("location", e.target.value)} /></div>
+              <div>
+                <label style={lbl}>Full Name *</label>
+                <input style={{ ...inp, borderColor: fieldErrors.name ? "#f87171" : "var(--border)" }} required maxLength={300} placeholder="Jane Doe" value={form.name} onChange={e => setField("name", e.target.value)} />
+                {fieldErrors.name && <p style={{ fontSize: 10, color: "#f87171", margin: "2px 0 0", fontWeight: 600 }}>{fieldErrors.name}</p>}
+              </div>
+              <div>
+                <label style={lbl}>Email *</label>
+                <input style={{ ...inp, borderColor: fieldErrors.email ? "#f87171" : "var(--border)" }} type="email" required placeholder="jane@example.com" value={form.email} onChange={e => setField("email", e.target.value)} />
+                {fieldErrors.email && <p style={{ fontSize: 10, color: "#f87171", margin: "2px 0 0", fontWeight: 600 }}>{fieldErrors.email}</p>}
+              </div>
+              <div>
+                <label style={lbl}>Phone (10 digits)</label>
+                <input style={{ ...inp, borderColor: fieldErrors.phone ? "#f87171" : "var(--border)" }} placeholder="9876543210" value={form.phone} onChange={e => setField("phone", e.target.value)} />
+                {fieldErrors.phone && <p style={{ fontSize: 10, color: "#f87171", margin: "2px 0 0", fontWeight: 600 }}>{fieldErrors.phone}</p>}
+              </div>
+              <div>
+                <label style={lbl}>Location</label>
+                <input style={{ ...inp, borderColor: fieldErrors.location ? "#f87171" : "var(--border)" }} placeholder="Bangalore, India" value={form.location} onChange={e => setField("location", e.target.value)} />
+                {fieldErrors.location && <p style={{ fontSize: 10, color: "#f87171", margin: "2px 0 0", fontWeight: 600 }}>{fieldErrors.location}</p>}
+              </div>
             </div>
 
             <p style={{ ...sectionTitle, marginTop: 16 }}>Professional Details</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
-              <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Role Applied For</label><input style={inp} placeholder="Full Stack Developer" value={form.role_name} onChange={e => setField("role_name", e.target.value)} /></div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={lbl}>Role Applied For *</label>
+                <input style={{ ...inp, borderColor: fieldErrors.role_name ? "#f87171" : "var(--border)" }} required placeholder="Full Stack Developer" value={form.role_name} onChange={e => setField("role_name", e.target.value)} />
+                {fieldErrors.role_name && <p style={{ fontSize: 10, color: "#f87171", margin: "2px 0 0", fontWeight: 600 }}>{fieldErrors.role_name}</p>}
+              </div>
               <div><label style={lbl}>Current Company</label><input style={inp} placeholder="Company name" value={form.current_company} onChange={e => setField("current_company", e.target.value)} /></div>
               <div><label style={lbl}>Current Role</label><input style={inp} placeholder="Sr. Engineer" value={form.current_role} onChange={e => setField("current_role", e.target.value)} /></div>
               <div><label style={lbl}>Years Exp</label><input style={inp} placeholder="4" value={form.experience_years} onChange={e => setField("experience_years", e.target.value)} /></div>
-              <div><label style={lbl}>Education</label><input style={inp} placeholder="B.Tech CS" value={form.education} onChange={e => setField("education", e.target.value)} /></div>
+              <div>
+                <label style={lbl}>Education</label>
+                <input style={{ ...inp, borderColor: fieldErrors.education ? "#f87171" : "var(--border)" }} placeholder="B.Tech CS" value={form.education} onChange={e => setField("education", e.target.value)} />
+                {fieldErrors.education && <p style={{ fontSize: 10, color: "#f87171", margin: "2px 0 0", fontWeight: 600 }}>{fieldErrors.education}</p>}
+              </div>
               <div><label style={lbl}>Current CTC</label><input style={inp} placeholder="12 LPA" value={form.current_ctc} onChange={e => setField("current_ctc", e.target.value)} /></div>
               <div><label style={lbl}>Expected CTC</label><input style={inp} placeholder="18 LPA" value={form.expected_ctc} onChange={e => setField("expected_ctc", e.target.value)} /></div>
             </div>

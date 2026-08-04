@@ -218,7 +218,7 @@ export default function CandidateDetailPage() {
                 color: step.done ? "#34d399" : "var(--text-muted)",
                 border: `1px solid ${step.done ? "rgba(52,211,153,0.2)" : "var(--border)"}`,
               }}>
-                <span>{step.n}</span><span>{step.label}</span>
+                <span>{step.label}</span>
               </div>
             ))}
           </div>

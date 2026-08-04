@@ -42,6 +42,7 @@ export default function RecruiterDashboard() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [meetings, setMeetings] = useState<ScorecardMeeting[]>([]);
   const [scheduled, setScheduled] = useState<ScheduledInterview[]>([]);
+  const [activeSessions, setActiveSessions] = useState<unknown[]>([]);
   const [modal, setModal] = useState<ScorecardMeeting[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -50,6 +51,7 @@ export default function RecruiterDashboard() {
       api("/api/candidates").then(r => r.json()).then(d => setCandidates(d.candidates || [])),
       api("/api/meetings").then(r => r.json()).then(d => setMeetings(d.meetings || [])),
       api("/api/interviews/scheduled").then(r => r.json()).then(d => setScheduled(d.interviews || [])).catch(() => {}),
+      api("/api/active-sessions").then(r => r.json()).then(d => setActiveSessions(d.sessions || [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -60,7 +62,7 @@ export default function RecruiterDashboard() {
     : "—";
   const completedCount = candidates.filter(c => ["locked", "completed"].includes(c.interviewStatus || "")).length;
   const upcomingCount = scheduled.filter(s => s.status === "pending").length;
-  const liveCount = scheduled.filter(s => s.status === "active").length;
+  const liveCount = activeSessions.length;
   const hireCount = scored.filter(m => ["HIRE", "STRONG HIRE"].includes(m.scorecard?.recommendation || "")).length;
   const cooldownCount = candidates.filter(c => c.interviewStatus === "cooldown").length;
 

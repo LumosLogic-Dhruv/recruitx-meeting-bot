@@ -53,14 +53,26 @@ export default function SchedulePage() {
   useEffect(() => {
     const urlCandidateId = new URLSearchParams(window.location.search).get("candidateId") || "";
     Promise.all([loadCandidates(), loadPrompts(), loadScheduled()]).then(([allCandidates]) => {
-      const pending = sessionStorage.getItem("pendingPrompt");
-      if (pending) { setForm(p => ({ ...p, promptText: pending })); sessionStorage.removeItem("pendingPrompt"); }
+      const pendingPrompt = sessionStorage.getItem("pendingPrompt");
+      const pendingRole = sessionStorage.getItem("pendingRole");
+      if (pendingPrompt) {
+        setForm(p => ({
+          ...p,
+          promptText: pendingPrompt,
+          role: pendingRole || p.role || "Full Stack Developer",
+        }));
+        sessionStorage.removeItem("pendingPrompt");
+        sessionStorage.removeItem("pendingRole");
+      } else if (pendingRole) {
+        setForm(p => ({ ...p, role: pendingRole }));
+        sessionStorage.removeItem("pendingRole");
+      }
       if (urlCandidateId && allCandidates) {
         const c = (allCandidates as Candidate[]).find(x => x._id === urlCandidateId);
         if (c) {
           setSelectedCandidate(c);
-          setForm(p => ({ ...p, candidateId: urlCandidateId, role: c.roleName || "" }));
-          if (!pending) {
+          setForm(p => ({ ...p, candidateId: urlCandidateId, role: p.role || c.roleName || "" }));
+          if (!pendingPrompt) {
             if (c.generatedPrompt) { setForm(p => ({ ...p, promptText: c.generatedPrompt! })); setPromptSource("saved"); }
             else { autoGenerateForSchedule(urlCandidateId); }
           }
@@ -145,7 +157,7 @@ export default function SchedulePage() {
         return;
       }
       const emailNote = d.calendar_invite_sent
-        ? "Google Calendar invite sent ✓ — candidate must accept it to open the meeting"
+        ? "Google Calendar invite sent ✓ — Waiting for the candidate to accept the Google Calendar invitation."
         : d.email_sent ? "Email invite sent ✓"
         : meetingMode === "manual" ? "Share meeting link with candidate manually"
         : "Configure SMTP in Settings to send emails";

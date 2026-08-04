@@ -339,10 +339,30 @@ export default function HistoryPage() {
                     </p>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    {(() => {
-                      const [bg, col, label] = statusStyle(selected.interviewStatus || "");
-                      return <span style={{ background: bg, color: col, padding: "3px 11px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{label}</span>;
-                    })()}
+                    <select
+                      value={selected.interviewStatus || "completed"}
+                      onChange={(e) => {
+                        const newStatus = e.target.value;
+                        setSelected(prev => prev ? { ...prev, interviewStatus: newStatus } : null);
+                        setMeetings(prev => prev.map(m => (m === selected || (m.candidateName === selected.candidateName && m.attemptNumber === selected.attemptNumber)) ? { ...m, interviewStatus: newStatus } : m));
+                      }}
+                      style={{
+                        padding: "5px 10px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        borderRadius: 8,
+                        background: "var(--sunken)",
+                        color: "var(--text)",
+                        border: "1px solid var(--border)",
+                        outline: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value="completed">Completed</option>
+                      <option value="partial">Partial</option>
+                      <option value="no_show">No Show</option>
+                      <option value="locked">Locked</option>
+                    </select>
                     {selected.scorecard?.overall_score && (() => {
                       const [bg, col] = scoreColor(selected.scorecard.overall_score);
                       return (

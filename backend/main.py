@@ -1238,19 +1238,36 @@ def signup(req: SignupRequest):
     if not req.email or not req.password or not req.name:
         raise HTTPException(400, "All fields are required")
 
+    name = req.name.strip()
+    email = req.email.lower().strip()
+    password = req.password
+
+    if len(name) > 300:
+        raise HTTPException(400, "Full Name cannot exceed 300 characters")
+
+    import re
+    if re.match(r"^[^a-zA-Z]+$", name):
+        raise HTTPException(400, "Full Name must contain valid alphabetic characters and cannot be numbers or special characters only.")
+
+    if ".." in email or not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+        raise HTTPException(400, "Invalid email address format (consecutive dots or improper format not allowed).")
+
+    if (len(password) < 8 or not re.search(r"[A-Z]", password) or not re.search(r"[a-z]", password)
+        or not re.search(r"[0-9]", password) or not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password)):
+        raise HTTPException(400, "Weak password. Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character.")
+
     salt = bcrypt.gensalt()
-    password_hash = bcrypt.hashpw(req.password.encode('utf-8'), salt).decode('utf-8')
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
     try:
         user_id = convex_client.mutation("users:create", {
-            "name": req.name,
-            "email": req.email.lower().strip(),
+            "name": name,
+            "email": email,
             "passwordHash": password_hash
         })
         return {"status": "success", "userId": user_id}
     except Exception as e:
         msg = str(e)
-        # Convex wraps thrown errors as "[Request ID: ...] Server Error" — extract the real message
         if "Email already registered" in msg or "already registered" in msg.lower():
             raise HTTPException(400, "Email already registered. Please sign in instead.")
         raise HTTPException(400, "Sign up failed. Please try again.")
@@ -1303,7 +1320,6 @@ async def forgot_password(request: Request):
 
     user = convex_client.query("users:getByEmail", {"email": email})
     if not user:
-        # Return success regardless — don't reveal if email exists
         return {"status": "ok", "message": "If that email exists, a reset link has been sent."}
 
     raw_token = secrets.token_urlsafe(32)
@@ -1317,21 +1333,30 @@ async def forgot_password(request: Request):
     })
 
     frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+    if not frontend_url:
+        req_origin = request.headers.get("origin") or request.headers.get("referer") or ""
+        if req_origin:
+            frontend_url = req_origin.rstrip("/")
+        else:
+            frontend_url = "https://recruitx-frontend-cbb9.onrender.com"
+
     reset_url = f"{frontend_url}/reset-password?token={raw_token}"
 
     try:
         smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
         html = et.build_password_reset_email(name=user["name"], reset_url=reset_url)
         company = os.getenv("COMPANY_NAME", "LumosLogic")
-        await gauth.send_email_smtp_generic(
+        sent = await gauth.send_email_smtp_generic(
             to_email=email,
             to_name=user["name"],
             subject=f"[{company}] Reset Your Password",
             html_body=html,
             smtp_config=smtp_config,
         )
+        if not sent:
+            print(f"[Auth] Password reset email could not be delivered to {email}")
     except Exception as e:
-        print(f"[Auth] Password reset email error: {e}")
+        print(f"[Auth] Password reset email exception: {e}")
 
     return {"status": "ok", "message": "If that email exists, a reset link has been sent."}
 
@@ -1865,6 +1890,40 @@ def save_smtp_settings(req: SmtpConfigRequest, user: dict = Depends(get_current_
 
 # ── Candidate management endpoints ────────────────────────────────────────────
 
+def validate_candidate_fields(name: str = "", email: str = "", role_name: str = "", phone: str = "", location: str = "", education: str = ""):
+    import re
+    if name:
+        n = name.strip()
+        if len(n) > 300:
+            raise HTTPException(400, "Full Name cannot exceed 300 characters")
+        if re.match(r"^[^a-zA-Z]+$", n):
+            raise HTTPException(400, "Full Name must contain valid alphabetic characters and cannot be numbers or special characters only.")
+        if not re.match(r"^[a-zA-Z\s'\-.]+$", n):
+            raise HTTPException(400, "Full Name contains invalid special characters.")
+
+    if email:
+        e = email.lower().strip()
+        if ".." in e or not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", e):
+            raise HTTPException(400, "Invalid email address format (consecutive dots or improper format not allowed).")
+
+    if phone and phone.strip():
+        digits = re.sub(r"\D", "", phone.strip())
+        if len(digits) != 10:
+            raise HTTPException(400, "Phone number must contain exactly 10 numeric digits.")
+
+    if location and location.strip():
+        if re.match(r"^[^a-zA-Z0-9]+$", location.strip()):
+            raise HTTPException(400, "Location cannot consist only of special characters.")
+
+    if role_name and role_name.strip():
+        if re.match(r"^[^a-zA-Z0-9]+$", role_name.strip()):
+            raise HTTPException(400, "Role Applied For cannot consist only of special characters.")
+
+    if education and education.strip():
+        if re.match(r"^[^a-zA-Z0-9]+$", education.strip()):
+            raise HTTPException(400, "Education cannot consist only of special characters.")
+
+
 class CandidateCreateRequest(BaseModel):
     name: str
     email: str
@@ -1885,25 +1944,34 @@ class CandidateCreateRequest(BaseModel):
 
 @app.post("/api/candidates")
 def create_candidate(req: CandidateCreateRequest, user: dict = Depends(get_current_user)):
-    if not req.name or not req.email:
-        raise HTTPException(400, "Name and email are required")
+    if not req.name or not req.name.strip() or not req.email or not req.email.strip() or not req.role_name or not req.role_name.strip():
+        raise HTTPException(400, "Mandatory fields missing: Name, Email, and Role Applied For are required.")
+
+    validate_candidate_fields(
+        name=req.name,
+        email=req.email,
+        role_name=req.role_name,
+        phone=req.phone,
+        location=req.location,
+        education=req.education,
+    )
     try:
         profile_patch = {}
-        if req.phone: profile_patch["phone"] = req.phone
-        if req.notes: profile_patch["notes"] = req.notes
-        if req.role_name: profile_patch["roleName"] = req.role_name
-        if req.experience_years: profile_patch["experienceYears"] = req.experience_years
-        if req.current_company: profile_patch["currentCompany"] = req.current_company
-        if req.current_role: profile_patch["currentRole"] = req.current_role
-        if req.current_ctc: profile_patch["currentCtc"] = req.current_ctc
-        if req.expected_ctc: profile_patch["expectedCtc"] = req.expected_ctc
-        if req.location: profile_patch["location"] = req.location
+        if req.phone: profile_patch["phone"] = req.phone.strip()
+        if req.notes: profile_patch["notes"] = req.notes.strip()
+        if req.role_name: profile_patch["roleName"] = req.role_name.strip()
+        if req.experience_years: profile_patch["experienceYears"] = req.experience_years.strip()
+        if req.current_company: profile_patch["currentCompany"] = req.current_company.strip()
+        if req.current_role: profile_patch["currentRole"] = req.current_role.strip()
+        if req.current_ctc: profile_patch["currentCtc"] = req.current_ctc.strip()
+        if req.expected_ctc: profile_patch["expectedCtc"] = req.expected_ctc.strip()
+        if req.location: profile_patch["location"] = req.location.strip()
         if req.skills: profile_patch["skills"] = req.skills
-        if req.education: profile_patch["education"] = req.education
-        if req.linkedin_url: profile_patch["linkedinUrl"] = req.linkedin_url
-        if req.github_url: profile_patch["githubUrl"] = req.github_url
+        if req.education: profile_patch["education"] = req.education.strip()
+        if req.linkedin_url: profile_patch["linkedinUrl"] = req.linkedin_url.strip()
+        if req.github_url: profile_patch["githubUrl"] = req.github_url.strip()
         cid = convex_client.mutation("candidates:create", {
-            "name": req.name,
+            "name": req.name.strip(),
             "email": req.email.lower().strip(),
             "recruiterId": user.get("sub", ""),
             **profile_patch,
@@ -1912,20 +1980,20 @@ def create_candidate(req: CandidateCreateRequest, user: dict = Depends(get_curre
                       actor=user.get("sub", "system"),
                       metadata={"name": req.name, "email": req.email, "roleName": req.role_name})
         return {"id": cid, "name": req.name, "email": req.email}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(400, f"Failed to create candidate: {str(e)}")
 
 
 @app.get("/api/candidates")
-def list_candidates(user: dict = Depends(get_current_user)):
+def get_candidates(user: dict = Depends(get_current_user)):
     try:
-        role = user.get("role", "recruiter")
-        if role == "admin":
-            candidates = convex_client.query("candidates:list") or []
+        if user.get("role") == "admin":
+            cands = convex_client.query("candidates:list", {})
         else:
-            recruiter_id = user.get("sub", "")
-            candidates = convex_client.query("candidates:listByRecruiter", {"recruiterId": recruiter_id}) or []
-        return {"candidates": candidates}
+            cands = convex_client.query("candidates:listByRecruiter", {"recruiterId": user["sub"]})
+        return {"candidates": cands}
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -1937,7 +2005,7 @@ def delete_candidate(candidate_id: str, user: dict = Depends(get_current_user)):
             candidate = convex_client.query("candidates:get", {"id": candidate_id})
             if candidate and candidate.get("recruiterId") != user.get("sub"):
                 raise HTTPException(403, "Cannot delete another recruiter's candidate")
-        convex_client.mutation("candidates:remove", {"id": candidate_id})
+        convex_client.mutation("candidates:deleteCandidate", {"id": candidate_id})
         return {"status": "deleted"}
     except HTTPException:
         raise
@@ -1971,6 +2039,16 @@ def update_candidate(candidate_id: str, req: CandidateUpdateRequest,
             candidate = convex_client.query("candidates:get", {"id": candidate_id})
             if candidate and candidate.get("recruiterId") != user.get("sub"):
                 raise HTTPException(403, "Cannot edit another recruiter's candidate")
+
+        validate_candidate_fields(
+            name=req.name,
+            email=req.email,
+            role_name=req.role_name,
+            phone=req.phone,
+            location=req.location,
+            education=req.education,
+        )
+
         patch: dict = {}
         if req.name:             patch["name"]            = req.name.strip()
         if req.email:            patch["email"]           = req.email.lower().strip()

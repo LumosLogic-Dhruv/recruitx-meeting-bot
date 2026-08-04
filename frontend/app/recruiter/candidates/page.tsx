@@ -386,7 +386,7 @@ export default function CandidatesPage() {
                     fontSize: 11, fontWeight: 700,
                     color: step.done ? step.color : "#64748b",
                   }}>
-                    {step.done ? "✓" : `${step.n}`} {step.label}
+                    {step.done ? "✓ " : ""}{step.label}
                   </div>
                 ))}
                 {/* Resume upload */}

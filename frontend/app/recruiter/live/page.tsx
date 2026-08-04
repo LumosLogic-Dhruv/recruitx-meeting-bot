@@ -16,7 +16,8 @@ function formatElapsed(s: number) { return `${Math.floor(s / 60)}:${(s % 60).toS
 
 function statusBadge(status: string) {
   switch (status) {
-    case "in_waiting_room": return { label: "Waiting Room", color: "#f87171", bg: "rgba(239,68,68,0.15)" };
+    case "in_waiting_room": return { label: "Waiting for candidate to accept Google Calendar invitation", color: "#f87171", bg: "rgba(239,68,68,0.15)" };
+    case "waiting_permission": return { label: "Waiting for candidate to accept Google Calendar invitation", color: "#fbbf24", bg: "rgba(245,158,11,0.15)" };
     case "in_call":         return { label: "● Live",       color: "#34d399", bg: "rgba(16,185,129,0.15)" };
     case "joining":         return { label: "Connecting…",  color: "#fbbf24", bg: "rgba(245,158,11,0.15)" };
     default:                return { label: status,         color: "var(--text-muted)", bg: "var(--surface-3)" };

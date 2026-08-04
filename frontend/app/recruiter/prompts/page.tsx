@@ -119,9 +119,30 @@ export default function PromptsPage() {
     finally { setLoading(false); }
   }
 
-  function useInSchedule(text: string) {
+  function useInSchedule(text: string, roleName?: string) {
     sessionStorage.setItem("pendingPrompt", text);
+    if (roleName) sessionStorage.setItem("pendingRole", roleName);
     router.push("/recruiter/schedule");
+  }
+
+  async function deletePrompt(p: Prompt) {
+    if (!confirm(`Delete "${p.roleName}"?`)) return;
+    try {
+      const res = await fetch(`${BASE}/api/prompts/${p._id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (res.ok) {
+        if (resultText === p.promptText) {
+          setResultText("");
+        }
+        sessionStorage.removeItem("pendingPrompt");
+        sessionStorage.removeItem("pendingRole");
+        loadLibrary();
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   const alertColors: Record<string, [string, string]> = {
@@ -176,7 +197,7 @@ export default function PromptsPage() {
               <textarea rows={10} readOnly value={resultText} style={{ ...inp, fontSize: 12, lineHeight: 1.6, resize: "vertical" }} />
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => navigator.clipboard.writeText(resultText).then(() => window.alert("Copied!"))} style={{ flex: 1, padding: "9px", background: "var(--sunken)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>📋 Copy</button>
-                <button onClick={() => useInSchedule(resultText)} style={{ flex: 1, padding: "9px", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Use in Schedule →</button>
+                <button onClick={() => useInSchedule(resultText, roleInput || docRoleInput)} style={{ flex: 1, padding: "9px", background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Use in Schedule →</button>
               </div>
             </div>
           )}
@@ -197,9 +218,9 @@ export default function PromptsPage() {
                 <div style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 10 }}>{(p.promptText || "").slice(0, 140)}…</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => navigator.clipboard.writeText(p.promptText).then(() => window.alert("Copied!"))} style={{ padding: "5px 11px", background: "var(--sunken)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>📋 Copy</button>
-                  <button onClick={() => useInSchedule(p.promptText)} style={{ padding: "5px 11px", background: "rgba(139,92,246,0.15)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Use in Schedule →</button>
+                  <button onClick={() => useInSchedule(p.promptText, p.roleName)} style={{ padding: "5px 11px", background: "rgba(139,92,246,0.15)", color: "#c4b5fd", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Use in Schedule →</button>
                   <button onClick={() => setEditingPrompt(p)} style={{ padding: "5px 11px", background: "rgba(59,130,246,0.10)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Edit</button>
-                  <button onClick={async () => { if (!confirm(`Delete "${p.roleName}"?`)) return; await fetch(`${BASE}/api/prompts/${p._id}`, { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }); loadLibrary(); }} style={{ padding: "5px 11px", background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.18)", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Delete</button>
+                  <button onClick={() => deletePrompt(p)} style={{ padding: "5px 11px", background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.18)", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Delete</button>
                 </div>
               </div>
             ))}
