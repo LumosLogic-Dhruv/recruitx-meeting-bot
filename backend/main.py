@@ -1338,7 +1338,7 @@ async def forgot_password(request: Request):
         if req_origin:
             frontend_url = req_origin.rstrip("/")
         else:
-            frontend_url = "https://recruitx-frontend-cbb9.onrender.com"
+            frontend_url = "https://meet.recruitx-ai.com"
 
     reset_url = f"{frontend_url}/reset-password?token={raw_token}"
 

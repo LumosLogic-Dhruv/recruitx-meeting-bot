@@ -7,6 +7,6 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://recruitx-backend-bmvx.onrender.com
+        value: https://meet.recruitx-ai.com
       - key: NODE_VERSION
         value: 20
