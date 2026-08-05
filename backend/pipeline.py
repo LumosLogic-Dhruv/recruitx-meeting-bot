@@ -372,9 +372,9 @@ class ConversationPipeline:
 
     async def send_greeting(self, bot_name: str) -> bytes:
         if self._bot_id:
-            if not speech_guard.claim_greeting(self._bot_id):
-                print("[Pipeline] Greeting already claimed — skipping send_greeting")
-                return b""
+            # claim_greeting is handled by the caller (_webhook_greeting / _poll_and_greet).
+            # Calling it again here causes a double-claim: the second call always returns False,
+            # making send_greeting return b"" even when the caller legitimately owns the greeting.
             speech_id = speech_guard.start_speech(self._bot_id, "greeting")
             if not speech_id:
                 print("[Pipeline] Speech ownership denied for greeting — returning empty bytes")
