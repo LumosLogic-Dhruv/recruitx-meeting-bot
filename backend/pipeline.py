@@ -406,6 +406,13 @@ class ConversationPipeline:
         finally:
             self._speaking = False
             self._flush_pending()
+            # Schedule keepalive so that if transcript.data webhooks never arrive after
+            # the greeting (e.g. Recall.ai realtime_endpoints not reachable), the bot
+            # will nudge the candidate after WAKEUP_AFTER_SILENCE seconds instead of
+            # staying silent permanently. _process_turn reschedules this after every turn.
+            if self._keepalive_task and not self._keepalive_task.done():
+                self._keepalive_task.cancel()
+            self._keepalive_task = asyncio.create_task(self._keepalive_check())
 
     def on_transcript_update(self, text: str, speaker: str = "Candidate"):
         """Called on finalized transcript segments (transcript.data events)."""

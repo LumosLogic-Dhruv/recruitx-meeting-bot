@@ -301,14 +301,66 @@ async def _poll_and_greet(bot_id: str):
                 except Exception as e:
                     print(f"[Poll] Greeting error: {e}")
 
-    # Health-check loop: poll bot status every 30 s to catch hung/dropped sessions.
-    # Recall.ai webhooks are the primary signal; this is the safety net.
-    print("[Poll] Health-check loop started (30 s interval)...")
+    # Combined loop: transcript polling (every 8 s) + health-check (every 30 s).
+    # transcript.data webhooks via realtime_endpoints are the primary signal for
+    # driving the interview. This loop is the safety net for when those webhooks
+    # are dropped — e.g. on Hostinger behind Traefik+Nginx where high-frequency
+    # realtime events can be silently lost while low-frequency lifecycle webhooks
+    # (bot.in_call_recording, participant.join) still arrive fine.
+    print("[Poll] Transcript+health-check loop started (8 s / 30 s intervals)...")
     consecutive_errors = 0
+    _poll_tick = 0
     while not stop_event.is_set():
-        await asyncio.sleep(30)
+        await asyncio.sleep(8)
         if stop_event.is_set():
             break
+        _poll_tick += 1
+
+        # ── Transcript polling fallback (every 8 s) ───────────────────────────
+        # Fetches the full transcript from Recall.ai and feeds any segments that
+        # haven't been seen yet — deduplicates against webhook-processed segments
+        # via _seen_segments so double-responses never occur.
+        try:
+            session = _sessions.get(bot_id)
+            if session:
+                transcript_list = await recall.get_transcript(bot_id)
+                seen_count = session.get("seen_transcript_count", 0)
+                if len(transcript_list) > seen_count:
+                    new_segments = transcript_list[seen_count:]
+                    session["seen_transcript_count"] = len(transcript_list)
+                    pipeline_obj: ConversationPipeline = session.get("pipeline")
+                    bot_name_local: str = session.get("bot_name", "")
+                    if pipeline_obj and bot_name_local:
+                        for seg in new_segments:
+                            speaker = seg.get("speaker") or "Candidate"
+                            words = seg.get("words", [])
+                            # Recall transcript API uses "text" per word (not "word")
+                            text = " ".join(
+                                w.get("text") or w.get("word", "") for w in words
+                            ).strip()
+                            # Skip bot's own speech and noise-only segments
+                            if not text or speaker.lower() == bot_name_local.lower():
+                                continue
+                            word_count = len(text.split())
+                            # Dedup against webhook-processed segments (>3 words only,
+                            # same threshold as the webhook handler)
+                            if word_count > 3:
+                                seen_segs = _seen_segments.setdefault(bot_id, set())
+                                seg_key = f"{speaker}:{text}"
+                                if seg_key in seen_segs:
+                                    print(f"[Poll] Transcript already processed via webhook — skipping: {text[:40]}")
+                                    continue
+                                seen_segs.add(seg_key)
+                                if len(seen_segs) > 400:
+                                    seen_segs.clear()
+                            print(f"[Poll] Transcript fallback feeding: {speaker}: {text[:60]}")
+                            pipeline_obj.on_transcript_update(text, speaker)
+        except Exception as e:
+            print(f"[Poll] Transcript poll error (non-fatal): {e}")
+
+        # ── Health-check (every 30 s, i.e. every 3-4 ticks) ──────────────────
+        if _poll_tick % 4 != 0:
+            continue
         try:
             bot = await recall.get_bot(bot_id)
             changes = bot.get("status_changes", [])
