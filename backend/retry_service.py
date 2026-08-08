@@ -85,25 +85,21 @@ async def _schedule_retry(candidate: dict):
         print(f"[Retry] No meeting URL for {name} — skipping retry scheduling")
         return
 
-    # Send re-invite email
+    # Send re-invite email with ICS calendar attachment
     email_sent = False
     import email_templates as et
     smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
     smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
     if smtp_user and smtp_pass:
         try:
-            email_sent = await _gauth.send_email_smtp_generic(
-                to_email=email,
-                to_name=name,
-                subject=f"Your Re-Interview Invitation — {role_name}",
-                html_body=et.build_retry_invite_email(
-                    candidate_name=name,
-                    meet_url=meeting_url,
-                    scheduled_at=scheduled_dt,
-                    role_name=role_name,
-                    duration_minutes=45,
-                    sender=smtp_user,
-                ),
+            # Use the dedicated interview invite sender so the candidate gets a calendar event
+            email_sent = await _gauth.send_interview_email_smtp(
+                candidate_name=name,
+                candidate_email=email,
+                meet_url=meeting_url,
+                scheduled_at=scheduled_dt.replace(tzinfo=None),
+                role_name=role_name,
+                duration_minutes=45,
                 smtp_config=smtp_config,
             )
         except Exception as e:

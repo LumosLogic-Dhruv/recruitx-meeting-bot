@@ -45,7 +45,8 @@ def init(create_session_fn, convex_client, sessions_ref=None, auto_end_fn=None,
 async def _bot_join_job(interview_id: str, meeting_url: str, system_prompt: str,
                          bot_name: str, candidate_name: str, recruiter_id: str = "",
                          candidate_id: str = "", role_name: str = "Interview",
-                         attempt_number: int = 1, candidate_email: str = ""):
+                         attempt_number: int = 1, candidate_email: str = "",
+                         scheduled_at_ms: int = 0):
     print(f"[Scheduler] Starting bot for scheduled interview {interview_id} → {meeting_url}")
     last_err = None
     for attempt in range(1, BOT_JOIN_MAX_RETRIES + 1):
@@ -61,6 +62,7 @@ async def _bot_join_job(interview_id: str, meeting_url: str, system_prompt: str,
                 role_name=role_name,
                 attempt_number=attempt_number,
                 candidate_email=candidate_email,
+                scheduled_at_ms=scheduled_at_ms,
             )
             _convex_client.mutation("scheduledInterviews:updateStatus", {
                 "id": interview_id, "status": "active"
@@ -148,7 +150,8 @@ async def _send_reminder_job(candidate_name: str, candidate_email: str,
 
 async def _no_show_check_job(interview_id: str, candidate_id: str, candidate_name: str,
                               candidate_email: str, role_name: str, recruiter_id: str,
-                              attempt_number: int, scheduled_at_ms: int):
+                              attempt_number: int, scheduled_at_ms: int,
+                              meeting_url: str = "", bot_name: str = "RecruitX AI Interviewer"):
     """Fires 15 min after scheduled time. If no active session exists, marks as no-show."""
     # Check if an active bot session is running for this interview
     active = False
@@ -187,6 +190,27 @@ async def _no_show_check_job(interview_id: str, candidate_id: str, candidate_nam
                 "id": candidate_id,
                 "interviewStatus": "locked",
             })
+
+        # Create a meeting record so the dashboard shows this no-show.
+        # Only created here when the bot never joined (create_bot failed).
+        # When the bot joined and found an empty room, _auto_end_session creates the record.
+        try:
+            _convex_client.mutation("meetings:create", {
+                "meetingUrl": meeting_url,
+                "candidateName": candidate_name,
+                "botName": bot_name,
+                "transcript": [],
+                "transcriptText": "",
+                "wordCount": 0,
+                "scorecard": {},
+                "botId": "",
+                "interviewStatus": "no_show",
+                "recruiterId": recruiter_id,
+                "roleName": role_name,
+                "attemptNumber": attempt_number,
+            })
+        except Exception as _me:
+            print(f"[Scheduler] No-show meetings:create error (non-fatal): {_me}")
 
         # Timeline event
         _convex_client.mutation("timeline:log", {
@@ -262,6 +286,11 @@ def schedule_interview(interview_id: str, meeting_url: str, system_prompt: str,
     """Schedule bot join + email reminders + no-show check for one interview."""
     sid = interview_id
 
+    # Compute sched_at_ms first — used in both bot join job and reminder jobs
+    now_utc = datetime.now(timezone.utc)
+    run_at_aware = run_at if run_at.tzinfo else run_at.replace(tzinfo=timezone.utc)
+    sched_at_ms = scheduled_at_ms or int(run_at_aware.timestamp() * 1000)
+
     # ── Bot join job ──────────────────────────────────────────────────────────
     job_id = f"interview_{sid}"
     if scheduler.get_job(job_id):
@@ -282,14 +311,11 @@ def schedule_interview(interview_id: str, meeting_url: str, system_prompt: str,
             "role_name": role_name,
             "attempt_number": attempt_number,
             "candidate_email": candidate_email,
+            "scheduled_at_ms": sched_at_ms,
         },
     )
 
     # ── Email reminders (only if ≥1h in the future) ───────────────────────────
-    now_utc = datetime.now(timezone.utc)
-    # Make run_at timezone-aware for comparison
-    run_at_aware = run_at if run_at.tzinfo else run_at.replace(tzinfo=timezone.utc)
-    sched_at_ms = scheduled_at_ms or int(run_at_aware.timestamp() * 1000)
     reminder_kwargs_base = dict(
         candidate_name=candidate_name,
         candidate_email=candidate_email,
@@ -342,6 +368,8 @@ def schedule_interview(interview_id: str, meeting_url: str, system_prompt: str,
             "recruiter_id": recruiter_id,
             "attempt_number": attempt_number,
             "scheduled_at_ms": sched_at_ms,
+            "meeting_url": meeting_url,
+            "bot_name": bot_name,
         },
     )
 

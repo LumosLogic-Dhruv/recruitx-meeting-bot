@@ -18,8 +18,20 @@ from pipeline import ConversationPipeline
 import google_auth as gauth
 import scheduler as sched
 from speech_guard import speech_guard
-from question_guard import question_guard
-from topic_flow import topic_flow_controller
+from recording import (
+    handle_recording_webhook,
+    get_recording_status as _get_recording_status,
+    upload_to_cloudinary,
+    retry_until_available as _retry_recording,
+    validate_recording as _validate_recording,
+)
+from email_service import (
+    send_scorecard_email as _send_scorecard_email,
+    send_recruiter_summary_email as _send_recruiter_summary_email,
+    send_no_show_email as _send_no_show_email,
+)
+from prompt_builder import generate_role_prompt as _generate_role_prompt
+from scorecard import generate_scorecard as _generate_scorecard
 
 load_dotenv()
 
@@ -128,72 +140,80 @@ def _webhook_url() -> str:
     return f"{base}/webhook/recall" if base else ""
 
 
-@app.get("/")
-def root():
-    return {"service": "RecruitX Backend", "status": "ok"}
+async def _create_session(
+    meeting_url: str,
+    system_prompt: str,
+    bot_name: str,
+    candidate_name: str,
+    recruiter_id: str = "",
+    candidate_id: str = "",
+    candidate_email: str = "",
+    role_name: str = "Interview",
+    attempt_number: int = 1,
+    scheduled_interview_id: str = "",
+    scheduled_at_ms: int = 0,
+    label: str = "Session",
+) -> str:
+    """Core session creation logic shared by /start-interview and the scheduler.
 
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "active_sessions": list(_sessions.keys())}
-
-
-@app.post("/start-interview")
-async def start_interview(req: StartInterviewRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    if req.meeting_url in _url_to_bot:
-        raise HTTPException(400, "Interview already active for this meeting URL")
-
-    webhook_url = _webhook_url()
-    if not webhook_url:
-        print("[CRITICAL WARNING] Rejecting interview start because SERVER_URL is not set and webhook_url is empty.")
-        raise HTTPException(500, "Server configuration error: SERVER_URL is missing in environment variables.")
+    Creates the bot, wires the pipeline, registers the session, and starts the
+    poll-and-greet background task. Returns the bot_id.
+    Raises on create_bot failure (caller handles HTTPException / retry logic).
+    """
+    import time as _time
 
     recall = _make_recall()
     pipeline = ConversationPipeline(
-        system_prompt=req.system_prompt,
+        system_prompt=system_prompt,
         openai_key=os.getenv("OPENAI_API_KEY", ""),
         elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
         voice_id=CUSTOM_VOICE_ID,
     )
-    print(f"[Pipeline] Voice: {CUSTOM_VOICE_ID}")
+
+    # bot_id is unknown until create_bot returns; closure captures via list.
+    bot_id_ref: list[str] = []
 
     async def on_ai_response(text: str, audio_bytes: bytes):
-        if not speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
-            print(f"[Recall] Speech invalid or interrupted for bot {bot_id} — skipping speak")
+        if not bot_id_ref:
+            return
+        bid = bot_id_ref[0]
+        if not speech_guard.is_speech_valid(bid, pipeline._speech_id):
+            print(f"[{label}] Speech invalid for bot {bid} — skipping")
             return
         task = asyncio.current_task()
         if task:
-            speech_guard.register_speak_task(bot_id, task)
+            speech_guard.register_speak_task(bid, task)
         for attempt in range(3):
-            if not speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
-                print(f"[Recall] Speech interrupted during attempt {attempt + 1} for bot {bot_id} — aborting speak")
+            if not speech_guard.is_speech_valid(bid, pipeline._speech_id):
                 return
             try:
-                await recall.speak(bot_id, audio_bytes)
+                await recall.speak(bid, audio_bytes)
                 return
             except Exception as e:
-                print(f"[Recall] Speak error attempt {attempt + 1}/3: {e}")
+                print(f"[{label}] Speak error attempt {attempt + 1}/3: {e}")
                 if attempt < 2:
                     await asyncio.sleep(3)
 
     pipeline.set_response_callback(on_ai_response)
 
-    bot_data = await recall.create_bot(
-        req.meeting_url,
-        req.bot_name,
-        webhook_url=webhook_url,
-    )
+    try:
+        bot_data = await recall.create_bot(meeting_url, bot_name, webhook_url=_webhook_url())
+    except Exception as e:
+        print(f"[{label}] create_bot error: {e}")
+        await recall.aclose()
+        raise
+
     bot_id = bot_data["id"]
     pipeline.set_bot_id(bot_id)
-    print(f"[Recall] Bot created: {bot_id}")
+    bot_id_ref.append(bot_id)
+    print(f"[{label}] Bot created: {bot_id}")
 
-    import time as _time
     stop_event = asyncio.Event()
     _sessions[bot_id] = {
         "bot_id": bot_id,
-        "meeting_url": req.meeting_url,
-        "bot_name": req.bot_name,
-        "candidate_name": req.candidate_name,
+        "meeting_url": meeting_url,
+        "bot_name": bot_name,
+        "candidate_name": candidate_name,
         "stop_event": stop_event,
         "recall": recall,
         "pipeline": pipeline,
@@ -203,29 +223,87 @@ async def start_interview(req: StartInterviewRequest, background_tasks: Backgrou
         "candidate_absent": False,
         "candidate_was_absent": False,
         "candidate_ever_joined": False,
+        "recruiter_id": recruiter_id,
+        "candidate_id": candidate_id,
+        "candidate_email": candidate_email,
+        "role_name": role_name,
+        "attempt_number": attempt_number,
+        "scheduled_interview_id": scheduled_interview_id,
+        "scheduled_at_ms": scheduled_at_ms,
         "created_at": _time.time(),
         "bot_status": "joining",
     }
-    _url_to_bot[req.meeting_url] = bot_id
+    _url_to_bot[meeting_url] = bot_id
 
-    # Wire up auto-end callback: fires when pipeline detects the bot said goodbye
-    async def _on_pipeline_session_end():
+    async def _on_session_end():
         session_data = _sessions.pop(bot_id, None)
         if session_data:
             speech_guard.clear_session(bot_id)
-            question_guard.clear_session(bot_id)
-            topic_flow_controller.clear_session(bot_id)
             _url_to_bot.pop(session_data.get("meeting_url", ""), None)
             _seen_segments.pop(bot_id, None)
-            print(f"[Pipeline] Goodbye detected — auto-ending session {bot_id}")
-            asyncio.create_task(_auto_end_session(bot_id, session_data, req.candidate_name))
+            print(f"[Pipeline] Goodbye detected ({label}) — auto-ending {bot_id}")
+            asyncio.create_task(_auto_end_session(bot_id, session_data, candidate_name))
 
-    pipeline.set_session_end_callback(_on_pipeline_session_end)
+    pipeline.set_session_end_callback(_on_session_end)
 
-    # Always start a polling task as a fallback in case webhooks aren't configured
-    # in the Recall.ai dashboard. The pipeline's _speaking flag prevents double-processing.
     task = asyncio.create_task(_poll_and_greet(bot_id))
     _sessions[bot_id]["task"] = task
+
+    return bot_id
+
+
+@app.get("/")
+def root():
+    return {"service": "RecruitX Backend", "status": "ok"}
+
+
+@app.get("/health")
+def health():
+    import time as _time
+    session_details = []
+    now = _time.time()
+    for bot_id, s in _sessions.items():
+        age_min = round((now - s.get("created_at", now)) / 60, 1)
+        session_details.append({
+            "bot_id": bot_id,
+            "candidate": s.get("candidate_name", ""),
+            "status": s.get("bot_status", "unknown"),
+            "age_min": age_min,
+            "greeted": s.get("greeted", False),
+        })
+    return {
+        "status": "ok",
+        "active_sessions": len(_sessions),
+        "sessions": session_details,
+        "scheduler_running": sched.scheduler.running,
+        "env": {
+            "recall_api_key": bool(os.getenv("RECALL_API_KEY")),
+            "openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
+            "elevenlabs_api_key": bool(os.getenv("ELEVENLABS_API_KEY")),
+            "server_url": bool(os.getenv("SERVER_URL")),
+            "convex_url": bool(os.getenv("CONVEX_URL")),
+        },
+    }
+
+
+@app.post("/start-interview")
+async def start_interview(req: StartInterviewRequest, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    if req.meeting_url in _url_to_bot:
+        raise HTTPException(400, "Interview already active for this meeting URL")
+    if not _webhook_url():
+        print("[CRITICAL WARNING] Rejecting interview start because SERVER_URL is not set.")
+        raise HTTPException(500, "Server configuration error: SERVER_URL is missing in environment variables.")
+
+    try:
+        bot_id = await _create_session(
+            meeting_url=req.meeting_url,
+            system_prompt=req.system_prompt,
+            bot_name=req.bot_name,
+            candidate_name=req.candidate_name,
+            label="Recall",
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Failed to create bot: {e}")
 
     return {"status": "started", "bot_id": bot_id, "meeting_url": req.meeting_url}
 
@@ -292,7 +370,7 @@ async def _poll_and_greet(bot_id: str):
             else:
                 print("[Poll] Sending greeting via polling path...")
                 try:
-                    audio = await pipeline.send_greeting(bot_name)
+                    audio = await pipeline.send_greeting(bot_name, candidate_name)
                     if audio:
                         print(f"[Poll] Greeting TTS ready: {len(audio)} bytes")
                         if speech_guard.is_speech_valid(bot_id, pipeline._speech_id):
@@ -382,8 +460,14 @@ async def _poll_and_greet(bot_id: str):
                 print("[Poll] 3 consecutive health-check failures — triggering auto-end")
                 session_data = _sessions.pop(bot_id, None)
                 if session_data:
+                    speech_guard.clear_session(bot_id)
                     _url_to_bot.pop(session_data.get("meeting_url", ""), None)
                     _seen_segments.pop(bot_id, None)
+                    _log_timeline(
+                        session_data.get("candidate_id", ""),
+                        "bot_health_check_failed",
+                        metadata={"consecutiveErrors": 3, "botId": bot_id},
+                    )
                     asyncio.create_task(_auto_end_session(bot_id, session_data, candidate_name))
                 break
 
@@ -391,7 +475,11 @@ async def _poll_and_greet(bot_id: str):
 @app.post("/webhook/recall")
 async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
     """Receive real-time events from Recall.ai (configure webhook URL in Recall dashboard)."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception as e:
+        print(f"[Webhook] Could not parse request body: {e}")
+        return {"ok": True}
     event = body.get("event", "")
     data = body.get("data", {})
     print(f"[Webhook] Event: {event}")
@@ -424,8 +512,6 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         session = _sessions.pop(bot_id, None)
         if session:
             speech_guard.clear_session(bot_id)
-            question_guard.clear_session(bot_id)
-            topic_flow_controller.clear_session(bot_id)
             meeting_url = session.get("meeting_url", "")
             _url_to_bot.pop(meeting_url, None)
             _seen_segments.pop(bot_id, None)
@@ -438,7 +524,6 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
     # Also handle bot.media_shortcuts_updated which fires when shortcuts are refreshed.
     if event in ("recording.done", "bot.media_shortcuts_updated"):
         try:
-            from recording import handle_recording_webhook
             background_tasks.add_task(handle_recording_webhook, convex_client, body)
         except Exception as _rec_err:
             print(f"[Webhook] Recording module hook error (non-fatal): {_rec_err}")
@@ -461,6 +546,10 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         session = _sessions.get(bot_id)
         if session and participant_name.lower() != session.get("bot_name", "").lower():
             session["candidate_absent"] = False
+            # Cancel the 3-minute absence timer if it's still running
+            absence_timer = session.pop("absence_timer", None)
+            if absence_timer and not absence_timer.done():
+                absence_timer.cancel()
             print(f"[Webhook] Participant joined: {participant_name}")
 
             pipeline: ConversationPipeline | None = session.get("pipeline")
@@ -510,7 +599,14 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
             pipeline: ConversationPipeline | None = session.get("pipeline")
             if pipeline:
                 pipeline.pause()    # cancels silence timer — no speaking to empty room
-            print(f"[Webhook] Participant left: {participant_name} — pipeline paused, waiting for rejoin or 3-min timeout")
+            # Cancel any previous absence timer, start a fresh 3-minute one
+            old_timer = session.pop("absence_timer", None)
+            if old_timer and not old_timer.done():
+                old_timer.cancel()
+            session["absence_timer"] = asyncio.create_task(
+                _candidate_absence_timeout(bot_id, timeout_seconds=180)
+            )
+            print(f"[Webhook] Participant left: {participant_name} — pipeline paused, 3-min absence timer started")
             _log_timeline(session.get("candidate_id", ""), "candidate_left",
                           metadata={"participantName": participant_name})
 
@@ -577,9 +673,10 @@ async def _webhook_greeting(bot_id: str):
     pipeline: ConversationPipeline = session["pipeline"]
     recall: RecallClient = session["recall"]
     bot_name: str = session["bot_name"]
+    candidate_name_: str = session.get("candidate_name", "")
     print(f"[Webhook] Sending greeting for bot {bot_id}...")
     try:
-        audio = await pipeline.send_greeting(bot_name)
+        audio = await pipeline.send_greeting(bot_name, candidate_name_)
         if not audio:
             print(f"[Webhook] send_greeting returned empty bytes for bot {bot_id}")
             return
@@ -607,132 +704,6 @@ async def _webhook_greeting(bot_id: str):
             if attempt < 2:
                 await asyncio.sleep(5)
     print(f"[Webhook] All greeting speak attempts failed for bot {bot_id} — poll path will retry")
-
-
-async def _send_recruiter_summary_email(
-    recruiter_id: str, candidate_name: str, role_name: str,
-    attempt_number: int, scorecard: dict, interview_status: str,
-    recording_url: str = "", meeting_id: str = "",
-):
-    """Send interview summary email to the recruiter who owns this candidate."""
-    import email_templates as et
-    try:
-        recruiter = convex_client.query("users:getById", {"id": recruiter_id})
-        if not recruiter or not recruiter.get("email"):
-            print(f"[Email] No recruiter found for id={recruiter_id}")
-            return
-        smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
-        frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
-        dashboard_url = f"{frontend_url}/admin" if frontend_url else ""
-        html = et.build_recruiter_summary_email(
-            recruiter_name=recruiter.get("name", "Recruiter"),
-            candidate_name=candidate_name,
-            role_name=role_name,
-            attempt_number=attempt_number,
-            scorecard=scorecard,
-            interview_status=interview_status,
-            recording_url=recording_url,
-            dashboard_url=dashboard_url,
-        )
-        company = os.getenv("COMPANY_NAME", "LumosLogic")
-        subject = f"[{company}] Interview Result — {candidate_name} ({role_name})"
-        await gauth.send_email_smtp_generic(
-            to_email=recruiter["email"],
-            to_name=recruiter.get("name", "Recruiter"),
-            subject=subject,
-            html_body=html,
-            smtp_config=smtp_config,
-        )
-    except Exception as e:
-        print(f"[Email] Recruiter summary email error: {e}")
-
-
-async def _send_scorecard_email(candidate_name: str, candidate_email: str,
-                                scorecard: dict, role_name: str, attempt_number: int,
-                                candidate_id: str = ""):
-    """Send scorecard result email to candidate after interview ends."""
-    import email_templates as et
-    try:
-        smtp_config = {}
-        try:
-            smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
-        except Exception:
-            pass
-        is_final = attempt_number >= 2
-        subject = (
-            f"Your Final Interview Scorecard — {role_name} at {os.getenv('COMPANY_NAME','LumosLogic')}"
-            if is_final else
-            f"Your Interview Scorecard — {role_name} at {os.getenv('COMPANY_NAME','LumosLogic')}"
-        )
-        html = et.build_scorecard_email(
-            candidate_name=candidate_name,
-            scorecard=scorecard,
-            role_name=role_name,
-            attempt_number=attempt_number,
-        )
-        await gauth.send_email_smtp_generic(
-            to_email=candidate_email,
-            to_name=candidate_name,
-            subject=subject,
-            html_body=html,
-            smtp_config=smtp_config,
-        )
-        if candidate_id:
-            _log_timeline(candidate_id, "scorecard_email_sent",
-                          metadata={"attemptNumber": attempt_number,
-                                    "score": scorecard.get("overall_score")})
-    except Exception as e:
-        print(f"[Email] Scorecard email error: {e}")
-
-
-async def _send_no_show_email(candidate_name: str, candidate_email: str,
-                              role_name: str, attempt_number: int,
-                              candidate_id: str = "", recruiter_id: str = "",
-                              scheduled_at_ms: int = 0):
-    """Send no-show notification to candidate and recruiter when bot.done fires with no transcript."""
-    import email_templates as et
-    import datetime as _dt
-    try:
-        smtp_config = convex_client.query("settings:get", {"key": "smtp_config"}) or {}
-        company = os.getenv("COMPANY_NAME", "LumosLogic")
-
-        # Email candidate
-        html_cand = et.build_no_show_email(
-            candidate_name=candidate_name,
-            role_name=role_name,
-            attempt_number=attempt_number,
-        )
-        await gauth.send_email_smtp_generic(
-            to_email=candidate_email, to_name=candidate_name,
-            subject=f"[{company}] Missed Interview — {role_name}",
-            html_body=html_cand, smtp_config=smtp_config,
-        )
-        _log_timeline(candidate_id, "scorecard_email_sent",
-                      actor="system", metadata={"type": "no_show", "attemptNumber": attempt_number})
-
-        # Email recruiter
-        if recruiter_id:
-            try:
-                recruiter = convex_client.query("users:getById", {"id": recruiter_id})
-                if recruiter:
-                    sched_dt = (_dt.datetime.fromtimestamp(scheduled_at_ms / 1000, tz=_dt.timezone.utc)
-                                if scheduled_at_ms else _dt.datetime.now(_dt.timezone.utc))
-                    html_rec = et.build_recruiter_no_show_email(
-                        recruiter_name=recruiter.get("name", "Recruiter"),
-                        candidate_name=candidate_name,
-                        role_name=role_name,
-                        attempt_number=attempt_number,
-                        scheduled_at=sched_dt,
-                    )
-                    await gauth.send_email_smtp_generic(
-                        to_email=recruiter["email"], to_name=recruiter.get("name", "Recruiter"),
-                        subject=f"[{company}] No-Show Alert — {candidate_name}",
-                        html_body=html_rec, smtp_config=smtp_config,
-                    )
-            except Exception as e:
-                print(f"[Email] Recruiter no-show email error: {e}")
-    except Exception as e:
-        print(f"[Email] No-show email error: {e}")
 
 
 async def _send_rejoin_greeting(bot_id: str):
@@ -771,6 +742,28 @@ async def _send_rejoin_greeting(bot_id: str):
                 await asyncio.sleep(3)
 
 
+async def _candidate_absence_timeout(bot_id: str, timeout_seconds: int = 180):
+    """Auto-end the session if the candidate hasn't rejoined within timeout_seconds.
+    Started when participant.leave fires; cancelled if participant.join fires first."""
+    await asyncio.sleep(timeout_seconds)
+    session = _sessions.get(bot_id)
+    if not session:
+        return
+    if not session.get("candidate_absent", False):
+        # Candidate rejoined before timeout — nothing to do
+        return
+    candidate_name = session.get("candidate_name", "Candidate")
+    print(f"[Webhook] Candidate absent for {timeout_seconds}s — auto-ending session {bot_id}")
+    _log_timeline(
+        session.get("candidate_id", ""),
+        "candidate_absent_timeout",
+        metadata={"timeoutSeconds": timeout_seconds, "botId": bot_id},
+    )
+    session_data = _sessions.pop(bot_id, None)
+    if session_data:
+        asyncio.create_task(_auto_end_session(bot_id, session_data, candidate_name))
+
+
 async def _send_late_join_greeting(bot_id: str):
     """Greet a candidate who joined late (bot already greeted an empty room earlier)."""
     await asyncio.sleep(2)
@@ -780,14 +773,16 @@ async def _send_late_join_greeting(bot_id: str):
     pipeline: ConversationPipeline = session.get("pipeline")
     recall: RecallClient = session.get("recall")
     bot_name: str = session.get("bot_name", "RecruitX AI")
+    candidate_name_: str = session.get("candidate_name", "")
     if not pipeline or not recall:
         return
     speech_id = speech_guard.start_speech(bot_id, "late_join_greeting")
     if not speech_id:
         return
     try:
+        name_part = f", {candidate_name_.split()[0]}" if candidate_name_.strip() else ""
         greeting = (
-            f"Hey, thanks for joining! I'm {bot_name}. "
+            f"Hey{name_part}, thanks for joining! I'm {bot_name}. "
             "So just to kick things off — tell me a bit about yourself and what you've been working on lately."
         )
         audio = await pipeline._tts(greeting)
@@ -814,7 +809,14 @@ async def _send_late_join_greeting(bot_id: str):
 
 
 async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
-    """Called when Recall.ai fires bot.done — auto-generates scorecard and saves everything."""
+    """Called when any termination path fires — scorecard, Convex save, emails, recording."""
+    # Defensive cleanup: remove any leftover references regardless of which path triggered us.
+    # Safe to call even if already done by the caller (pop/clear are idempotent).
+    _sessions.pop(bot_id, None)
+    speech_guard.clear_session(bot_id)
+    _url_to_bot.pop(session.get("meeting_url", ""), None)
+    _seen_segments.pop(bot_id, None)
+
     # Stop the polling task
     stop_event = session.get("stop_event")
     if stop_event:
@@ -896,37 +898,41 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
     attempt_number  = session.get("attempt_number", 1)
     candidate_id_   = session.get("candidate_id", "")
 
-    if candidate_email and scorecard and word_count >= 100:
-        # Candidate scorecard email
-        asyncio.create_task(
-            _send_scorecard_email(
-                candidate_name=candidate_name,
-                candidate_email=candidate_email,
-                scorecard=scorecard,
-                role_name=role_name,
-                attempt_number=attempt_number,
-                candidate_id=candidate_id_,
-            )
-        )
-        # Recruiter summary email — sent NOW (not after recording which can take 2-5 min
-        # and sometimes never arrives). Recording URL is checked on the dashboard.
+    if word_count >= 100:
+        # Always notify recruiter when a real interview completed, even if scorecard failed.
         if recruiter_id:
             asyncio.create_task(
                 _send_recruiter_summary_email(
+                    convex=convex_client,
                     recruiter_id=recruiter_id,
                     candidate_name=candidate_name,
                     role_name=role_name,
                     attempt_number=attempt_number,
                     scorecard=scorecard,
                     interview_status=interview_status,
-                    recording_url="",         # recording not ready yet — recruiter checks dashboard
+                    recording_url="",
                     meeting_id=str(meeting_id) if meeting_id else "",
+                )
+            )
+        # Candidate scorecard email — only send if scorecard has a valid score
+        if candidate_email and scorecard and scorecard.get("overall_score"):
+            asyncio.create_task(
+                _send_scorecard_email(
+                    convex=convex_client,
+                    candidate_name=candidate_name,
+                    candidate_email=candidate_email,
+                    scorecard=scorecard,
+                    role_name=role_name,
+                    attempt_number=attempt_number,
+                    candidate_id=candidate_id_,
+                    log_fn=_log_timeline,
                 )
             )
     elif candidate_email and interview_status == "no_show":
         # No-show → notify candidate so they know they missed it
         asyncio.create_task(
             _send_no_show_email(
+                convex=convex_client,
                 candidate_name=candidate_name,
                 candidate_email=candidate_email,
                 role_name=role_name,
@@ -934,6 +940,7 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
                 candidate_id=candidate_id_,
                 recruiter_id=recruiter_id,
                 scheduled_at_ms=session.get("scheduled_at_ms", 0),
+                log_fn=_log_timeline,
             )
         )
 
@@ -992,6 +999,7 @@ async def _auto_end_session(bot_id: str, session: dict, candidate_name: str):
                         "id": candidate_id,
                         "interviewStatus": "locked",
                         "attemptCount": 2,
+                        "cooldownUntil": None,
                     })
         except Exception as e:
             print(f"[AutoEnd] Candidate status update error: {e}")
@@ -1057,13 +1065,21 @@ async def _fetch_recording_on_webhook(bot_id: str) -> None:
         try:
             rec_url = await recall.fetch_recording_by_bot(bot_id)
             if rec_url:
+                # Upload to Cloudinary for a permanent URL (Recall URLs expire in 24h)
+                try:
+                    permanent = await upload_to_cloudinary(rec_url, bot_id)
+                    if permanent:
+                        rec_url = permanent
+                        print(f"[Recording/webhook] Cloudinary upload done for bot {bot_id}")
+                except Exception as _ce:
+                    print(f"[Recording/webhook] Cloudinary upload failed (keeping Recall URL): {_ce}")
                 convex_client.mutation("meetings:updateRecording", {
                     "id": meeting_id,
                     "recordingUrl": rec_url,
                 })
-                print(f"[Recording/webhook] Fast-path URL stored for meeting {meeting_id}")
+                print(f"[Recording/webhook] URL stored for meeting {meeting_id}")
             else:
-                print(f"[Recording/webhook] recording.done fired but URL still not ready — _fetch_and_store_recording will retry")
+                print(f"[Recording/webhook] URL not ready yet — _fetch_and_store_recording will retry")
         finally:
             await recall.aclose()
     except Exception as e:
@@ -1086,9 +1102,11 @@ async def _fetch_and_store_recording(
     try:
         # poll_bot_recording returns the full bot dict once media_shortcuts.video_mixed_mp4
         # status == "done". extract_recording_urls then pulls all artefact URLs from it.
-        bot_data = await recall.poll_bot_recording(bot_id, max_wait=300)
+        # Poll for up to 20 minutes — recording.done webhook is the fast path,
+        # but this catches cases where the webhook is never delivered.
+        bot_data = await recall.poll_bot_recording(bot_id, max_wait=1200)
         if not bot_data:
-            print(f"[Recording] Gave up waiting for bot {bot_id}")
+            print(f"[Recording] Gave up waiting for bot {bot_id} after 20 min")
             return
 
         urls = recall.extract_recording_urls(bot_data)
@@ -1100,7 +1118,6 @@ async def _fetch_and_store_recording(
         # Falls back to the raw Recall URL if upload fails — non-fatal.
         if recording_url:
             try:
-                from recording.cloudinary_uploader import upload_to_cloudinary
                 cloudinary_url = await upload_to_cloudinary(recording_url, bot_id)
                 if cloudinary_url:
                     recording_url = cloudinary_url
@@ -1163,8 +1180,13 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
         except Exception:
             pass
 
-    # Clean up deduplication state for this bot
+    # Full cleanup — matches what _auto_end_session does
+    speech_guard.clear_session(bot_id)
     _seen_segments.pop(bot_id, None)
+    # Cancel absence timer if it was running
+    absence_timer = session.pop("absence_timer", None)
+    if absence_timer and not absence_timer.done():
+        absence_timer.cancel()
 
     pipeline: ConversationPipeline = session.get("pipeline")
     transcript_list = pipeline.get_transcript_list() if pipeline else []
@@ -1180,21 +1202,20 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
 
     scorecard = {}
     if pipeline and word_count >= 100:
-        print("[Scorecard] Generating...")
+        print("[End] Generating scorecard...")
         try:
             scorecard = await pipeline.generate_scorecard(req.candidate_name)
-            print("[Scorecard] Done.")
+            print("[End] Scorecard done.")
         except Exception as e:
-            print(f"[Scorecard] Error: {e}")
+            print(f"[End] Scorecard error: {e}")
 
-    # Release pipeline resources (background eval task + ElevenLabs HTTP client)
     if pipeline:
         try:
             await pipeline.aclose()
         except Exception:
             pass
 
-    # Save the completed meeting and transcript to Convex
+    # Save meeting to Convex
     meeting_id = None
     try:
         meeting_id = convex_client.mutation(
@@ -1214,13 +1235,95 @@ async def end_interview(req: EndInterviewRequest, user: dict = Depends(get_curre
                 "attemptNumber": session.get("attempt_number") or 1,
             }
         )
-        print(f"[Convex] Meeting stored: {meeting_id}")
+        print(f"[End] Meeting stored: {meeting_id}")
     except Exception as e:
-        print(f"[Convex] Failed to store meeting: {e}")
+        print(f"[End] Convex save error: {e}")
 
-    # Kick off background task to fetch recording once Recall.ai finishes processing.
+    # Fetch recording in background
     if meeting_id:
         asyncio.create_task(_fetch_and_store_recording(bot_id, str(meeting_id)))
+
+    # ── Post-session side effects (fire-and-forget) ────────────────────────────
+    recruiter_id   = session.get("recruiter_id", "")
+    role_name      = session.get("role_name", "Interview")
+    attempt_number = int(session.get("attempt_number") or 1)
+    candidate_id_  = session.get("candidate_id", "")
+
+    # Recruiter notification — always send when real interview completed
+    if recruiter_id and word_count >= 100:
+        asyncio.create_task(
+            _send_recruiter_summary_email(
+                convex=convex_client,
+                recruiter_id=recruiter_id,
+                candidate_name=req.candidate_name,
+                role_name=role_name,
+                attempt_number=attempt_number,
+                scorecard=scorecard,
+                interview_status=interview_status,
+                recording_url="",
+                meeting_id=str(meeting_id) if meeting_id else "",
+            )
+        )
+
+    # Candidate scorecard email — only if scorecard has a valid score
+    candidate_email = session.get("candidate_email", "")
+    if candidate_email and scorecard and scorecard.get("overall_score") and word_count >= 100:
+        asyncio.create_task(
+            _send_scorecard_email(
+                convex=convex_client,
+                candidate_name=req.candidate_name,
+                candidate_email=candidate_email,
+                scorecard=scorecard,
+                role_name=role_name,
+                attempt_number=attempt_number,
+                candidate_id=candidate_id_,
+                log_fn=_log_timeline,
+            )
+        )
+
+    # Candidate state machine update
+    if candidate_id_:
+        try:
+            import time as _time
+            if interview_status in ("completed", "partial"):
+                if attempt_number == 1:
+                    cooldown_until = int(_time.time() * 1000) + 7 * 24 * 60 * 60 * 1000
+                    convex_client.mutation("candidates:updateStatus", {
+                        "id": candidate_id_,
+                        "interviewStatus": "cooldown",
+                        "attemptCount": 1,
+                        "cooldownUntil": cooldown_until,
+                    })
+                else:
+                    convex_client.mutation("candidates:updateStatus", {
+                        "id": candidate_id_,
+                        "interviewStatus": "locked",
+                        "attemptCount": 2,
+                        "cooldownUntil": None,
+                    })
+        except Exception as e:
+            print(f"[End] Candidate status update error (non-fatal): {e}")
+
+    # Mark scheduled interview as completed
+    scheduled_id = session.get("scheduled_interview_id")
+    if scheduled_id:
+        try:
+            convex_client.mutation("scheduledInterviews:updateStatus", {
+                "id": scheduled_id,
+                "status": "completed",
+                **({"meetingId": str(meeting_id)} if meeting_id else {}),
+            })
+        except Exception as e:
+            print(f"[End] scheduledInterviews update error (non-fatal): {e}")
+
+    # Timeline event
+    if candidate_id_:
+        _log_timeline(candidate_id_, "interview_ended", metadata={
+            "status": interview_status,
+            "wordCount": word_count,
+            "attemptNumber": attempt_number,
+            "manualEnd": True,
+        })
 
     return {
         "status": "ended",
@@ -1236,16 +1339,23 @@ def get_transcript(bot_id: str, user: dict = Depends(get_current_user)):
     session = _sessions.get(bot_id)
     if not session:
         raise HTTPException(404, "Session not found")
+    if user.get("role") != "admin" and session.get("recruiter_id", "") != user.get("sub", ""):
+        raise HTTPException(403, "Access denied")
     pipeline: ConversationPipeline = session.get("pipeline")
     return {"transcript": pipeline.get_transcript_list() if pipeline else []}
 
 
 @app.get("/api/active-sessions")
 def get_active_sessions(user: dict = Depends(get_current_user)):
-    """Return all currently active bot sessions with live transcript and status."""
+    """Return currently active bot sessions with live transcript and status.
+    Admins see all sessions; recruiters see only their own."""
     import time as _time
+    is_admin = user.get("role") == "admin"
+    recruiter_id = user.get("sub", "")
     sessions_out = []
     for bot_id, session in list(_sessions.items()):
+        if not is_admin and session.get("recruiter_id", "") != recruiter_id:
+            continue
         pipeline: ConversationPipeline | None = session.get("pipeline")
         transcript = pipeline.get_transcript_list() if pipeline else []
         sessions_out.append({
@@ -1422,8 +1532,14 @@ async def reset_password(request: Request):
 
     if not token or not new_password:
         raise HTTPException(400, "Token and new password are required")
-    if len(new_password) < 6:
-        raise HTTPException(400, "Password must be at least 6 characters")
+
+    import re as _re
+    if (len(new_password) < 8
+            or not _re.search(r"[A-Z]", new_password)
+            or not _re.search(r"[a-z]", new_password)
+            or not _re.search(r"[0-9]", new_password)
+            or not _re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", new_password)):
+        raise HTTPException(400, "Password must be at least 8 characters and contain uppercase, lowercase, number, and special character.")
 
     hashed = hashlib.sha256(token.encode()).hexdigest()
     user = convex_client.query("users:getByResetToken", {"resetToken": hashed})
@@ -1437,7 +1553,17 @@ async def reset_password(request: Request):
     new_hash = bcrypt.hashpw(new_password.encode(), salt).decode()
     convex_client.mutation("users:updatePassword", {"id": user["_id"], "passwordHash": new_hash})
 
-    return {"status": "ok", "message": "Password updated successfully."}
+    # Invalidate the reset token so it cannot be replayed
+    try:
+        convex_client.mutation("users:setResetToken", {
+            "id": user["_id"],
+            "resetToken": "",
+            "resetTokenExpiry": 0,
+        })
+    except Exception:
+        pass  # non-fatal — token expiry protects even if this fails
+
+    return {"status": "ok", "message": "Password updated successfully. Please sign in with your new password."}
 
 
 @app.get("/api/auth/me")
@@ -1448,7 +1574,10 @@ def auth_me(user: dict = Depends(get_current_user)):
 @app.get("/api/meetings")
 def list_meetings(user: dict = Depends(get_current_user)):
     try:
-        meetings = convex_client.query("meetings:list")
+        meetings = convex_client.query("meetings:list") or []
+        if user.get("role") != "admin":
+            recruiter_id = user.get("sub", "")
+            meetings = [m for m in meetings if m.get("recruiterId") == recruiter_id]
         return {"meetings": meetings}
     except Exception as e:
         raise HTTPException(500, f"Convex error: {str(e)}")
@@ -1460,7 +1589,12 @@ def get_meeting(meeting_id: str, user: dict = Depends(get_current_user)):
         meeting = convex_client.query("meetings:get", {"id": meeting_id})
         if not meeting:
             raise HTTPException(404, "Meeting not found")
+        if user.get("role") != "admin":
+            if meeting.get("recruiterId") != user.get("sub", ""):
+                raise HTTPException(403, "Access denied")
         return {"meeting": meeting}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Convex error: {str(e)}")
 
@@ -1472,6 +1606,8 @@ def get_meeting_recording(meeting_id: str, user: dict = Depends(get_current_user
         meeting = convex_client.query("meetings:get", {"id": meeting_id})
         if not meeting:
             raise HTTPException(404, "Meeting not found")
+        if user.get("role") != "admin" and meeting.get("recruiterId") != user.get("sub", ""):
+            raise HTTPException(403, "Access denied")
         recording_url = meeting.get("recordingUrl")
         bot_audio_url = meeting.get("botAudioUrl")
         candidate_audio_url = meeting.get("candidateAudioUrl")
@@ -1492,8 +1628,7 @@ def get_recording_status(meeting_id: str, user: dict = Depends(get_current_user)
     """Return lightweight recording status from the MeetingRecording module.
     Frontend polls this to decide when to show the video player."""
     try:
-        from recording import get_recording_status as _get_status
-        return _get_status(convex_client, meeting_id)
+        return _get_recording_status(convex_client, meeting_id)
     except Exception as e:
         print(f"[API] /recording/status error (non-fatal): {e}")
         return {"status": "unavailable", "available": False}
@@ -1545,11 +1680,9 @@ async def retry_recording_fetch(meeting_id: str, user: dict = Depends(get_curren
 
     async def _retry_task():
         try:
-            from recording_manager import RecordingManager
-            mgr = RecordingManager()
-            await mgr.retry_until_available(convex_client, bot_id, meeting_id)
+            await _retry_recording(convex_client, bot_id, meeting_id)
         except Exception as _e:
-            print(f"[RecordingManager] retry_recording_fetch task error (non-fatal): {_e}")
+            print(f"[Recording] retry_recording_fetch task error (non-fatal): {_e}")
 
     asyncio.create_task(_retry_task())
     return {
@@ -1566,9 +1699,7 @@ async def validate_meeting_recording(meeting_id: str, user: dict = Depends(get_c
     Checks: HTTPS, reachability, non-zero content. Updates status if valid.
     """
     try:
-        from recording_manager import validate_recording
-        result = await validate_recording(convex_client, meeting_id)
-        return result
+        return await _validate_recording(convex_client, meeting_id)
     except Exception as e:
         return {"valid": False, "status": "error", "reason": str(e)}
 
@@ -1582,47 +1713,7 @@ def list_prompts(user: dict = Depends(get_current_user)):
         raise HTTPException(500, f"Convex error: {str(e)}")
 
 
-PROMPT_ENGINEER_INSTRUCTION = """You are an expert at writing AI voice interviewer system prompts.
 
-CRITICAL RULES FOR WHAT YOU MUST OUTPUT:
-- Output BEHAVIORAL INSTRUCTIONS only — tell the AI how to behave, NOT what to say.
-- NEVER write pre-scripted lines, fake dialogues, or example Q&A exchanges.
-- NEVER hardcode the candidate's name into questions or responses.
-- NEVER write sentences starting with "You mentioned..." or "I see you've worked on..." — the AI has not spoken to the candidate yet and cannot know their background.
-- Do NOT write "If candidate says X, respond with Y" — that creates a script, not an interviewer.
-
-WHAT TO INCLUDE:
-1. Who the AI is: a friendly, human-sounding interviewer with a name like Alex.
-2. Conversation style rules:
-   - ONE question per turn, always. Never combine two questions.
-   - 1-2 sentences maximum per response.
-   - React to what the candidate ACTUALLY says — never assume or invent facts.
-   - Use natural filler: "Got it.", "Interesting.", "Right, so...", "That makes sense."
-   - If answer is vague or short, ask them to elaborate — don't move on.
-3. Interview flow: warm intro → candidate background → role-specific skills (3-4 areas relevant to the role) → one soft-skills question → wrap up with next steps.
-4. Topic AREAS to cover (not pre-written questions — just the subjects to ask about).
-5. Hard rules: never repeat a question already answered, never ask multiple questions at once, keep total interview under 10 minutes.
-
-Output ONLY the system prompt text. No preamble. No example dialogues. No scripts."""
-
-
-async def _call_openai_for_prompt(user_message: str) -> str:
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    if not openai_key:
-        raise HTTPException(500, "OpenAI API key not configured")
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=openai_key)
-    model_to_use = os.getenv("OPENAI_PROMPT_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o"))
-    response = await client.chat.completions.create(
-        model=model_to_use,
-        messages=[
-            {"role": "system", "content": PROMPT_ENGINEER_INSTRUCTION},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=0.7,
-        max_tokens=800,
-    )
-    return (response.choices[0].message.content or "").strip()
 
 
 def _extract_pdf_text(file_bytes: bytes) -> str:
@@ -1642,10 +1733,10 @@ async def generate_prompt(req: GeneratePromptRequest, user: dict = Depends(get_c
     if not role:
         raise HTTPException(400, "Role name is required")
 
-    user_message = f"Generate an AI interviewer system prompt for the role: '{role}'."
-
     try:
-        generated_prompt = await _call_openai_for_prompt(user_message)
+        generated_prompt = await _generate_role_prompt(
+            role_name=role, openai_key=os.getenv("OPENAI_API_KEY", "")
+        )
 
         try:
             convex_client.mutation("prompts:create", {"roleName": role, "promptText": generated_prompt})
@@ -1682,21 +1773,13 @@ async def generate_prompt_from_docs(
 
     role = role_name.strip() or "the role"
 
-    parts = [f"Generate an AI interviewer system prompt for the role: '{role}'."]
-    if jd_text:
-        parts.append(f"\n\nJOB DESCRIPTION:\n{jd_text[:3000]}")
-    if cv_text:
-        parts.append(f"\n\nCANDIDATE CV:\n{cv_text[:3000]}")
-    if cv_text:
-        parts.append(
-            "\n\nTailor the questions to the candidate's actual background from their CV — "
-            "ask follow-up questions about specific projects or technologies they mention."
-        )
-
-    user_message = "".join(parts)
-
     try:
-        generated_prompt = await _call_openai_for_prompt(user_message)
+        generated_prompt = await _generate_role_prompt(
+            role_name=role,
+            openai_key=os.getenv("OPENAI_API_KEY", ""),
+            jd_text=jd_text,
+            cv_text=cv_text,
+        )
 
         label = role_name.strip() or (jd_file.filename if jd_file else "Document Upload")
         try:
@@ -1718,103 +1801,25 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
                                      recruiter_id: str = "", candidate_id: str = "",
                                      role_name: str = "Interview", attempt_number: int = 1,
                                      candidate_email: str = ""):
-    """Called by the scheduler at interview time — mirrors /start-interview logic."""
+    """Called by the scheduler at interview time. Delegates to _create_session()."""
     if meeting_url in _url_to_bot:
         print(f"[Scheduler] Session already active for {meeting_url} — skipping")
         return
 
-    recall = _make_recall()
-    pipeline = ConversationPipeline(
+    bot_id = await _create_session(
+        meeting_url=meeting_url,
         system_prompt=system_prompt,
-        openai_key=os.getenv("OPENAI_API_KEY", ""),
-        elevenlabs_key=os.getenv("ELEVENLABS_API_KEY", ""),
-        voice_id=CUSTOM_VOICE_ID,
+        bot_name=bot_name,
+        candidate_name=candidate_name,
+        recruiter_id=recruiter_id,
+        candidate_id=candidate_id,
+        candidate_email=candidate_email,
+        role_name=role_name,
+        attempt_number=attempt_number,
+        scheduled_interview_id=scheduled_interview_id,
+        label="Scheduler",
     )
-
-    bot_id_holder: list[str] = []
-
-    async def on_ai_response(text: str, audio_bytes: bytes):
-        if not bot_id_holder:
-            return
-        bid = bot_id_holder[0]
-        if not speech_guard.is_speech_valid(bid, pipeline._speech_id):
-            print(f"[Scheduler] Speech invalid or interrupted for bot {bid} — skipping speak")
-            return
-        task = asyncio.current_task()
-        if task:
-            speech_guard.register_speak_task(bid, task)
-        for attempt in range(3):
-            if not speech_guard.is_speech_valid(bid, pipeline._speech_id):
-                print(f"[Scheduler] Speech interrupted during attempt {attempt + 1} for bot {bid} — aborting speak")
-                return
-            try:
-                await recall.speak(bid, audio_bytes)
-                return
-            except Exception as e:
-                print(f"[Scheduler] Speak error attempt {attempt + 1}/3: {e}")
-                if attempt < 2:
-                    await asyncio.sleep(3)
-
-    pipeline.set_response_callback(on_ai_response)
-
-    try:
-        bot_data = await recall.create_bot(
-            meeting_url,
-            bot_name,
-            webhook_url=_webhook_url(),
-        )
-    except Exception as e:
-        print(f"[Scheduler] create_bot error: {e}")
-        await recall.aclose()
-        raise  # re-raise so _bot_join_job retries and logs the failure properly
-
-    bot_id = bot_data["id"]
-    pipeline.set_bot_id(bot_id)
-    bot_id_holder.append(bot_id)
     print(f"[Scheduler] Bot created for scheduled interview {scheduled_interview_id}: {bot_id}")
-
-    import time as _time
-    stop_event = asyncio.Event()
-    _sessions[bot_id] = {
-        "bot_id": bot_id,
-        "meeting_url": meeting_url,
-        "bot_name": bot_name,
-        "candidate_name": candidate_name,
-        "stop_event": stop_event,
-        "recall": recall,
-        "pipeline": pipeline,
-        "seen_transcript_count": 0,
-        "greeted": False,
-        "greeted_to_human": False,
-        "candidate_absent": False,
-        "candidate_was_absent": False,
-        "candidate_ever_joined": False,    # True once first participant.join fires
-        "scheduled_interview_id": scheduled_interview_id,
-        "recruiter_id": recruiter_id,
-        "candidate_id": candidate_id,
-        "candidate_email": candidate_email,
-        "role_name": role_name,
-        "attempt_number": attempt_number,
-        "scheduled_at_ms": 0,              # filled by schedule_interview caller
-        "created_at": _time.time(),
-        "bot_status": "joining",
-    }
-    _url_to_bot[meeting_url] = bot_id
-
-    # Wire up auto-end callback — same as start_interview path.
-    # Without this, scheduled sessions never auto-leave on goodbye detection.
-    async def _on_scheduled_session_end():
-        session_data = _sessions.pop(bot_id, None)
-        if session_data:
-            _url_to_bot.pop(session_data.get("meeting_url", ""), None)
-            _seen_segments.pop(bot_id, None)
-            print(f"[Pipeline] Goodbye detected (scheduled) — auto-ending session {bot_id}")
-            asyncio.create_task(_auto_end_session(bot_id, session_data, candidate_name))
-
-    pipeline.set_session_end_callback(_on_scheduled_session_end)
-
-    task = asyncio.create_task(_poll_and_greet(bot_id))
-    _sessions[bot_id]["task"] = task
 
 
 # ── Google OAuth endpoints ─────────────────────────────────────────────────────
@@ -2182,6 +2187,8 @@ async def generate_prompt_from_candidate(candidate_id: str, user: dict = Depends
         raise HTTPException(500, str(e))
     if not candidate:
         raise HTTPException(404, "Candidate not found")
+    if user.get("role") != "admin" and candidate.get("recruiterId") != user.get("sub"):
+        raise HTTPException(403, "Access denied")
 
     from openai import AsyncOpenAI
     openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
@@ -2253,6 +2260,15 @@ def get_candidate_timeline(candidate_id: str, user: dict = Depends(get_current_u
 async def upload_resume(candidate_id: str, file: UploadFile = File(...),
                         user: dict = Depends(get_current_user)):
     """Upload a CV/resume PDF and store extracted text against the candidate."""
+    try:
+        candidate_check = convex_client.query("candidates:get", {"id": candidate_id})
+        if candidate_check and user.get("role") != "admin":
+            if candidate_check.get("recruiterId") != user.get("sub"):
+                raise HTTPException(403, "Access denied")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # non-fatal — proceed with upload if ownership check fails
     content = await file.read()
     filename = file.filename or "resume.pdf"
     text = ""
@@ -2469,6 +2485,8 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
         raise HTTPException(500, f"Convex error: {e}")
     if not candidate:
         raise HTTPException(404, "Candidate not found")
+    if user.get("role") != "admin" and candidate.get("recruiterId") != user.get("sub"):
+        raise HTTPException(403, "Cannot schedule an interview for another recruiter's candidate")
 
     # Parse scheduled time
     try:
@@ -2537,35 +2555,7 @@ async def schedule_interview(req: ScheduleInterviewRequest, user: dict = Depends
     smtp_user = smtp_config.get("user") or os.getenv("SMTP_USER", "")
     smtp_pass = smtp_config.get("password") or os.getenv("SMTP_PASS", "")
 
-    # Primary path: enhanced calendar invitation with ICS attachment and calendar buttons
-    if not email_sent and smtp_user and smtp_pass:
-        try:
-            from interview_calendar import CalendarEventData, send_calendar_invite
-            from datetime import timezone as _tz
-            _recruiter_name = user.get("name", os.getenv("COMPANY_NAME", "LumosLogic"))
-            _cal_event = CalendarEventData(
-                title=f"Interview — {candidate['name']} ({req.role_name})",
-                candidate_name=candidate["name"],
-                candidate_email=candidate["email"],
-                job_title=req.role_name,
-                recruiter_name=_recruiter_name,
-                organizer_email=smtp_user,
-                start=scheduled_dt.replace(tzinfo=_tz.utc),
-                duration_minutes=req.duration_minutes,
-                meet_url=meeting_url,
-                timezone_name="UTC",
-            )
-            email_sent = await send_calendar_invite(
-                event=_cal_event,
-                candidate_email=candidate["email"],
-                smtp_config=smtp_config,
-            )
-            if email_sent:
-                print("[Schedule] Calendar invite with ICS sent successfully")
-        except Exception as e:
-            print(f"[Schedule] Calendar invite error (non-fatal): {e}")
-
-    # Fallback: plain SMTP email (no ICS) if calendar invite failed
+    # Send plain SMTP interview invitation email
     if not email_sent and smtp_user and smtp_pass:
         try:
             email_sent = await gauth.send_interview_email_smtp(
@@ -2787,47 +2777,18 @@ async def recover_interview(req: RecoverInterviewRequest, user: dict = Depends(g
         candidate_name = candidate.get("name", "Candidate")
         recruiter_id = candidate.get("recruiterId", "")
 
-        # 5. Generate scorecard via OpenAI (standalone, no in-memory pipeline state)
+        # 5. Generate scorecard via OpenAI
         scorecard = {}
         if word_count >= 100:
-            openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
-            scorecard_prompt = f"""You are an expert recruiter evaluating a voice interview conducted by an AI bot.
-
-IMPORTANT — ASR TRANSCRIPT NOTICE:
-This transcript was produced by real-time speech-to-text on a live voice call. It may contain garbled technical terms, sentence fragments, and disfluencies — these are STT artefacts. Read every answer charitably. Do NOT penalise for garbled words or broken sentences. Only penalise for genuine lack of knowledge.
-
-Candidate: {candidate_name}
-Role: {req.role_name}
-
-Interview Transcript:
-{transcript_text[:6000]}
-
-Generate a comprehensive JSON scorecard. Return ONLY valid JSON, no extra text:
-{{
-  "candidate_name": "{candidate_name}",
-  "overall_score": <1-10 integer>,
-  "recommendation": "<Strong Hire | Hire | Maybe | No Hire>",
-  "summary": "<2-3 sentence overall assessment>",
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "concerns": ["<concern 1>", "<concern 2>"],
-  "categories": {{
-    "technical_knowledge": {{"score": <1-10>, "notes": "<brief note>"}},
-    "communication": {{"score": <1-10>, "notes": "<brief note>"}},
-    "problem_solving": {{"score": <1-10>, "notes": "<brief note>"}},
-    "cultural_fit": {{"score": <1-10>, "notes": "<brief note>"}}
-  }}
-}}"""
             try:
-                model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-                resp = await openai_client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": scorecard_prompt}],
-                    max_tokens=800,
-                    temperature=0.2,
-                    response_format={"type": "json_object"},
+                from openai import AsyncOpenAI as _AsyncOpenAI
+                openai_client = _AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+                scorecard = await _generate_scorecard(
+                    transcript=transcript_text,
+                    candidate_name=candidate_name,
+                    openai_client=openai_client,
+                    scorecard_model=os.getenv("OPENAI_SCORECARD_MODEL", "gpt-4o"),
                 )
-                import json as _json
-                scorecard = _json.loads(resp.choices[0].message.content or "{}")
                 print(f"[Recover] Scorecard generated: score={scorecard.get('overall_score')}")
             except Exception as e:
                 print(f"[Recover] Scorecard generation error: {e}")
@@ -2839,6 +2800,8 @@ Generate a comprehensive JSON scorecard. Return ONLY valid JSON, no extra text:
                 "candidateName": candidate_name,
                 "botName": "RecruitX AI Interviewer",
                 "transcript": transcript_list,
+                "transcriptText": transcript_text,
+                "wordCount": word_count,
                 "scorecard": scorecard,
                 "botId": req.bot_id,
                 "interviewStatus": interview_status,

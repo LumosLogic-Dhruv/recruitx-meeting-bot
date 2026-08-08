@@ -23,6 +23,45 @@ class GoogleScopeMissingError(Exception):
     """Raised when the stored Google token lacks the meetings.space.created scope.
     Caller should return GOOGLE_SCOPE_MISSING and prompt the admin to reconnect."""
 
+
+def _build_ics(
+    summary: str,
+    description: str,
+    location: str,
+    dtstart: datetime,
+    duration_minutes: int,
+    organizer_email: str,
+    attendee_name: str,
+    attendee_email: str,
+) -> str:
+    """Generate a minimal RFC 5545 ICS calendar invite.
+    Uses only Python stdlib — no icalendar package required."""
+    fmt = "%Y%m%dT%H%M%SZ"
+    dtend = dtstart + timedelta(minutes=duration_minutes)
+    uid = f"interview-{uuid.uuid4().hex}@recruitx.ai"
+    # Fold long lines at 75 chars per RFC 5545
+    desc_escaped = description.replace("\n", "\\n").replace(",", "\\,")
+    return (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        f"PRODID:-//{COMPANY_NAME}//AI Interviewer//EN\r\n"
+        "CALSCALE:GREGORIAN\r\n"
+        "METHOD:REQUEST\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"DTSTART:{dtstart.strftime(fmt)}\r\n"
+        f"DTEND:{dtend.strftime(fmt)}\r\n"
+        f"SUMMARY:{summary}\r\n"
+        f"DESCRIPTION:{desc_escaped}\r\n"
+        f"LOCATION:{location}\r\n"
+        f"UID:{uid}\r\n"
+        f"ORGANIZER;CN={COMPANY_NAME} Interviews:mailto:{organizer_email}\r\n"
+        f"ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=TRUE;CN={attendee_name}:mailto:{attendee_email}\r\n"
+        "STATUS:CONFIRMED\r\n"
+        "SEQUENCE:0\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
 COMPANY_NAME = os.getenv("COMPANY_NAME", "LumosLogic")
 
 # Store Flow objects between auth URL generation and callback so the
@@ -335,14 +374,42 @@ def _send_email_sync(token_dict: dict, candidate_name: str, candidate_email: str
     gmail = build("gmail", "v1", credentials=creds, cache_discovery=False)
 
     html = _build_email_html(candidate_name, meet_url, scheduled_at, role_name, sender, duration_minutes)
-    msg = MIMEMultipart("alternative")
+
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = f"Interview Invitation — {role_name} at {COMPANY_NAME}"
     msg["From"] = f"{COMPANY_NAME} Interviews <{sender}>"
     msg["To"] = f"{candidate_name} <{candidate_email}>"
-    msg.attach(MIMEText(html, "html"))
+
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(
+        f"Interview Invitation for {role_name} at {COMPANY_NAME}\n\nJoin: {meet_url}",
+        "plain",
+    ))
+    alt.attach(MIMEText(html, "html"))
+    msg.attach(alt)
+
+    ics_text = _build_ics(
+        summary=f"AI Interview — {role_name} at {COMPANY_NAME}",
+        description=(
+            f"Your AI-powered interview for the {role_name} position at {COMPANY_NAME}.\n\n"
+            f"The AI interviewer will greet you automatically once you join.\n"
+            f"No extra software required.\n\nJoin: {meet_url}"
+        ),
+        location=meet_url,
+        dtstart=scheduled_at.replace(tzinfo=None) if scheduled_at.tzinfo else scheduled_at,
+        duration_minutes=duration_minutes,
+        organizer_email=sender,
+        attendee_name=candidate_name,
+        attendee_email=candidate_email,
+    )
+    cal_part = MIMEText(ics_text, "calendar", "utf-8")
+    cal_part.add_header("Content-Disposition", "attachment", filename="interview.ics")
+    msg.attach(cal_part)
+
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     try:
         gmail.users().messages().send(userId="me", body={"raw": raw}).execute()
+        print(f"[Gmail] Email + ICS sent to {candidate_email}")
         return True
     except Exception as e:
         print(f"[Gmail] Send error: {e}")
@@ -373,11 +440,40 @@ def _send_email_smtp_sync(candidate_name: str, candidate_email: str, meet_url: s
         return False
 
     html = _build_email_html(candidate_name, meet_url, scheduled_at, role_name, smtp_user, duration_minutes)
-    msg = MIMEMultipart("alternative")
+
+    # Outer: mixed (HTML body + ICS attachment)
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = f"Interview Invitation — {role_name} at {COMPANY_NAME}"
     msg["From"] = f"{COMPANY_NAME} Interviews <{smtp_user}>"
     msg["To"] = f"{candidate_name} <{candidate_email}>"
-    msg.attach(MIMEText(html, "html"))
+
+    # Inner: alternative (plain fallback + HTML)
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(
+        f"Interview Invitation for {role_name} at {COMPANY_NAME}\n\nJoin: {meet_url}",
+        "plain",
+    ))
+    alt.attach(MIMEText(html, "html"))
+    msg.attach(alt)
+
+    # ICS calendar invite — opens RSVP prompt in Gmail / Outlook
+    ics_text = _build_ics(
+        summary=f"AI Interview — {role_name} at {COMPANY_NAME}",
+        description=(
+            f"Your AI-powered interview for the {role_name} position at {COMPANY_NAME}.\n\n"
+            f"The AI interviewer will greet you automatically once you join.\n"
+            f"No extra software required.\n\nJoin: {meet_url}"
+        ),
+        location=meet_url,
+        dtstart=scheduled_at.replace(tzinfo=None) if scheduled_at.tzinfo else scheduled_at,
+        duration_minutes=duration_minutes,
+        organizer_email=smtp_user,
+        attendee_name=candidate_name,
+        attendee_email=candidate_email,
+    )
+    cal_part = MIMEText(ics_text, "calendar", "utf-8")
+    cal_part.add_header("Content-Disposition", "attachment", filename="interview.ics")
+    msg.attach(cal_part)
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
@@ -385,7 +481,7 @@ def _send_email_smtp_sync(candidate_name: str, candidate_email: str, meet_url: s
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, [candidate_email], msg.as_string())
-        print(f"[SMTP] Email sent to {candidate_email}")
+        print(f"[SMTP] Email + ICS sent to {candidate_email}")
         return True
     except Exception as e:
         print(f"[SMTP] Send error: {e}")
