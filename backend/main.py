@@ -196,10 +196,20 @@ async def _create_session(
 
     pipeline.set_response_callback(on_ai_response)
 
+    _recall_api_url = os.getenv("RECALL_API_URL", "https://us-east-1.recall.ai/api/v1")
+    _recall_key_ok = bool(os.getenv("RECALL_API_KEY", "").strip())
+    _built_webhook = _webhook_url()
+    print(
+        f"[{label}] PRE create_bot:"
+        f" meeting_url={meeting_url[:80]}"
+        f" recall_region={_recall_api_url}"
+        f" api_key={'SET' if _recall_key_ok else '*** MISSING ***'}"
+        f" webhook={_built_webhook[:70] if _built_webhook else '*** MISSING — poll-only ***'}"
+    )
     try:
-        bot_data = await recall.create_bot(meeting_url, bot_name, webhook_url=_webhook_url())
+        bot_data = await recall.create_bot(meeting_url, bot_name, webhook_url=_built_webhook)
     except Exception as e:
-        print(f"[{label}] create_bot error: {e}")
+        print(f"[{label}] create_bot FAILED: {type(e).__name__}: {e}")
         await recall.aclose()
         raise
 
