@@ -491,7 +491,7 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
         print(f"[Webhook] Could not parse request body: {e}")
         return {"ok": True}
     event = body.get("event", "")
-    data = body.get("data", {})
+    data = body.get("data") or {}
     print(f"[Webhook] Event: {event}")
 
     # Bot entered Google Meet waiting room — recruiter must admit it
@@ -1810,7 +1810,7 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
                                      candidate_name: str, scheduled_interview_id: str,
                                      recruiter_id: str = "", candidate_id: str = "",
                                      role_name: str = "Interview", attempt_number: int = 1,
-                                     candidate_email: str = ""):
+                                     candidate_email: str = "", scheduled_at_ms: int = 0):
     """Called by the scheduler at interview time. Delegates to _create_session()."""
     if meeting_url in _url_to_bot:
         print(f"[Scheduler] Session already active for {meeting_url} — skipping")
@@ -1827,6 +1827,7 @@ async def _scheduled_create_session(meeting_url: str, system_prompt: str, bot_na
         role_name=role_name,
         attempt_number=attempt_number,
         scheduled_interview_id=scheduled_interview_id,
+        scheduled_at_ms=scheduled_at_ms,
         label="Scheduler",
     )
     print(f"[Scheduler] Bot created for scheduled interview {scheduled_interview_id}: {bot_id}")

@@ -451,30 +451,41 @@ def start_recurring_jobs():
 
 
 async def reload_pending(convex_client):
-    """On server startup: reload all pending interviews from Convex."""
+    """On server startup: reload all pending interviews from Convex.
+    Also dispatches past-due interviews within a 30-minute grace window so a
+    server restart right at interview time doesn't permanently lose the job."""
     try:
         pending = convex_client.query("scheduledInterviews:listPending")
         now_ms = datetime.now(timezone.utc).timestamp() * 1000
+        PAST_DUE_GRACE_MS = 30 * 60 * 1000  # 30 minutes
         count = 0
         for iv in (pending or []):
-            if iv.get("scheduledAt", 0) > now_ms:
-                run_at = datetime.fromtimestamp(iv["scheduledAt"] / 1000, tz=timezone.utc)
-                schedule_interview(
-                    interview_id=iv["_id"],
-                    meeting_url=iv["meetingUrl"],
-                    system_prompt=iv["systemPrompt"],
-                    bot_name=iv["botName"],
-                    candidate_name=iv["candidateName"],
-                    run_at=run_at,
-                    candidate_email=iv.get("candidateEmail", ""),
-                    recruiter_id=iv.get("recruiterId", ""),
-                    candidate_id=iv.get("candidateId", ""),
-                    role_name=iv.get("roleName", "Interview"),
-                    attempt_number=iv.get("attemptNumber", 1),
-                    duration_minutes=iv.get("durationMinutes", 30),
-                    scheduled_at_ms=iv.get("scheduledAt", 0),
-                )
-                count += 1
+            sched_at = iv.get("scheduledAt", 0)
+            if sched_at > now_ms:
+                run_at = datetime.fromtimestamp(sched_at / 1000, tz=timezone.utc)
+            elif now_ms - sched_at <= PAST_DUE_GRACE_MS:
+                # Server was down at interview time — dispatch immediately with a short delay
+                late_by = int((now_ms - sched_at) / 1000)
+                print(f"[Scheduler] Past-due interview {iv['_id']} dispatched immediately (was {late_by}s late)")
+                run_at = datetime.now(timezone.utc) + timedelta(seconds=30)
+            else:
+                continue
+            schedule_interview(
+                interview_id=iv["_id"],
+                meeting_url=iv["meetingUrl"],
+                system_prompt=iv["systemPrompt"],
+                bot_name=iv["botName"],
+                candidate_name=iv["candidateName"],
+                run_at=run_at,
+                candidate_email=iv.get("candidateEmail", ""),
+                recruiter_id=iv.get("recruiterId", ""),
+                candidate_id=iv.get("candidateId", ""),
+                role_name=iv.get("roleName", "Interview"),
+                attempt_number=iv.get("attemptNumber", 1),
+                duration_minutes=iv.get("durationMinutes", 30),
+                scheduled_at_ms=iv.get("scheduledAt", 0),
+            )
+            count += 1
         print(f"[Scheduler] Reloaded {count} pending interview(s) from Convex")
     except Exception as e:
         print(f"[Scheduler] Reload error (non-fatal): {e}")
