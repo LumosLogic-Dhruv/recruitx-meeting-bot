@@ -14,7 +14,7 @@ from convex import ConvexClient
 import pypdf
 
 from recall_client import RecallClient
-from pipeline import ConversationPipeline
+from pipeline import ConversationPipeline, _norm_dedup_key
 import google_auth as gauth
 import scheduler as sched
 from speech_guard import speech_guard
@@ -434,7 +434,7 @@ async def _poll_and_greet(bot_id: str):
                             # same threshold as the webhook handler)
                             if word_count > 3:
                                 seen_segs = _seen_segments.setdefault(bot_id, set())
-                                seg_key = f"{speaker}:{text}"
+                                seg_key = _norm_dedup_key(speaker, words, text)
                                 if seg_key in seen_segs:
                                     print(f"[Poll] Transcript already processed via webhook — skipping: {text[:40]}")
                                     continue
@@ -652,7 +652,9 @@ async def recall_webhook(request: Request, background_tasks: BackgroundTasks):
                 word_count_check = len(text.split())
                 if word_count_check > 3:
                     seen = _seen_segments.setdefault(bot_id, set())
-                    segment_key = f"{speaker}:{text}"
+                    # Timestamp-based key is stable across webhook vs REST polling
+                    # deliveries even when Deepgram revises the text between them.
+                    segment_key = _norm_dedup_key(speaker, words, text)
                     if segment_key in seen:
                         print(f"[Webhook] Duplicate final skipped: {text[:50]}")
                         return {"ok": True}

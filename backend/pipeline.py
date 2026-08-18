@@ -43,6 +43,9 @@ _NOISE_WORDS = frozenset({
     'ah', 'eh', 'oh', 'er', 'err', 'ugh', 'uh-huh',
 })
 
+# Used by _norm_dedup_key to strip punctuation for the text fallback path.
+_DEDUP_NORM_RE = re.compile(r'[^a-z0-9\s]')
+
 CONFUSION_FALLBACKS = [
     "Let's move to a different area. Tell me about another project you've worked on recently.",
     "Let me ask you something different — what's your experience with system design?",
@@ -459,9 +462,9 @@ class ConversationPipeline:
             elif words <= 35:
                 pause = 0.70
             elif words <= 80:
-                pause = 0.95
+                pause = 0.75
             else:
-                pause = 1.15
+                pause = 0.85
             return max(0.30, min(1.20, pause))
         except Exception:
             return THINKING_PAUSE
@@ -935,6 +938,32 @@ class ConversationPipeline:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _norm_dedup_key(speaker: str, words: list, text: str = "") -> str:
+    """Build a stable dedup key for transcript segment deduplication.
+
+    Primary strategy: use the segment's start_time (from the first word object).
+    Both the Recall.ai webhook path and the REST polling path include Deepgram
+    word-level timestamps, so the same spoken segment produces the same key even
+    when Deepgram revises the text between real-time delivery and batch retrieval
+    (e.g. "Node" → "Node.js", added punctuation, capitalisation fixes).
+
+    Fallback (no timing info): normalise text — lowercase + strip punctuation —
+    which handles the most common differences (terminal periods, commas).
+    """
+    if words:
+        try:
+            t_start = float(
+                words[0].get("start_time") or words[0].get("start") or 0.0
+            )
+            if t_start > 0:
+                return f"{speaker.lower()}:t{round(t_start, 1)}"
+        except (TypeError, ValueError):
+            pass
+    # Fallback: normalise text (handles punctuation variants, not word expansions)
+    norm = _DEDUP_NORM_RE.sub("", text.lower()).split()
+    return f"{speaker.lower()}:{' '.join(norm[:8])}"
+
 
 def _strip_code_fence(text: str) -> str:
     """Remove ```json ... ``` or ``` ... ``` fences from LLM output."""

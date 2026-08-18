@@ -39,6 +39,7 @@ from pipeline import (
     _NOISE_WORDS,
     _TRAILING_WORDS,
     CONFUSION_FALLBACKS,
+    _norm_dedup_key,
 )
 from prompt_builder import build_system_message, MASTER_BEHAVIOR_LAYER
 
@@ -310,3 +311,155 @@ class TestPromptBuilder:
         base_pos = result.index("BASE_PROMPT")
         state_pos = result.index("STATE_CTX")
         assert behavior_pos < base_pos < state_pos
+
+
+# ── Regression: duplicate-transcript dedup (ISSUE 1 fix) ──────────────────────
+
+def _words_with_timing(text: str, start: float = 1.0) -> list:
+    """Build minimal Recall.ai-format word objects with start_time."""
+    return [
+        {"text": w, "start_time": round(start + i * 0.3, 3)}
+        for i, w in enumerate(text.split())
+    ]
+
+
+def _words_no_timing(text: str) -> list:
+    """Word objects without start_time — exercises the text-fallback path."""
+    return [{"text": w} for w in text.split()]
+
+
+class TestDedupNormalization:
+    """
+    Regression suite for _norm_dedup_key.
+
+    The dual-tone / duplicate-response bug was caused by the webhook and polling
+    paths producing slightly different text for the same Deepgram segment (e.g.,
+    punctuation added by smart_format, or word expansion like Node → Node.js).
+    Both paths now call _norm_dedup_key with the raw word objects; the timestamp-
+    based primary key makes the dedup text-independent.
+    """
+
+    def test_same_segment_same_timestamp_same_key(self):
+        # Identical words and start_time → must produce identical key.
+        w = _words_with_timing("I worked with React and Node", start=3.0)
+        k1 = _norm_dedup_key("Candidate", w, "I worked with React and Node")
+        k2 = _norm_dedup_key("Candidate", w, "I worked with React and Node")
+        assert k1 == k2
+
+    def test_punctuation_difference_same_timestamp_same_key(self):
+        # Webhook delivers without trailing period; REST API adds it via smart_format.
+        webhook_words = _words_with_timing("I worked with React and Node", start=5.0)
+        poll_words    = _words_with_timing("I worked with React and Node.", start=5.0)
+        k1 = _norm_dedup_key("Candidate", webhook_words, "I worked with React and Node")
+        k2 = _norm_dedup_key("Candidate", poll_words,    "I worked with React and Node.")
+        assert k1 == k2, f"Punctuation variant produced different keys: {k1!r} vs {k2!r}"
+
+    def test_word_expansion_same_timestamp_same_key(self):
+        # "Node" (webhook) vs "Node.js" (REST poll) — same segment start_time.
+        webhook_words = _words_with_timing("I worked with React and Node",    start=5.0)
+        poll_words    = _words_with_timing("I worked with React and Node.js", start=5.0)
+        k1 = _norm_dedup_key("Candidate", webhook_words, "I worked with React and Node")
+        k2 = _norm_dedup_key("Candidate", poll_words,    "I worked with React and Node.js")
+        assert k1 == k2, f"Word-expansion variant produced different keys: {k1!r} vs {k2!r}"
+
+    def test_different_speakers_yield_different_keys(self):
+        w = _words_with_timing("I used React", start=2.0)
+        k1 = _norm_dedup_key("Candidate", w, "I used React")
+        k2 = _norm_dedup_key("Bot",       w, "I used React")
+        assert k1 != k2
+
+    def test_different_start_times_yield_different_keys(self):
+        # Two separate turns from the same speaker must not collide.
+        w1 = _words_with_timing("I used React", start=5.0)
+        w2 = _words_with_timing("I used React", start=45.0)
+        k1 = _norm_dedup_key("Candidate", w1, "I used React")
+        k2 = _norm_dedup_key("Candidate", w2, "I used React")
+        assert k1 != k2
+
+    def test_key_uses_timestamp_prefix(self):
+        w = _words_with_timing("hello world", start=3.0)
+        key = _norm_dedup_key("Candidate", w, "hello world")
+        assert key.startswith("candidate:t3.")
+
+    def test_fallback_text_normalization_strips_punctuation(self):
+        # Without timestamps the fallback normalises text — punctuation stripped.
+        w1 = _words_no_timing("I used React and Node")
+        w2 = _words_no_timing("I used React and Node.")
+        k1 = _norm_dedup_key("Candidate", w1, "I used React and Node")
+        k2 = _norm_dedup_key("Candidate", w2, "I used React and Node.")
+        assert k1 == k2
+
+    def test_fallback_text_normalization_is_case_insensitive(self):
+        w1 = _words_no_timing("I used React")
+        w2 = _words_no_timing("I used react")
+        k1 = _norm_dedup_key("Candidate", w1, "I used React")
+        k2 = _norm_dedup_key("Candidate", w2, "I used react")
+        assert k1 == k2
+
+    def test_empty_words_falls_back_to_text(self):
+        key = _norm_dedup_key("Candidate", [], "hello there")
+        assert "hello" in key
+
+    def test_speaker_is_lowercased_in_key(self):
+        w = _words_with_timing("hello", start=1.0)
+        k1 = _norm_dedup_key("CANDIDATE", w, "hello")
+        k2 = _norm_dedup_key("candidate", w, "hello")
+        assert k1 == k2
+
+
+# ── ISSUE 2: effective response latency after timing reductions ────────────────
+
+class TestEffectiveWaitTime:
+    """
+    Verifies that the combined silence-timeout + thinking-pause for long answers
+    is meaningfully shorter than before the fix, while short-answer behaviour
+    is unchanged.
+
+    Before fix: SILENCE_XLONG=5.0s + thinking_pause≈0.95-1.15s ≈ 6.0-6.2s
+    After fix:  SILENCE_XLONG=3.5s + thinking_pause≈0.75-0.85s ≈ 4.25-4.35s
+    """
+
+    def setup_method(self):
+        self.p = make_pipeline()
+
+    def _effective_wait(self, text: str) -> float:
+        return self.p._adaptive_timeout(text) + self.p._compute_thinking_pause(text)
+
+    def test_short_answer_effective_wait_unchanged(self):
+        # Short answers (≤5 words): silence timer + thinking pause should stay fast.
+        text = "yes I agree"
+        wait = self._effective_wait(text)
+        assert wait < 4.0, f"Short answer effective wait {wait:.2f}s is too slow"
+
+    def test_medium_answer_effective_wait_reasonable(self):
+        # 10-word answer: SILENCE_MEDIUM + thinking_pause
+        text = " ".join(["word"] * 10)
+        wait = self._effective_wait(text)
+        assert wait < 4.5, f"Medium answer effective wait {wait:.2f}s is too slow"
+
+    def test_long_answer_effective_wait_under_5s(self):
+        # 40-word answer: was ~5.95s, must now be under 5.0s
+        text = " ".join(["word"] * 40)
+        wait = self._effective_wait(text)
+        assert wait < 5.0, f"Long answer effective wait {wait:.2f}s — target <5.0s"
+
+    def test_very_long_answer_effective_wait_under_5s(self):
+        # 100-word answer: was ~6.15s, must now be under 5.0s
+        text = " ".join(["word"] * 100)
+        wait = self._effective_wait(text)
+        assert wait < 5.0, f"Very long answer effective wait {wait:.2f}s — target <5.0s"
+
+    def test_thinking_pause_order_preserved(self):
+        # Longer answers still have a longer thinking pause than shorter ones.
+        short_p  = self.p._compute_thinking_pause(" ".join(["word"] * 3))
+        medium_p = self.p._compute_thinking_pause(" ".join(["word"] * 15))
+        long_p   = self.p._compute_thinking_pause(" ".join(["word"] * 50))
+        xlong_p  = self.p._compute_thinking_pause(" ".join(["word"] * 100))
+        assert short_p < medium_p < long_p < xlong_p
+
+    def test_thinking_pause_reduced_for_long_answers(self):
+        # Was 0.95 for 35-80 words, now 0.75 — verify the cap.
+        pause_40  = self.p._compute_thinking_pause(" ".join(["word"] * 40))
+        pause_100 = self.p._compute_thinking_pause(" ".join(["word"] * 100))
+        assert pause_40  <= 0.80, f"Pause for 40 words = {pause_40:.2f}, expected ≤ 0.80"
+        assert pause_100 <= 0.90, f"Pause for 100 words = {pause_100:.2f}, expected ≤ 0.90"

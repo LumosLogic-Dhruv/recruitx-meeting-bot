@@ -20,8 +20,8 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "SNr51KAoFWjq7b0L9cRb")
 # These timers start AFTER Deepgram fires — so they run on top of natural pauses.
 SILENCE_SHORT      = 2.0   # 1–5 words   → wait a full breath before responding
 SILENCE_MEDIUM     = 2.8   # 6–15 words  → let them finish the thought
-SILENCE_LONG       = 3.8   # 16–35 words → long answers need more settle time
-SILENCE_XLONG      = 5.0   # 35+ words
+SILENCE_LONG       = 3.0   # 16–35 words → long answers need more settle time
+SILENCE_XLONG      = 3.5   # 35+ words
 SILENCE_INCOMPLETE = 5.5   # sentence ends mid-thought ("and", "the", "so"…)
 SILENCE_INTERRUPTED = 0.8  # candidate spoke over bot — respond fast
 
